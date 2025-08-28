@@ -19,7 +19,7 @@ export default async function DashboardPage() {
     user = userData.user
 
     // Test database connection with better error handling
-    const { data, error: dbError } = await supabase
+    const { error: dbError } = await supabase
       .from('studies')
       .select('id')
       .limit(1)
@@ -61,7 +61,7 @@ export default async function DashboardPage() {
               <div className="flex-1">
                 <h3 className="text-red-400 font-semibold">Database Connection Issue</h3>
                 <p className="text-gray-300 mt-1">
-                  There's an issue connecting to the database tables.
+                  There&apos;s an issue connecting to the database tables.
                 </p>
                 {debugInfo && (
                   <div className="mt-4 p-3 bg-gray-800/50 rounded-lg">
