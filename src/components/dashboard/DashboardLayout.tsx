@@ -29,12 +29,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   ]
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-black">
       {/* Mobile sidebar */}
       {sidebarOpen && (
         <div className="fixed inset-0 flex z-40 md:hidden">
           <div className="fixed inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
-          <div className="relative flex-1 flex flex-col max-w-xs w-full bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700">
+          <div className="relative flex-1 flex flex-col max-w-xs w-full bg-gray-900/95 backdrop-blur-sm border-r border-gray-700">
             <div className="absolute top-0 right-0 -mr-12 pt-2">
               <button
                 className="ml-1 flex items-center justify-center h-10 w-10 rounded-full focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white"
@@ -45,7 +45,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             </div>
             <div className="flex-1 h-0 pt-5 pb-4 overflow-y-auto">
               <div className="flex-shrink-0 flex items-center px-4">
-                <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Study Coordinator Pro</h1>
+                <h1 className="text-lg font-semibold text-white">Study Coordinator Pro</h1>
               </div>
               <nav className="mt-5 px-2 space-y-1">
                 {navigation.map((item) => (
@@ -54,15 +54,15 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     href={item.href}
                     className={`${
                       item.current
-                        ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-50'
-                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-50'
-                    } group flex items-center px-2 py-2 text-base font-medium rounded-md transition-colors`}
+                        ? 'bg-blue-600/20 border-l-4 border-blue-400 text-white'
+                        : 'text-gray-300 hover:bg-gray-700/50 hover:text-white border-l-4 border-transparent hover:border-gray-600'
+                    } group flex items-center px-2 py-2 text-base font-medium rounded-r-lg transition-all`}
                   >
                     <item.icon
                       className={`${
                         item.current 
-                          ? 'text-slate-500 dark:text-slate-400' 
-                          : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-500 dark:group-hover:text-slate-400'
+                          ? 'text-blue-400' 
+                          : 'text-gray-400 group-hover:text-gray-300'
                       } mr-4 flex-shrink-0 h-6 w-6`}
                     />
                     {item.name}
@@ -70,16 +70,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 ))}
               </nav>
             </div>
-            <div className="flex-shrink-0 border-t border-slate-200 dark:border-slate-700 p-4 space-y-2">
+            <div className="flex-shrink-0 border-t border-gray-700 p-4 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-500 dark:text-slate-400">Theme</span>
+                <span className="text-xs text-gray-400">Theme</span>
                 <ThemeToggle />
               </div>
               <button
                 onClick={handleSignOut}
-                className="flex items-center w-full text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-50 transition-colors"
+                className="flex items-center w-full text-sm text-gray-400 hover:text-white transition-colors"
               >
-                <ArrowRightOnRectangleIcon className="mr-3 h-5 w-5 text-slate-400 dark:text-slate-500" />
+                <ArrowRightOnRectangleIcon className="mr-3 h-5 w-5 text-gray-500" />
                 Sign out
               </button>
             </div>
@@ -89,10 +89,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
       {/* Desktop sidebar */}
       <div className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0">
-        <div className="flex-1 flex flex-col min-h-0 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+        <div className="flex-1 flex flex-col min-h-0 border-r border-gray-700 bg-gray-900/95 backdrop-blur-sm">
           <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto">
             <div className="flex items-center flex-shrink-0 px-4">
-              <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Study Coordinator Pro</h1>
+              <h1 className="text-lg font-semibold text-white">Study Coordinator Pro</h1>
             </div>
             <nav className="mt-5 flex-1 px-2 space-y-1">
               {navigation.map((item) => (
@@ -101,15 +101,15 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   href={item.href}
                   className={`${
                     item.current
-                      ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-50'
-                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-50'
-                  } group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors`}
+                      ? 'bg-blue-600/20 border-l-4 border-blue-400 text-white'
+                      : 'text-gray-300 hover:bg-gray-700/50 hover:text-white border-l-4 border-transparent hover:border-gray-600'
+                  } group flex items-center px-2 py-2 text-sm font-medium rounded-r-lg transition-all`}
                 >
                   <item.icon
                     className={`${
                       item.current 
-                        ? 'text-slate-500 dark:text-slate-400' 
-                        : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-500 dark:group-hover:text-slate-400'
+                        ? 'text-blue-400' 
+                        : 'text-gray-400 group-hover:text-gray-300'
                     } mr-3 flex-shrink-0 h-6 w-6`}
                   />
                   {item.name}
@@ -117,16 +117,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               ))}
             </nav>
           </div>
-          <div className="flex-shrink-0 border-t border-slate-200 dark:border-slate-700 p-4 space-y-2">
+          <div className="flex-shrink-0 border-t border-gray-700 p-4 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-slate-500 dark:text-slate-400">Theme</span>
+              <span className="text-xs text-gray-400">Theme</span>
               <ThemeToggle />
             </div>
             <button
               onClick={handleSignOut}
-              className="flex items-center w-full text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-50 transition-colors"
+              className="flex items-center w-full text-sm text-gray-400 hover:text-white transition-colors"
             >
-              <ArrowRightOnRectangleIcon className="mr-3 h-5 w-5 text-slate-400 dark:text-slate-500" />
+              <ArrowRightOnRectangleIcon className="mr-3 h-5 w-5 text-gray-500" />
               Sign out
             </button>
           </div>
@@ -135,9 +135,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
       {/* Main content */}
       <div className="md:pl-64 flex flex-col flex-1">
-        <div className="sticky top-0 z-10 md:hidden pl-1 pt-1 sm:pl-3 sm:pt-3 bg-white dark:bg-slate-950">
+        <div className="sticky top-0 z-10 md:hidden pl-1 pt-1 sm:pl-3 sm:pt-3 bg-black">
           <button
-            className="-ml-0.5 -mt-0.5 h-12 w-12 inline-flex items-center justify-center rounded-md text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 transition-colors"
+            className="-ml-0.5 -mt-0.5 h-12 w-12 inline-flex items-center justify-center rounded-md text-gray-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 transition-colors"
             onClick={() => setSidebarOpen(true)}
           >
             <Bars3Icon className="h-6 w-6" />

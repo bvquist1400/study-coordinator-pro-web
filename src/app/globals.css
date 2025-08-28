@@ -1,7 +1,8 @@
 @import "tailwindcss";
 
+/* Study Coordinator Pro Dark Theme Design System */
 :root {
-  /* Light theme */
+  /* Light theme (fallback) */
   --background: 255 255 255; /* white */
   --foreground: 15 23 42; /* slate-900 */
   --card: 255 255 255; /* white */
@@ -19,27 +20,261 @@
   --ring: 37 99 235; /* blue-600 */
 }
 
-.dark {
-  /* Dark theme */
-  --background: 2 6 23; /* slate-950 */
-  --foreground: 248 250 252; /* slate-50 */
-  --card: 15 23 42; /* slate-900 */
-  --card-foreground: 248 250 252; /* slate-50 */
-  --primary: 59 130 246; /* blue-500 */
-  --primary-foreground: 2 6 23; /* slate-950 */
-  --secondary: 51 65 85; /* slate-700 */
-  --secondary-foreground: 248 250 252; /* slate-50 */
-  --muted: 30 41 59; /* slate-800 */
-  --muted-foreground: 148 163 184; /* slate-400 */
-  --accent: 51 65 85; /* slate-700 */
-  --accent-foreground: 248 250 252; /* slate-50 */
-  --border: 51 65 85; /* slate-700 */
-  --input: 51 65 85; /* slate-700 */
+/* Dark theme - Study Coordinator Pro Design System */
+:root, .dark {
+  /* Core Background Colors */
+  --background: 0 0 0; /* Pure black */
+  --foreground: 255 255 255; /* Pure white */
+  
+  /* Card & Container Colors */
+  --card: 31 41 55; /* gray-800 with opacity */
+  --card-foreground: 255 255 255; /* white */
+  --card-background-blur: 31 41 55; /* gray-800/50 with backdrop-blur */
+  
+  /* Primary Blue Theme */
+  --primary: 37 99 235; /* blue-600 */
+  --primary-foreground: 255 255 255; /* white */
+  --primary-hover: 29 78 216; /* blue-700 */
+  --primary-accent: 96 165 250; /* blue-400 */
+  
+  /* Secondary Colors */
+  --secondary: 55 65 81; /* gray-700 */
+  --secondary-foreground: 255 255 255; /* white */
+  --secondary-hover: 75 85 99; /* gray-600 */
+  
+  /* Text Hierarchy */
+  --text-primary: 255 255 255; /* white */
+  --text-secondary: 209 213 219; /* gray-300 */
+  --text-tertiary: 156 163 175; /* gray-400 */
+  --text-muted: 107 114 128; /* gray-500 */
+  
+  /* Border Colors */
+  --border: 55 65 81; /* gray-700 */
+  --border-light: 75 85 99; /* gray-600 */
+  --border-accent: 96 165 250; /* blue-400 */
+  
+  /* Input & Form Colors */
+  --input-bg: 55 65 81; /* gray-700/50 */
+  --input-border: 75 85 99; /* gray-600 */
+  --input-focus: 59 130 246; /* blue-500 */
+  --input-text: 243 244 246; /* gray-100 */
+  
+  /* Status Colors */
+  --success: 34 197 94; /* green-500 */
+  --success-bg: 22 163 74; /* green-600 */
+  --success-hover: 21 128 61; /* green-700 */
+  
+  --warning: 251 146 60; /* orange-400 */
+  --warning-bg: 234 88 12; /* orange-600 */
+  --warning-hover: 194 65 12; /* orange-700 */
+  
+  --danger: 239 68 68; /* red-500 */
+  --danger-bg: 220 38 38; /* red-600 */
+  --danger-hover: 185 28 28; /* red-700 */
+  
+  /* Accent Colors */
+  --accent-purple: 147 51 234; /* purple-600 */
+  --accent-purple-light: 168 85 247; /* purple-500 */
+  --gradient-purple: linear-gradient(to bottom right, rgb(168 85 247), rgb(147 51 234)); /* purple-500 to purple-700 */
+  
+  /* Focus & Ring */
   --ring: 59 130 246; /* blue-500 */
+  --focus-ring: 96 165 250; /* blue-400 */
+}
+
+/* Global Styles */
+* {
+  border-color: rgb(var(--border));
 }
 
 body {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
   background-color: rgb(var(--background));
   color: rgb(var(--foreground));
+  font-feature-settings: "rlig" 1, "calt" 1;
+  font-variation-settings: normal;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Component Base Styles */
+.glass-card {
+  background-color: rgba(31, 41, 55, 0.5); /* gray-800/50 */
+  backdrop-filter: blur(4px);
+  border: 1px solid rgb(55 65 81); /* gray-700 */
+  border-radius: 1rem; /* rounded-2xl */
+}
+
+.glass-card:hover {
+  transform: scale(1.05);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  transition: all 0.3s ease;
+}
+
+/* Button Styles */
+.btn-primary {
+  background-color: rgb(37 99 235); /* blue-600 */
+  color: rgb(255 255 255);
+  border: 1px solid rgb(59 130 246); /* blue-500 */
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+  background-color: rgb(29 78 216); /* blue-700 */
+  transform: scale(1.05);
+  box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.1);
+}
+
+.btn-success {
+  background-color: rgb(22 163 74); /* green-600 */
+  color: rgb(255 255 255);
+  border: 1px solid rgb(34 197 94); /* green-500 */
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.btn-success:hover {
+  background-color: rgb(21 128 61); /* green-700 */
+  transform: scale(1.05);
+  box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.1);
+}
+
+.btn-warning {
+  background-color: rgb(234 88 12); /* orange-600 */
+  color: rgb(255 255 255);
+  border: 1px solid rgb(251 146 60); /* orange-400 */
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.btn-warning:hover {
+  background-color: rgb(194 65 12); /* orange-700 */
+  transform: scale(1.05);
+  box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.1);
+}
+
+/* Navigation Styles */
+.nav-item {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 0.5rem;
+  font-weight: 500;
+  border-radius: 0 0.5rem 0.5rem 0;
+  border-left: 4px solid transparent;
+  transition: all 0.3s ease;
+}
+
+.nav-item:hover {
+  background-color: rgba(55, 65, 81, 0.5); /* gray-700/50 */
+  color: rgb(255 255 255);
+  border-left-color: rgb(75 85 99); /* gray-600 */
+}
+
+.nav-item.active {
+  background-color: rgba(37, 99, 235, 0.2); /* blue-600/20 */
+  color: rgb(255 255 255);
+  border-left-color: rgb(96 165 250); /* blue-400 */
+}
+
+/* Form Elements */
+.form-input {
+  background-color: rgba(55, 65, 81, 0.5); /* gray-700/50 */
+  border: 1px solid rgb(75 85 99); /* gray-600 */
+  color: rgb(243 244 246); /* gray-100 */
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  transition: all 0.3s ease;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: rgb(59 130 246); /* blue-500 */
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.1);
+}
+
+/* Compliance Status Colors */
+.compliance-excellent {
+  background: linear-gradient(135deg, rgb(34 197 94), rgb(22 163 74)); /* green-500 to green-600 */
+}
+
+.compliance-good {
+  background: linear-gradient(135deg, rgb(251 146 60), rgb(234 88 12)); /* orange-400 to orange-600 */
+}
+
+.compliance-poor {
+  background: linear-gradient(135deg, rgb(239 68 68), rgb(220 38 38)); /* red-500 to red-600 */
+}
+
+/* Loading Animation */
+.loading-spinner {
+  border: 2px solid rgb(96 165 250); /* blue-400 */
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgb(31 41 55); /* gray-800 */
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(75 85 99); /* gray-600 */
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(107 114 128); /* gray-500 */
+}
+
+/* Auth UI Customizations */
+.auth-container {
+  background-color: rgba(31, 41, 55, 0.5) !important;
+  backdrop-filter: blur(4px) !important;
+}
+
+/* Clinical Research Specific Styles */
+.protocol-status-active {
+  color: rgb(34 197 94); /* green-500 */
+}
+
+.protocol-status-paused {
+  color: rgb(251 146 60); /* orange-400 */
+}
+
+.protocol-status-completed {
+  color: rgb(156 163 175); /* gray-400 */
+}
+
+.protocol-status-cancelled {
+  color: rgb(239 68 68); /* red-500 */
+}
+
+.subject-status-active {
+  color: rgb(34 197 94); /* green-500 */
+}
+
+.subject-status-screening {
+  color: rgb(251 146 60); /* orange-400 */
+}
+
+.subject-status-discontinued {
+  color: rgb(239 68 68); /* red-500 */
 }
