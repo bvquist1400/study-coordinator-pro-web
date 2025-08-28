@@ -171,6 +171,27 @@ You are helping develop "Study Coordinator Pro," a **web-first application** des
 - **Month 6**: $1,000 MRR, 60% monthly retention rate
 - **Month 12**: $5,000 MRR, feature expansion based on user feedback
 
+## Strategic Tasks & Research (Outstanding)
+
+### ❌ **Pending Research & Validation Tasks**
+- **IP Accountability System Audit**: Complete code audit and component extraction plan for proven compliance algorithms
+- **Coordinator User Research**: Survey 10-15 clinical coordinators on web vs native app preference to validate approach
+- **Feature Priority Validation**: Validate feature priorities with existing Guthrie coordinators for real-world needs
+- **Testing Framework Setup**: Configure comprehensive testing framework (Jest, React Testing Library, Playwright)
+
+### 📊 **Foundation Checklist Progress**
+- ✅ Create fresh GitHub repository: "study-coordinator-pro-web"
+- ✅ Initialize Next.js 15.5.2 + Supabase + TypeScript + Tailwind CSS project
+- ✅ Configure Turbopack for faster development builds
+- ✅ Set up development environment (separate from IP system)
+- ✅ Document reusable authentication, database schemas, and compliance logic
+- 🔄 Configure ESLint, Prettier, and testing framework (ESLint ✅, Testing ❌)
+- ❌ Complete IP Accountability System code audit and component extraction plan
+- ❌ Survey 10-15 clinical coordinators on web vs native app preference
+- ❌ Validate feature priorities with existing Guthrie coordinators
+
+**Progress: 5/9 Complete (56%), 1/9 In Progress (11%), 3/9 Outstanding (33%)**
+
 ## Current Development Status (Updated)
 - ✅ **Repository created**: `study-coordinator-pro-web`
 - ✅ **Next.js 15.5.2 setup**: With TypeScript, Tailwind, Turbopack
@@ -193,6 +214,13 @@ You are helping develop "Study Coordinator Pro," a **web-first application** des
 - **Secondary Goal**: Drug Dispensing and Lab Kit activity tracking integration
 - **Database Status**: ✅ Updated study schema deployed to Supabase
 - **Next Features**: Visit scheduling, SoE configuration, and subject enrollment workflows
+
+## Recommended Next Steps (Priority Order)
+1. **🏗️ Technical**: Complete testing framework setup (Jest, React Testing Library)
+2. **🔬 Research**: IP Accountability System audit for compliance algorithm extraction
+3. **👥 Validation**: Survey clinical coordinators for feature priority validation
+4. **⚡ Features**: Continue with Schedule of Events builder or Compliance Calculator
+5. **🧪 Quality**: Comprehensive testing suite for existing study management features
 
 ### Recently Completed (Week 3-4)
 - **✅ Add Study Form**: Complete modal form with all clinical research fields
@@ -217,6 +245,12 @@ When discussing this project:
 - Which IP system components provide the most value when adapted for coordinators?
 - How do we ensure offline functionality works for poor connectivity sites?
 - What would make coordinators choose a web app over requesting a native app?
+
+## Outstanding Strategic Decisions
+1. **IP System Integration**: Should we audit existing IP system for compliance algorithms before building from scratch?
+2. **User Research Priority**: How critical is coordinator feedback before continuing feature development?
+3. **Testing vs Features**: Should we implement comprehensive testing before adding more features?
+4. **Feature Sequencing**: Schedule of Events vs Compliance Calculator vs Subject Management - which delivers most value first?
 
 ## Context for Technical Decisions (Updated)
 - **Cross-device flexibility** - Web-first supports coordinator workflow across multiple devices
