@@ -27,7 +27,7 @@ CREATE TABLE studies (
     principal_investigator TEXT,
     phase TEXT,
     indication TEXT,
-    status TEXT DEFAULT 'active' CHECK (status IN ('active', 'paused', 'completed', 'cancelled')),
+    status TEXT DEFAULT 'enrolling' CHECK (status IN ('enrolling', 'active', 'closed_to_enrollment', 'completed')),
     start_date DATE,
     end_date DATE,
     target_enrollment INTEGER,

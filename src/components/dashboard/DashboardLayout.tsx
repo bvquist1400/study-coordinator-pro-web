@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { ThemeToggle } from '@/components/theme/ThemeToggle'
 
 interface DashboardLayoutProps {
@@ -12,6 +12,7 @@ interface DashboardLayoutProps {
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const router = useRouter()
+  const pathname = usePathname()
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -19,13 +20,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   const navigation = [
-    { name: 'Dashboard', href: '/dashboard', icon: HomeIcon, current: true },
-    { name: 'Studies', href: '/studies', icon: FolderIcon, current: false },
-    { name: 'Subjects', href: '/subjects', icon: UsersIcon, current: false },
-    { name: 'Visits', href: '/visits', icon: CalendarIcon, current: false },
-    { name: 'Compliance', href: '/compliance', icon: ChartBarIcon, current: false },
-    { name: 'Monitor Actions', href: '/monitor-actions', icon: ClipboardListIcon, current: false },
-    { name: 'Deviations', href: '/deviations', icon: ExclamationTriangleIcon, current: false },
+    { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
+    { name: 'Studies', href: '/studies', icon: FolderIcon },
+    { name: 'Subjects', href: '/subjects', icon: UsersIcon },
+    { name: 'Visits', href: '/visits', icon: CalendarIcon },
+    { name: 'Compliance', href: '/compliance', icon: ChartBarIcon },
+    { name: 'Monitor Actions', href: '/monitor-actions', icon: ClipboardListIcon },
+    { name: 'Deviations', href: '/deviations', icon: ExclamationTriangleIcon },
   ]
 
   return (
@@ -53,14 +54,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     key={item.name}
                     href={item.href}
                     className={`${
-                      item.current
+                      pathname === item.href
                         ? 'bg-blue-600/20 border-l-4 border-blue-400 text-white'
                         : 'text-gray-300 hover:bg-gray-700/50 hover:text-white border-l-4 border-transparent hover:border-gray-600'
                     } group flex items-center px-2 py-2 text-base font-medium rounded-r-lg transition-all`}
                   >
                     <item.icon
                       className={`${
-                        item.current 
+                        pathname === item.href 
                           ? 'text-blue-400' 
                           : 'text-gray-400 group-hover:text-gray-300'
                       } mr-4 flex-shrink-0 h-6 w-6`}
@@ -100,14 +101,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   key={item.name}
                   href={item.href}
                   className={`${
-                    item.current
+                    pathname === item.href
                       ? 'bg-blue-600/20 border-l-4 border-blue-400 text-white'
                       : 'text-gray-300 hover:bg-gray-700/50 hover:text-white border-l-4 border-transparent hover:border-gray-600'
                   } group flex items-center px-2 py-2 text-sm font-medium rounded-r-lg transition-all`}
                 >
                   <item.icon
                     className={`${
-                      item.current 
+                      pathname === item.href 
                         ? 'text-blue-400' 
                         : 'text-gray-400 group-hover:text-gray-300'
                     } mr-3 flex-shrink-0 h-6 w-6`}
@@ -175,7 +176,7 @@ function FolderIcon(props: React.ComponentProps<'svg'>) {
 function UsersIcon(props: React.ComponentProps<'svg'>) {
   return (
     <svg {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
     </svg>
   )
 }

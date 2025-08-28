@@ -251,20 +251,20 @@ body {
 }
 
 /* Clinical Research Specific Styles */
+.protocol-status-enrolling {
+  color: rgb(59 130 246); /* blue-500 */
+}
+
 .protocol-status-active {
   color: rgb(34 197 94); /* green-500 */
 }
 
-.protocol-status-paused {
+.protocol-status-closed_to_enrollment {
   color: rgb(251 146 60); /* orange-400 */
 }
 
 .protocol-status-completed {
   color: rgb(156 163 175); /* gray-400 */
-}
-
-.protocol-status-cancelled {
-  color: rgb(239 68 68); /* red-500 */
 }
 
 .subject-status-active {

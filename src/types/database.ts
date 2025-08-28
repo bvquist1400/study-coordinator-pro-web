@@ -40,7 +40,7 @@ export interface Database {
           principal_investigator: string | null
           phase: string | null
           indication: string | null
-          status: 'active' | 'paused' | 'completed' | 'cancelled'
+          status: 'enrolling' | 'active' | 'closed_to_enrollment' | 'completed'
           start_date: string | null
           end_date: string | null
           target_enrollment: number | null
@@ -60,7 +60,7 @@ export interface Database {
           principal_investigator?: string | null
           phase?: string | null
           indication?: string | null
-          status?: 'active' | 'paused' | 'completed' | 'cancelled'
+          status?: 'enrolling' | 'active' | 'closed_to_enrollment' | 'completed'
           start_date?: string | null
           end_date?: string | null
           target_enrollment?: number | null
@@ -80,7 +80,7 @@ export interface Database {
           principal_investigator?: string | null
           phase?: string | null
           indication?: string | null
-          status?: 'active' | 'paused' | 'completed' | 'cancelled'
+          status?: 'enrolling' | 'active' | 'closed_to_enrollment' | 'completed'
           start_date?: string | null
           end_date?: string | null
           target_enrollment?: number | null
