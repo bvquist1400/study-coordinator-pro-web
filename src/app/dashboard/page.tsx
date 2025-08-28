@@ -11,6 +11,28 @@ export default async function DashboardPage() {
     redirect('/login')
   }
 
+  // Check if database tables exist and handle gracefully
+  let studiesData = null
+  let subjectsData = null
+  let hasDatabase = true
+  
+  try {
+    // Try to query tables to see if they exist
+    const { data: studies, error: studiesError } = await supabase
+      .from('studies')
+      .select('*')
+      .limit(1)
+    
+    if (studiesError && studiesError.code === '42P01') {
+      // Table doesn't exist
+      hasDatabase = false
+    } else {
+      studiesData = studies
+    }
+  } catch (e) {
+    hasDatabase = false
+  }
+
   return (
     <DashboardLayout>
       <div className="space-y-8">
@@ -22,6 +44,23 @@ export default async function DashboardPage() {
             Your clinical research coordination dashboard
           </p>
         </div>
+
+        {!hasDatabase && (
+          <div className="bg-yellow-900/20 border border-yellow-700 rounded-2xl p-6">
+            <div className="flex items-center space-x-3">
+              <div className="text-yellow-400 text-2xl">⚠️</div>
+              <div>
+                <h3 className="text-yellow-400 font-semibold">Database Setup Required</h3>
+                <p className="text-gray-300 mt-1">
+                  Please run the database schema in Supabase to create the required tables.
+                </p>
+                <p className="text-gray-400 text-sm mt-2">
+                  Go to Supabase → SQL Editor → Run the database-schema.sql file
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-2xl p-6 hover:scale-105 transition-transform hover:shadow-2xl">
