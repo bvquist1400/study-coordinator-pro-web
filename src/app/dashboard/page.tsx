@@ -12,24 +12,20 @@ export default async function DashboardPage() {
   }
 
   // Check if database tables exist and handle gracefully
-  let studiesData = null
-  let subjectsData = null
   let hasDatabase = true
   
   try {
     // Try to query tables to see if they exist
-    const { data: studies, error: studiesError } = await supabase
+    const { error: studiesError } = await supabase
       .from('studies')
-      .select('*')
+      .select('id')
       .limit(1)
     
     if (studiesError && studiesError.code === '42P01') {
       // Table doesn't exist
       hasDatabase = false
-    } else {
-      studiesData = studies
     }
-  } catch (e) {
+  } catch {
     hasDatabase = false
   }
 
