@@ -3,30 +3,43 @@ import { redirect } from 'next/navigation'
 import DashboardLayout from '@/components/dashboard/DashboardLayout'
 
 export default async function DashboardPage() {
-  const supabase = await createServerSupabaseClient()
-  
-  const { data: { user }, error } = await supabase.auth.getUser()
-  
-  if (error || !user) {
-    redirect('/login')
-  }
-
-  // Check if database tables exist and handle gracefully
+  let user = null
   let hasDatabase = true
-  
+  let debugInfo = null
+
   try {
-    // Try to query tables to see if they exist
-    const { error: studiesError } = await supabase
+    const supabase = await createServerSupabaseClient()
+    
+    const { data: userData, error: userError } = await supabase.auth.getUser()
+    
+    if (userError || !userData.user) {
+      redirect('/login')
+    }
+    
+    user = userData.user
+
+    // Test database connection with better error handling
+    const { data, error: dbError } = await supabase
       .from('studies')
       .select('id')
       .limit(1)
     
-    if (studiesError && studiesError.code === '42P01') {
-      // Table doesn't exist
+    if (dbError) {
       hasDatabase = false
+      debugInfo = {
+        code: dbError.code,
+        message: dbError.message,
+        details: dbError.details,
+        hint: dbError.hint
+      }
     }
-  } catch {
+  } catch (error) {
+    // Catch any other errors
     hasDatabase = false
+    debugInfo = {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      type: 'catch_block'
+    }
   }
 
   return (
@@ -34,7 +47,7 @@ export default async function DashboardPage() {
       <div className="space-y-8">
         <div>
           <h1 className="text-3xl font-bold text-white mb-2">
-            Welcome back, {user.email?.split('@')[0]}
+            Welcome back, {user?.email?.split('@')[0] || 'User'}
           </h1>
           <p className="text-gray-300">
             Your clinical research coordination dashboard
@@ -42,17 +55,29 @@ export default async function DashboardPage() {
         </div>
 
         {!hasDatabase && (
-          <div className="bg-yellow-900/20 border border-yellow-700 rounded-2xl p-6">
-            <div className="flex items-center space-x-3">
-              <div className="text-yellow-400 text-2xl">⚠️</div>
-              <div>
-                <h3 className="text-yellow-400 font-semibold">Database Setup Required</h3>
+          <div className="bg-red-900/20 border border-red-700 rounded-2xl p-6">
+            <div className="flex items-start space-x-3">
+              <div className="text-red-400 text-2xl">🚨</div>
+              <div className="flex-1">
+                <h3 className="text-red-400 font-semibold">Database Connection Issue</h3>
                 <p className="text-gray-300 mt-1">
-                  Please run the database schema in Supabase to create the required tables.
+                  There's an issue connecting to the database tables.
                 </p>
-                <p className="text-gray-400 text-sm mt-2">
-                  Go to Supabase → SQL Editor → Run the database-schema.sql file
-                </p>
+                {debugInfo && (
+                  <div className="mt-4 p-3 bg-gray-800/50 rounded-lg">
+                    <p className="text-gray-400 text-xs font-mono">
+                      Debug Info: {JSON.stringify(debugInfo, null, 2)}
+                    </p>
+                  </div>
+                )}
+                <div className="mt-3 text-sm text-gray-400">
+                  <p>Possible causes:</p>
+                  <ul className="list-disc list-inside mt-1 space-y-1">
+                    <li>Row Level Security (RLS) policies blocking access</li>
+                    <li>Missing user_profiles record</li>
+                    <li>Database schema not fully executed</li>
+                  </ul>
+                </div>
               </div>
             </div>
           </div>
