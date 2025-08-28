@@ -1,45 +1,67 @@
-import { createServerSupabaseClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
+'use client'
+
+import { supabase } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import DashboardLayout from '@/components/dashboard/DashboardLayout'
 
-export default async function DashboardPage() {
-  let user = null
-  let hasDatabase = true
-  let debugInfo = null
+export default function DashboardPage() {
+  const router = useRouter()
+  const [user, setUser] = useState(null)
+  const [hasDatabase, setHasDatabase] = useState(true)
+  const [debugInfo, setDebugInfo] = useState(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-  try {
-    const supabase = await createServerSupabaseClient()
-    
-    const { data: userData, error: userError } = await supabase.auth.getUser()
-    
-    if (userError || !userData.user) {
-      redirect('/login')
-    }
-    
-    user = userData.user
+  useEffect(() => {
+    async function checkAuthAndDatabase() {
+      try {
+        const { data: userData, error: userError } = await supabase.auth.getUser()
+        
+        if (userError || !userData.user) {
+          router.push('/login')
+          return
+        }
+        
+        setUser(userData.user)
 
-    // Test database connection with better error handling
-    const { error: dbError } = await supabase
-      .from('studies')
-      .select('id')
-      .limit(1)
-    
-    if (dbError) {
-      hasDatabase = false
-      debugInfo = {
-        code: dbError.code,
-        message: dbError.message,
-        details: dbError.details,
-        hint: dbError.hint
+        // Test database connection with better error handling
+        const { error: dbError } = await supabase
+          .from('studies')
+          .select('id')
+          .limit(1)
+        
+        if (dbError) {
+          setHasDatabase(false)
+          setDebugInfo({
+            code: dbError.code,
+            message: dbError.message,
+            details: dbError.details,
+            hint: dbError.hint
+          })
+        }
+      } catch (error) {
+        setHasDatabase(false)
+        setDebugInfo({
+          error: error instanceof Error ? error.message : 'Unknown error',
+          type: 'catch_block'
+        })
+      } finally {
+        setIsLoading(false)
       }
     }
-  } catch (error) {
-    // Catch any other errors
-    hasDatabase = false
-    debugInfo = {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      type: 'catch_block'
-    }
+
+    checkAuthAndDatabase()
+  }, [router])
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-black">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-2 border-blue-400 border-t-transparent mx-auto"></div>
+          <p className="mt-4 text-gray-300">Loading dashboard...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
