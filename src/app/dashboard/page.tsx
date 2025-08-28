@@ -6,11 +6,20 @@ import { useEffect, useState } from 'react'
 import { type User } from '@supabase/supabase-js'
 import DashboardLayout from '@/components/dashboard/DashboardLayout'
 
+interface DebugInfo {
+  code?: string
+  message?: string
+  details?: string
+  hint?: string
+  error?: string
+  type?: string
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [hasDatabase, setHasDatabase] = useState(true)
-  const [debugInfo, setDebugInfo] = useState<any>(null)
+  const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
