@@ -133,6 +133,7 @@ export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) 
         target_enrollment: formData.target_enrollment ? Number(formData.target_enrollment) : null,
         start_date: formData.start_date || null,
         end_date: formData.end_date || null,
+        visit_window_days: 7, // Default value as defined in schema
         dosing_frequency: formData.dosing_frequency,
         compliance_threshold: Number(formData.compliance_threshold),
         notes: formData.notes.trim() || null
@@ -145,10 +146,18 @@ export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) 
 
       if (error) {
         console.error('Error creating study:', error)
+        console.error('Error details:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        })
+        console.error('Insert data:', insertData)
+        
         if (error.code === '23505') {
           setErrors({ protocol_number: 'Protocol number already exists for your account' })
         } else {
-          setErrors({ general: 'Failed to create study. Please try again.' })
+          setErrors({ general: `Database error: ${error.message}` })
         }
         return
       }
