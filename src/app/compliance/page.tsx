@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { supabase } from '@/lib/supabase/client'
 import DashboardLayout from '@/components/dashboard/DashboardLayout'
 import ComplianceDashboard from '@/components/compliance/ComplianceDashboard'
 
@@ -34,9 +35,19 @@ function CompliancePageContent() {
 
   const loadStudies = async () => {
     try {
+      // Get the auth token from supabase session
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      
+      if (!token) {
+        console.error('No auth token available')
+        setLoading(false)
+        return
+      }
+
       const response = await fetch('/api/studies', {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('supabase_auth_token')}`
+          'Authorization': `Bearer ${token}`
         }
       })
 
@@ -48,6 +59,8 @@ function CompliancePageContent() {
         if (!selectedStudyId && studies && studies.length > 0) {
           setSelectedStudyId(studies[0].id)
         }
+      } else {
+        console.error('Failed to fetch studies:', response.status)
       }
     } catch (error) {
       console.error('Error loading studies:', error)
@@ -81,8 +94,8 @@ function CompliancePageContent() {
       <DashboardLayout>
         <div className="p-6">
           <div className="animate-pulse">
-            <div className="h-8 bg-gray-200 rounded mb-4"></div>
-            <div className="h-32 bg-gray-200 rounded"></div>
+            <div className="h-8 bg-gray-700 rounded mb-4"></div>
+            <div className="h-32 bg-gray-700 rounded"></div>
           </div>
         </div>
       </DashboardLayout>
@@ -91,13 +104,13 @@ function CompliancePageContent() {
 
   return (
     <DashboardLayout>
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-black">
         {/* Page Header with Controls */}
-        <div className="bg-white border-b border-gray-200 px-6 py-4">
+        <div className="bg-gray-800/50 border-b border-gray-700 px-6 py-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Compliance Analysis</h1>
-              <p className="text-gray-600">Monitor drug and visit compliance across your studies</p>
+              <h1 className="text-2xl font-bold text-white">Compliance Analysis</h1>
+              <p className="text-gray-300">Monitor drug and visit compliance across your studies</p>
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3">
@@ -108,7 +121,7 @@ function CompliancePageContent() {
                   id="study-select"
                   value={selectedStudyId}
                   onChange={(e) => handleStudyChange(e.target.value)}
-                  className="block w-full pl-3 pr-10 py-2 text-base border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
+                  className="block w-full pl-3 pr-10 py-2 text-base bg-gray-700/50 border border-gray-600 text-gray-100 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
                 >
                   <option value="">Select a study...</option>
                   {studies.map((study) => (
@@ -128,7 +141,7 @@ function CompliancePageContent() {
                   placeholder="Subject ID (optional)"
                   value={selectedSubjectId}
                   onChange={(e) => handleSubjectChange(e.target.value)}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  className="block w-full px-3 py-2 bg-gray-700/50 border border-gray-600 text-gray-100 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                 />
               </div>
 
@@ -140,7 +153,7 @@ function CompliancePageContent() {
                     setSelectedSubjectId('')
                     router.push('/compliance', { scroll: false })
                   }}
-                  className="px-4 py-2 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                  className="px-4 py-2 text-sm text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors"
                 >
                   Clear
                 </button>
@@ -160,7 +173,7 @@ function CompliancePageContent() {
             /* No Study Selected State */
             <div className="p-6">
               <div className="text-center py-12">
-                <div className="mx-auto h-12 w-12 text-gray-400">
+                <div className="mx-auto h-12 w-12 text-gray-500">
                   <svg fill="none" stroke="currentColor" viewBox="0 0 48 48">
                     <path
                       strokeLinecap="round"
@@ -170,12 +183,12 @@ function CompliancePageContent() {
                     />
                   </svg>
                 </div>
-                <h3 className="mt-2 text-lg font-medium text-gray-900">No study selected</h3>
-                <p className="mt-1 text-gray-500">
+                <h3 className="mt-2 text-lg font-medium text-white">No study selected</h3>
+                <p className="mt-1 text-gray-400">
                   Choose a study from the dropdown above to view compliance data.
                 </p>
                 {studies.length === 0 && (
-                  <p className="mt-2 text-sm text-gray-400">
+                  <p className="mt-2 text-sm text-gray-500">
                     No studies found. Create a study first to analyze compliance.
                   </p>
                 )}

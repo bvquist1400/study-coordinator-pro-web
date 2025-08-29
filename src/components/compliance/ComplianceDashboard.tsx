@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase/client'
 import { 
   calculateDrugCompliance, 
   calculateVisitCompliance, 
@@ -59,10 +60,20 @@ export default function ComplianceDashboard({ studyId, subjectId, complianceThre
     try {
       setLoading(true)
       
+      // Get the auth token from supabase session
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      
+      if (!token) {
+        console.error('No auth token available')
+        setLoading(false)
+        return
+      }
+      
       // Get study details
       const studyResponse = await fetch(`/api/studies/${studyId}`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('supabase_auth_token')}`
+          'Authorization': `Bearer ${token}`
         }
       })
       if (studyResponse.ok) {
@@ -77,7 +88,7 @@ export default function ComplianceDashboard({ studyId, subjectId, complianceThre
         
       const visitsResponse = await fetch(visitsUrl, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('supabase_auth_token')}`
+          'Authorization': `Bearer ${token}`
         }
       })
       if (visitsResponse.ok) {
@@ -173,9 +184,9 @@ export default function ComplianceDashboard({ studyId, subjectId, complianceThre
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="border-b border-gray-200 pb-4">
-        <h2 className="text-2xl font-bold text-gray-900">Compliance Dashboard</h2>
-        <p className="text-gray-600">
+      <div className="border-b border-gray-700 pb-4">
+        <h2 className="text-2xl font-bold text-white">Compliance Dashboard</h2>
+        <p className="text-gray-300">
           {subjectId ? `Subject ${subjectId} compliance overview` : 'Study-wide compliance overview'}
         </p>
       </div>
@@ -201,8 +212,8 @@ export default function ComplianceDashboard({ studyId, subjectId, complianceThre
       {/* Compliance Summary Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Drug Compliance */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Drug Compliance</h3>
+        <div className="bg-gray-800/50 rounded-lg border border-gray-700 p-6">
+          <h3 className="text-lg font-semibold text-white mb-4">Drug Compliance</h3>
           {drugCompliances.length > 0 ? (
             <div className="space-y-3">
               {drugCompliances.map((compliance, index) => (
@@ -214,18 +225,18 @@ export default function ComplianceDashboard({ studyId, subjectId, complianceThre
                   <div className="text-sm opacity-75">{getComplianceLabel(compliance.status)}</div>
                 </div>
               ))}
-              <div className="mt-4 text-sm text-gray-600">
+              <div className="mt-4 text-sm text-gray-300">
                 Average: {(drugCompliances.reduce((sum, c) => sum + c.percentage, 0) / drugCompliances.length).toFixed(1)}%
               </div>
             </div>
           ) : (
-            <p className="text-gray-500 text-sm">No drug compliance data available</p>
+            <p className="text-gray-400 text-sm">No drug compliance data available</p>
           )}
         </div>
 
         {/* Visit Compliance */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Visit Compliance</h3>
+        <div className="bg-gray-800/50 rounded-lg border border-gray-700 p-6">
+          <h3 className="text-lg font-semibold text-white mb-4">Visit Compliance</h3>
           {visitCompliances.length > 0 ? (
             <div className="space-y-3">
               {visitCompliances.map((compliance, index) => (
@@ -237,12 +248,12 @@ export default function ComplianceDashboard({ studyId, subjectId, complianceThre
                   <div className="text-sm opacity-75">{getComplianceLabel(compliance.status)}</div>
                 </div>
               ))}
-              <div className="mt-4 text-sm text-gray-600">
+              <div className="mt-4 text-sm text-gray-300">
                 Average: {(visitCompliances.reduce((sum, c) => sum + c.percentage, 0) / visitCompliances.length).toFixed(1)}%
               </div>
             </div>
           ) : (
-            <p className="text-gray-500 text-sm">No visit compliance data available</p>
+            <p className="text-gray-400 text-sm">No visit compliance data available</p>
           )}
         </div>
       </div>
@@ -285,8 +296,8 @@ export default function ComplianceDashboard({ studyId, subjectId, complianceThre
       {/* No Data State */}
       {visits.length === 0 && !loading && (
         <div className="text-center py-12">
-          <div className="text-gray-400 text-lg">No visit data available</div>
-          <p className="text-gray-500 text-sm mt-2">
+          <div className="text-gray-500 text-lg">No visit data available</div>
+          <p className="text-gray-400 text-sm mt-2">
             Compliance calculations will appear once visit data is entered.
           </p>
         </div>
