@@ -19,20 +19,20 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Enhanced log data with server context
-    const enhancedLogData = {
-      ...logData,
-      userId: user.id,
-      userEmail: user.email,
-      serverTimestamp: new Date().toISOString(),
-      ip: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown',
-      userAgent: request.headers.get('user-agent') || 'unknown'
-    }
+    // Enhanced log data with server context (for future external service integration)
+    // const enhancedLogData = {
+    //   ...logData,
+    //   userId: user.id,
+    //   userEmail: user.email,
+    //   serverTimestamp: new Date().toISOString(),
+    //   ip: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown',
+    //   userAgent: request.headers.get('user-agent') || 'unknown'
+    // }
 
     // Log to console (in production, send to external service)
     console.group(`📊 Client Log - ${logData.level.toUpperCase()}`)
     console.log('Message:', logData.message)
-    console.log('User:', user.email)
+    console.log('User:', user?.email)
     console.log('Timestamp:', logData.timestamp)
     
     if (logData.context) {

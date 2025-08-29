@@ -55,13 +55,13 @@ export default function VisitCard({
 
   useEffect(() => {
     loadVisitData()
-  }, [visitId])
+  }, [visitId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (visitData?.tablets_dispensed && visitData?.tablets_returned) {
       calculateDrugCompliance()
     }
-  }, [visitData?.tablets_dispensed, visitData?.tablets_returned, visitData?.previous_dispense_date, visitData?.actual_start_date])
+  }, [visitData?.tablets_dispensed, visitData?.tablets_returned, visitData?.previous_dispense_date, visitData?.actual_start_date]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadVisitData = async () => {
     try {
@@ -110,7 +110,7 @@ export default function VisitCard({
     setDrugCompliance(Math.round(compliance * 100) / 100)
   }
 
-  const handleInputChange = (field: keyof VisitData, value: any) => {
+  const handleInputChange = (field: keyof VisitData, value: string | number | boolean) => {
     if (!visitData) return
     
     setVisitData(prev => ({

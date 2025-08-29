@@ -1,23 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-import { Database } from '@/types/database'
-
-// Server-side Supabase client
-const supabase = createClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-)
+import { createSupabaseAdmin } from '@/lib/api/auth'
 
 // GET /api/studies/[id] - Get specific study
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authHeader = request.headers.get('authorization')
@@ -26,8 +13,10 @@ export async function GET(
     }
 
     const token = authHeader.split(' ')[1]
+    const resolvedParams = await params
     
     // Verify the JWT token
+    const supabase = createSupabaseAdmin()
     const { data: { user }, error: authError } = await supabase.auth.getUser(token)
     if (authError || !user) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
@@ -37,7 +26,7 @@ export async function GET(
     const { data: study, error } = await supabase
       .from('studies')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', resolvedParams.id)
       .eq('user_id', user.id) // Ensure user can only access their own studies
       .single()
 
@@ -59,7 +48,7 @@ export async function GET(
 // DELETE /api/studies/[id] - Delete specific study
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authHeader = request.headers.get('authorization')
@@ -68,8 +57,10 @@ export async function DELETE(
     }
 
     const token = authHeader.split(' ')[1]
+    const resolvedParams = await params
     
     // Verify the JWT token
+    const supabase = createSupabaseAdmin()
     const { data: { user }, error: authError } = await supabase.auth.getUser(token)
     if (authError || !user) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
@@ -79,7 +70,7 @@ export async function DELETE(
     const { data: study, error } = await supabase
       .from('studies')
       .delete()
-      .eq('id', params.id)
+      .eq('id', resolvedParams.id)
       .eq('user_id', user.id) // Ensure user can only delete their own studies
       .select()
       .single()

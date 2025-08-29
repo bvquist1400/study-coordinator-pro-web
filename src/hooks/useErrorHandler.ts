@@ -4,14 +4,14 @@ import { logger } from '@/lib/logger'
 export interface ErrorHandlerOptions {
   logLevel?: 'warn' | 'error'
   showToast?: boolean
-  context?: Record<string, any>
+  context?: Record<string, unknown>
 }
 
 export interface ApiError {
   message: string
   status?: number
   endpoint?: string
-  details?: any
+  details?: unknown
 }
 
 export function useErrorHandler() {
@@ -39,7 +39,7 @@ export function useErrorHandler() {
       }
     } else {
       // Error object
-      normalizedError = error
+      normalizedError = error instanceof Error ? error : new Error('Unknown error')
     }
 
     // Log the error
@@ -58,7 +58,7 @@ export function useErrorHandler() {
     return normalizedError
   }, [])
 
-  const handleApiError = useCallback(async (response: Response, endpoint: string, context: Record<string, any> = {}) => {
+  const handleApiError = useCallback(async (response: Response, endpoint: string, context: Record<string, unknown> = {}) => {
     let errorDetails
     try {
       errorDetails = await response.json()
@@ -87,7 +87,7 @@ export function useErrorHandler() {
   const handleAsyncError = useCallback(<T>(
     asyncFn: () => Promise<T>,
     errorMessage: string = 'An error occurred',
-    context: Record<string, any> = {}
+    context: Record<string, unknown> = {}
   ) => {
     return async (): Promise<T | null> => {
       try {
@@ -106,11 +106,11 @@ export function useErrorHandler() {
     }
   }, [handleError])
 
-  const logUserAction = useCallback((action: string, context: Record<string, any> = {}) => {
+  const logUserAction = useCallback((action: string, context: Record<string, unknown> = {}) => {
     logger.userAction(action, context)
   }, [])
 
-  const logPerformance = useCallback((operation: string, startTime: number, context: Record<string, any> = {}) => {
+  const logPerformance = useCallback((operation: string, startTime: number, context: Record<string, unknown> = {}) => {
     const duration = Date.now() - startTime
     logger.performance(operation, duration, context)
   }, [])

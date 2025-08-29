@@ -1,23 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-import { Database } from '@/types/database'
-
-// Server-side Supabase client
-const supabase = createClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-)
+import { createSupabaseAdmin } from '@/lib/api/auth'
 
 // GET /api/subject-visits/[id] - Get specific subject visit
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authHeader = request.headers.get('authorization')
@@ -26,8 +13,10 @@ export async function GET(
     }
 
     const token = authHeader.split(' ')[1]
+    const resolvedParams = await params
     
     // Verify the JWT token
+    const supabase = createSupabaseAdmin()
     const { data: { user }, error: authError } = await supabase.auth.getUser(token)
     if (authError || !user) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
@@ -37,7 +26,7 @@ export async function GET(
     const { data: subjectVisit, error } = await supabase
       .from('subject_visits')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', resolvedParams.id)
       .eq('user_id', user.id) // Ensure user can only access their own data
       .single()
 
@@ -59,7 +48,7 @@ export async function GET(
 // PUT /api/subject-visits/[id] - Update or upsert subject visit (for VisitCard)
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authHeader = request.headers.get('authorization')
@@ -70,15 +59,17 @@ export async function PUT(
     const token = authHeader.split(' ')[1]
     
     // Verify the JWT token
+    const supabase = createSupabaseAdmin()
     const { data: { user }, error: authError } = await supabase.auth.getUser(token)
     if (authError || !user) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
     }
 
     const updateData = await request.json()
+    const resolvedParams = await params
 
     // If this is an upsert (new visit), we need to create it
-    if (updateData.id === params.id && updateData.study_id && updateData.visit_name && updateData.scheduled_date) {
+    if (updateData.id === resolvedParams.id && updateData.study_id && updateData.visit_name && updateData.scheduled_date) {
       // Verify user owns the study
       const { data: study, error: studyError } = await supabase
         .from('studies')
@@ -98,7 +89,7 @@ export async function PUT(
           ...updateData,
           user_id: user.id,
           updated_at: new Date().toISOString()
-        })
+        } as unknown as never)
         .select()
         .single()
 
@@ -115,8 +106,8 @@ export async function PUT(
         .update({
           ...updateData,
           updated_at: new Date().toISOString()
-        })
-        .eq('id', params.id)
+        } as unknown as never)
+        .eq('id', resolvedParams.id)
         .eq('user_id', user.id) // Extra security check
         .select()
         .single()
@@ -141,7 +132,7 @@ export async function PUT(
 // DELETE /api/subject-visits/[id] - Delete specific subject visit
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authHeader = request.headers.get('authorization')
@@ -150,8 +141,10 @@ export async function DELETE(
     }
 
     const token = authHeader.split(' ')[1]
+    const resolvedParams = await params
     
     // Verify the JWT token
+    const supabase = createSupabaseAdmin()
     const { data: { user }, error: authError } = await supabase.auth.getUser(token)
     if (authError || !user) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
@@ -161,7 +154,7 @@ export async function DELETE(
     const { data: subjectVisit, error } = await supabase
       .from('subject_visits')
       .delete()
-      .eq('id', params.id)
+      .eq('id', resolvedParams.id)
       .eq('user_id', user.id) // Ensure user can only delete their own data
       .select()
       .single()

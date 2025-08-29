@@ -1,18 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-import { Database } from '@/types/database'
-
-// Server-side Supabase client
-const supabase = createClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-)
+import { createSupabaseAdmin } from '@/lib/api/auth'
 
 // GET /api/studies - Get all studies for authenticated user
 export async function GET(request: NextRequest) {
@@ -25,6 +12,7 @@ export async function GET(request: NextRequest) {
     const token = authHeader.split(' ')[1]
     
     // Verify the JWT token
+    const supabase = createSupabaseAdmin()
     const { data: { user }, error: authError } = await supabase.auth.getUser(token)
     if (authError || !user) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
@@ -60,6 +48,7 @@ export async function POST(request: NextRequest) {
     const token = authHeader.split(' ')[1]
     
     // Verify the JWT token
+    const supabase = createSupabaseAdmin()
     const { data: { user }, error: authError } = await supabase.auth.getUser(token)
     if (authError || !user) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
@@ -114,6 +103,7 @@ export async function PUT(request: NextRequest) {
     const token = authHeader.split(' ')[1]
     
     // Verify the JWT token
+    const supabase = createSupabaseAdmin()
     const { data: { user }, error: authError } = await supabase.auth.getUser(token)
     if (authError || !user) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
@@ -125,17 +115,29 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Study ID is required' }, { status: 400 })
     }
 
+    // Create update object without spreading unknown data
+    const updateObject = {
+      protocol_number: updateData.protocol_number,
+      study_title: updateData.study_title,
+      sponsor: updateData.sponsor,
+      principal_investigator: updateData.principal_investigator,
+      phase: updateData.phase,
+      indication: updateData.indication,
+      status: updateData.status,
+      start_date: updateData.start_date,
+      end_date: updateData.end_date,
+      target_enrollment: updateData.target_enrollment ? parseInt(updateData.target_enrollment) : null,
+      compliance_threshold: updateData.compliance_threshold ? parseInt(updateData.compliance_threshold) : 80,
+      visit_window_days: updateData.visit_window_days || 7,
+      dosing_frequency: updateData.dosing_frequency,
+      notes: updateData.notes,
+      updated_at: new Date().toISOString()
+    }
+
     // Update study (RLS will ensure user can only update their own studies)
     const { data: study, error } = await supabase
       .from('studies')
-      .update({
-        ...updateData,
-        // Convert string numbers to actual numbers
-        target_enrollment: updateData.target_enrollment ? parseInt(updateData.target_enrollment) : null,
-        compliance_threshold: updateData.compliance_threshold ? parseInt(updateData.compliance_threshold) : 80,
-        visit_window_days: updateData.visit_window_days || 7,
-        updated_at: new Date().toISOString()
-      })
+      .update(updateObject as unknown as never) // Type assertion for update object
       .eq('id', id)
       .eq('user_id', user.id) // Extra security check
       .select()

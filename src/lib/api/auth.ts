@@ -2,20 +2,25 @@ import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { Database } from '@/types/database'
 
-// Server-side Supabase client
-export const supabaseAdmin = createClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
+// Server-side Supabase client factory
+export function createSupabaseAdmin() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  
+  if (!url || !key) {
+    throw new Error('Missing required Supabase environment variables')
+  }
+  
+  return createClient<Database>(url, key, {
     auth: {
       autoRefreshToken: false,
       persistSession: false
     }
-  }
-)
+  })
+}
 
 export interface AuthResult {
-  user: any
+  user: { id: string; email?: string } | null
   error?: string
   status?: number
 }
@@ -37,7 +42,8 @@ export async function authenticateUser(request: NextRequest): Promise<AuthResult
   const token = authHeader.split(' ')[1]
   
   try {
-    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token)
+    const supabase = createSupabaseAdmin()
+    const { data: { user }, error } = await supabase.auth.getUser(token)
     
     if (error || !user) {
       return {
@@ -63,7 +69,8 @@ export async function authenticateUser(request: NextRequest): Promise<AuthResult
  */
 export async function verifyStudyOwnership(studyId: string, userId: string): Promise<{ success: boolean; error?: string; status?: number }> {
   try {
-    const { data: study, error } = await supabaseAdmin
+    const supabase = createSupabaseAdmin()
+    const { data: study, error } = await supabase
       .from('studies')
       .select('id')
       .eq('id', studyId)

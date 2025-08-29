@@ -1,18 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-import { Database } from '@/types/database'
-
-// Server-side Supabase client
-const supabase = createClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-)
+import { createSupabaseAdmin } from '@/lib/api/auth'
 
 // GET /api/subject-visits?study_id=xxx&subject_id=xxx - Get subject visits
 export async function GET(request: NextRequest) {
@@ -25,6 +12,7 @@ export async function GET(request: NextRequest) {
     const token = authHeader.split(' ')[1]
     
     // Verify the JWT token
+    const supabase = createSupabaseAdmin()
     const { data: { user }, error: authError } = await supabase.auth.getUser(token)
     if (authError || !user) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
@@ -88,6 +76,7 @@ export async function POST(request: NextRequest) {
     const token = authHeader.split(' ')[1]
     
     // Verify the JWT token
+    const supabase = createSupabaseAdmin()
     const { data: { user }, error: authError } = await supabase.auth.getUser(token)
     if (authError || !user) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
