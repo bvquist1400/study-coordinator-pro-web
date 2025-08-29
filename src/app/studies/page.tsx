@@ -7,13 +7,15 @@ import { type User } from '@supabase/supabase-js'
 import { type Study } from '@/types/database'
 import DashboardLayout from '@/components/dashboard/DashboardLayout'
 import AddStudyForm from '@/components/studies/AddStudyForm'
+import ScheduleOfEventsBuilder from '@/components/studies/ScheduleOfEventsBuilder'
 
 export default function StudiesPage() {
   const router = useRouter()
-  const [user, setUser] = useState<User | null>(null)
+  const [, setUser] = useState<User | null>(null)
   const [studies, setStudies] = useState<Study[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [showAddForm, setShowAddForm] = useState(false)
+  const [selectedStudyForSoE, setSelectedStudyForSoE] = useState<Study | null>(null)
 
   useEffect(() => {
     async function loadStudies() {
@@ -190,6 +192,12 @@ export default function StudiesPage() {
                     <span>Visit Window: ±{study.visit_window_days} days</span>
                   </div>
                   <div className="flex space-x-2">
+                    <button 
+                      onClick={() => setSelectedStudyForSoE(study)}
+                      className="text-purple-400 hover:text-purple-300 px-3 py-1 rounded transition-colors font-medium"
+                    >
+                      Schedule of Events
+                    </button>
                     <button className="text-blue-400 hover:text-blue-300 px-3 py-1 rounded transition-colors">
                       View Details
                     </button>
@@ -200,6 +208,40 @@ export default function StudiesPage() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Schedule of Events Builder Modal */}
+        {selectedStudyForSoE && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-50 p-4 overflow-y-auto">
+            <div className="bg-gray-900/95 backdrop-blur-sm border border-gray-700 rounded-2xl w-full max-w-7xl my-8">
+              <div className="p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <div>
+                    <h2 className="text-2xl font-bold text-white">Schedule of Events</h2>
+                    <p className="text-gray-300">
+                      {selectedStudyForSoE.study_title} ({selectedStudyForSoE.protocol_number})
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setSelectedStudyForSoE(null)}
+                    className="text-gray-400 hover:text-white transition-colors"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                
+                <ScheduleOfEventsBuilder
+                  study={selectedStudyForSoE}
+                  onSave={() => {
+                    // Optionally close the modal after save
+                    // setSelectedStudyForSoE(null)
+                  }}
+                />
+              </div>
+            </div>
           </div>
         )}
 

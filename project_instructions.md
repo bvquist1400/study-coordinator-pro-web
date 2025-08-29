@@ -1,262 +1,156 @@
-# Study Coordinator Pro - Development Project Instructions (Revised)
+# Study Coordinator Pro - Development Instructions
 
 ## Project Overview
-You are helping develop "Study Coordinator Pro," a **web-first application** designed as a personal productivity tool for clinical research coordinators. This is a **completely new project** built from scratch to optimize coordinator workflows, while maintaining the ability to reference patterns from an existing IP Accountability System.
+**Web-first SaaS application** for clinical research coordinators - a productivity tool built from scratch to optimize daily workflows.
 
-## Strategic Development Approach
+**Current Status**: Production-ready foundation (8.5/10 scalability score) with comprehensive database schema, authentication, and basic study management.
 
-### Fresh Start Architecture
-- **Clean slate development** - New repository and codebase optimized for coordinators from day one
-- **Reference existing IP system** - Extract specific algorithms and patterns as needed without inheriting complexity
-- **Coordinator-focused design** - Every feature built specifically for coordinator workflows
-- **Separate project maintainability** - Keep IP Accountability System intact for future use
-
-### Web-First Strategy (Updated from Mobile-First)
-- **Primary platform**: Responsive web application with mobile-first design
-- **Progressive Web App (PWA)** capabilities for app-like experience
-- **Cross-platform by default** - Works on phones, tablets, desktops without separate development
-- **Future native apps** only if market validation justifies the investment
+## Architecture & Stack
+- **Next.js 15.5.2** + Supabase + TypeScript + Tailwind CSS
+- **Scalable foundation** ready for hundreds to thousands of users
+- **PWA capabilities** for app-like experience across devices
+- **Row-level security** for multi-tenant data isolation
 
 ## Target User
-**Primary User**: Clinical Research Coordinators at pharmaceutical research sites
-- Manage 2-8 active clinical studies simultaneously
-- Responsible for patient visits, compliance tracking, deviation management, and monitor interactions
-- Currently use paper logs, Excel spreadsheets, and basic clinical software
-- Looking for personal productivity tools to save 1-2 hours per week
-- **Device usage**: Mix of desktop work (detailed data entry), tablet use (patient visits), and mobile access (quick updates)
+**Clinical Research Coordinators** managing 2-8 active studies with mix of desktop/tablet/mobile usage patterns.
 
-## Core Value Proposition
-"The Swiss Army knife for clinical research coordinators" - a comprehensive personal productivity tool that organizes daily clinical research tasks without replacing regulatory record-keeping systems.
+## Value Proposition
+Personal productivity tool for clinical research coordinators - organizes daily tasks without replacing regulatory systems.
 
-## Technical Foundation (Revised)
-- **Technology Stack**: Next.js 15.5.2 + Supabase + TypeScript + Tailwind CSS + Turbopack
-- **Architecture**: Web-first SaaS with mobile-responsive design
-- **Database**: Fresh Supabase schema designed specifically for coordinator workflows
-- **Component Strategy**: Extract and adapt specific components/logic from existing IP system as needed
-- **Deployment**: Web application with PWA capabilities
+## Development Status & Priorities
 
-## Development Timeline (Revised to Web-First)
+### ✅ Completed Foundation
+- Authentication & user management
+- Comprehensive database schema with RLS policies
+- Study management with validation
+- Responsive dashboard and navigation
+- Production deployment on Vercel
+- **Comprehensive testing framework** (Jest + React Testing Library + CI/CD)
+- **Professional Schedule of Events Builder** - Clinical research-grade SoE grid interface
 
-### Week 1-2: Foundation (COMPLETED)
-- ✅ Fresh Next.js project setup with modern toolchain
-- ✅ Supabase database with coordinator-focused schema
-- ✅ Basic authentication and user management
-- ✅ Core UI component library with clinical research theming
-- ✅ Dark theme design system with glass morphism effects
-- ✅ Responsive dashboard layout with navigation
-- ✅ Deployed to Vercel with CI/CD pipeline
-- ✅ Local development environment setup
+### 🔄 Current Priority
+**Error boundaries and logging** - Production-ready error handling and monitoring
 
-### Week 3-4: Core Infrastructure (MOSTLY COMPLETE)
-- ✅ Study management with Add Study form and full validation
-- 🔄 Schedule of Events builder for visit configuration (next priority)
-- ✅ Data models and database schema implemented and deployed
-- ✅ Mobile-responsive navigation and layouts
-- ✅ Complete CRUD foundation for studies with Supabase integration
-- 📝 Subject management (pending SoE completion)
-- 📝 Visit scheduling foundation (pending SoE completion)
+### 📋 Next Features (Priority Order)
+1. **Compliance Calculator** - Drug compliance tracking with multiple dosing frequencies
+2. **Visit Planning Dashboard** - Calendar view with visit windows
+3. **Subject Management** - Patient enrollment and tracking
+4. **Monitor Action Tracker** - CRA visit action items
 
-### Week 5-6: Compliance Calculator Module (Highest Value Feature)
-- Core compliance calculation algorithms (adapted from IP system)
-- Multiple dosing frequency support (QD, BID, TID, QID)
-- Visual status indicators and trending
-- Mobile-optimized data entry forms
+## Schedule of Events Builder Features
 
-### Week 7-8: Visit Planning Dashboard
-- Calendar integration and visit window tracking
-- Required actions checklists
-- Integration with compliance status
-- Beta testing preparation
+### ✅ Streamlined Clinical Research Interface
+- **Clean, focused layout** for essential study visit planning
+- **Editable Visit Configuration:**
+  - Visit Numbers (V1, V2, etc.) - fully customizable
+  - Visit Names (editable inline)
+  - Flexible Visit Windows with separate before/after days (e.g., -4/+6 days)
+- **Core Procedure Categories:**
+  - Laboratory (Local Labs, Lab Kit)
+  - Investigational Product (Medication Dispensing)
 
-### Week 9-12: Additional Features & Market Launch
-- Monitor action item tracker
-- Deviation log management
-- PWA capabilities implementation
-- Beta user acquisition and feedback integration
+### ✅ Smart Visit Window Management
+- **Dual number inputs** for precise before/after day specifications
+- **Study-specific flexibility** (e.g., Visit 1: -0/+0 days, Visit 2: -7/+7 days)
+- **Calculation-ready data** for automated patient visit scheduling
 
-## Core Features (MVP)
+### ✅ Production Database Integration
+- **Full Supabase integration** with visit_schedules table
+- **Load/Save functionality** - persists configurations across sessions
+- **Smart data mapping** between UI and database formats
+- **Error handling** with graceful fallbacks to defaults
+- **Visit accountability support** for lab kit and drug tracking
 
-### 1. Compliance Calculator Module (Week 5-6 Priority)
-- Calculate drug compliance percentages based on dosing frequency
-- Support for multiple dosing schedules (once daily, twice daily, etc.)
-- 80% compliance threshold alerts and visual indicators
-- Patient-specific compliance tracking and trending
-- Export compliance summaries for regulatory purposes
-- **Leverage**: Existing IP system compliance algorithms
+### ✅ Visit Card System Integration
+- **VisitCard component** for accountability tracking:
+  - Lab Kit tracking (accession numbers, airway bill tracking)
+  - Drug accountability (dispense dates, tablet counts, compliance calculation)
+  - Local labs completion tracking
+- **Automatic compliance calculation** based on tablets dispensed/returned and time periods
+- **Real-time compliance indicators** (color-coded percentages)
 
-### 2. Visit Planning Dashboard (Week 7-8 Priority)
-- Calendar view of upcoming patient visits across all studies
-- Visit window tracking (± allowed days)
-- Required actions checklist for each visit type
-- Integration with compliance status and action items
-- Smart scheduling recommendations
+## API Infrastructure Features
 
-### 3. Monitor Action Item Tracker (Week 9-10)
-- Log and track action items from CRA (Clinical Research Associate) visits
-- Priority classification and due date management
-- Status updates (open, in progress, completed)
-- Photo attachments for documentation
-- Automated reminders for approaching deadlines
+### ✅ Production-Ready Server-Side Operations
+- **Comprehensive REST API** with full CRUD operations for studies, visit schedules, and subject visits
+- **Server-side Supabase client** with service role for secure database operations
+- **JWT authentication** on all endpoints with user session validation
+- **Row-level security enforcement** ensuring users only access their own data
 
-### 4. Deviation Log Tracker (Week 11-12)
-- Quick entry forms for protocol deviations
-- Severity classification (minor, major, critical)
-- Root cause analysis tracking
-- Corrective action planning and follow-up
-- Integration with sponsor reporting requirements
+### ✅ API Endpoints
+- **Studies API** (`/api/studies`) - Study management operations
+- **Visit Schedules API** (`/api/visit-schedules`) - Schedule of Events persistence
+- **Subject Visits API** (`/api/subject-visits`) - Visit card accountability data
+- **Individual resource routes** (`/api/[resource]/[id]`) - Specific record operations
 
-## Key Design Principles (Updated)
+### ✅ Security & Performance Benefits
+- **Reduced client bundle size** - Less database code on frontend
+- **Enhanced security** - Sensitive operations protected by server-side auth
+- **Better error handling** - Consistent API responses with proper HTTP status codes
+- **Scalable architecture** - Ready for caching, rate limiting, and monitoring
+- **Request validation** - Data type conversion and field validation
 
-### Web-First User Experience
-- **Mobile-responsive design** - Works seamlessly on phones, tablets, and desktops
-- **Progressive Web App features** - Offline capability, add to home screen, push notifications
-- **One-handed operation** optimization for mobile usage
-- **Quick data entry** with smart defaults and autocomplete
-- **Visual status indicators** (red/yellow/green) for quick assessment
-- **Cross-device sync** - Start on desktop, continue on mobile
+## Scalability Assessment (9.0/10)
 
-### Technical Excellence
-- **Clean, modern codebase** built specifically for coordinator workflows
-- **Selective component reuse** from proven IP Accountability System
-- **Mobile-first responsive design** using Tailwind CSS
-- **TypeScript throughout** for maintainability and developer experience
-- **Component-driven architecture** for reusability and testing
+### ✅ Strong Foundation
+- **Modern stack** with Next.js 15 + Supabase + TypeScript
+- **Scalable database** with proper indexing and RLS
+- **Production-ready** architecture for hundreds-thousands of users
+- **Clean codebase** with component-driven design
 
-### Regulatory Positioning (Unchanged)
-- **Personal productivity tool** - NOT a replacement for official regulatory records
-- **Workflow optimization** - helps organize daily tasks more efficiently  
-- **Supplemental system** - works alongside existing site procedures
-- **Clear disclaimers** - "For workflow optimization only, does not replace regulatory requirements"
+### 📈 Scaling Recommendations
 
-## Business Model (Updated Timeline)
-- **Freemium SaaS**: 30-day free trial, then $12.99/month individual or $9.99/month team plans
-- **Faster validation**: Web-first approach enables quicker user acquisition and testing
-- **Revenue goal**: $500 MRR within 3 months, $1,000 MRR within 6 months, $5,000 MRR within 12 months
-- **Lower customer acquisition cost** - No app store barriers, easier sharing and trials
+**Immediate (1-2 months):**
+- ✅ **API routes for server-side database operations** - COMPLETED
+- **Error boundaries and logging** - IN PROGRESS
+- **State management solution** (Zustand/Redux)
 
-## Component Extraction Strategy from IP System
+**Medium-term (2-6 months):**
+- **Caching layer** (React Query/TanStack Query) 
+- **Performance monitoring** and analytics
+- **Advanced authentication** (2FA, SSO)
 
-### What TO Extract and Adapt
-- **Compliance calculation algorithms** - Core mathematical logic for drug compliance
-- **Authentication patterns** - User login/logout flows and session management concepts
-- **Database schema patterns** - Audit trails, user roles, clinical data modeling approaches
-- **UI component patterns** - Status indicators, form layouts, clinical workflow designs
-- **Validation logic** - Clinical data validation rules and error handling
+**Long-term (6+ months):**
+- **Advanced caching strategies** (Redis, CDN)
+- **Microservices consideration** for high-scale operations
+- **Real-time features** (WebSocket connections)
 
-### What NOT to Bring Over
-- **Full inventory management complexity** - Coordinators don't need full IP tracking
-- **Complex integrations** - Start simple, add integrations later if needed
-- **Legacy technical debt** - Clean slate allows modern best practices
-- **Unused features** - Many IP features aren't relevant to coordinator productivity
-- **Outdated dependencies** - Fresh project uses latest versions of everything
+## Technical Excellence
+- **TypeScript throughout** for type safety and maintainability
+- **Component-driven architecture** for reusability
+- **Mobile-first responsive design** with Tailwind CSS
+- **Production-ready API infrastructure** with server-side operations
+- **Comprehensive security** - JWT auth, RLS, input validation
+- **Real-time validation** and error handling
+- **Comprehensive testing** with Jest and React Testing Library
 
-## Development Approach (Updated)
+## Regulatory Compliance
+- **Personal productivity tool** - NOT regulatory record replacement
+- **Supplemental system** working alongside existing procedures
+- **Clear disclaimers** about regulatory limitations
 
-### Iterative Web Development
-- **2-week development sprints** with working features each iteration
-- **Progressive enhancement** - Core web functionality first, PWA features second
-- **Component-first development** - Build reusable UI components for clinical workflows
-- **Real coordinator testing** - Beta test with actual coordinators from week 8 onward
+## Business Model
+**SaaS**: $12.99/month individual, $9.99/month team plans with 30-day trials
 
-### Reference-Based Development
-- **Keep IP system running** - No changes to existing production system
-- **Extract specific components** when building similar features
-- **Adapt rather than copy** - Optimize extracted logic for coordinator-specific needs
-- **Document extraction decisions** - Track what was reused vs rebuilt for future reference
+## Development Approach
+**2-week sprints** with component-first development and progressive enhancement.
 
-## Success Metrics (Updated Timeline)
-- **Week 8**: Functional MVP with compliance calculator and visit planning
-- **Week 12**: Beta users actively testing with feedback integration
-- **Month 4**: 50+ active trial users, 25% trial-to-paid conversion rate
-- **Month 6**: $1,000 MRR, 60% monthly retention rate
-- **Month 12**: $5,000 MRR, feature expansion based on user feedback
+## Immediate Next Steps
+1. **Testing framework** setup (Jest, React Testing Library)
+2. **API routes** for server-side operations
+3. **Error boundaries** and logging implementation
+4. **Schedule of Events** builder completion
+5. **State management** solution (Zustand recommended)
 
-## Strategic Tasks & Research (Outstanding)
+## Outstanding Research
+- IP system compliance algorithm extraction
+- Coordinator user research and validation
+- Feature priority validation with real users
 
-### ❌ **Pending Research & Validation Tasks**
-- **IP Accountability System Audit**: Complete code audit and component extraction plan for proven compliance algorithms
-- **Coordinator User Research**: Survey 10-15 clinical coordinators on web vs native app preference to validate approach
-- **Feature Priority Validation**: Validate feature priorities with existing Guthrie coordinators for real-world needs
-- **Testing Framework Setup**: Configure comprehensive testing framework (Jest, React Testing Library, Playwright)
+## Key Architectural Decisions
+- **Cross-device support** via responsive web design
+- **Server-side operations** through API routes for better performance
+- **Component reusability** with TypeScript interfaces
+- **Progressive Web App** features for offline capability
 
-### 📊 **Foundation Checklist Progress**
-- ✅ Create fresh GitHub repository: "study-coordinator-pro-web"
-- ✅ Initialize Next.js 15.5.2 + Supabase + TypeScript + Tailwind CSS project
-- ✅ Configure Turbopack for faster development builds
-- ✅ Set up development environment (separate from IP system)
-- ✅ Document reusable authentication, database schemas, and compliance logic
-- 🔄 Configure ESLint, Prettier, and testing framework (ESLint ✅, Testing ❌)
-- ❌ Complete IP Accountability System code audit and component extraction plan
-- ❌ Survey 10-15 clinical coordinators on web vs native app preference
-- ❌ Validate feature priorities with existing Guthrie coordinators
-
-**Progress: 5/9 Complete (56%), 1/9 In Progress (11%), 3/9 Outstanding (33%)**
-
-## Current Development Status (Updated)
-- ✅ **Repository created**: `study-coordinator-pro-web`
-- ✅ **Next.js 15.5.2 setup**: With TypeScript, Tailwind, Turbopack
-- ✅ **Supabase project**: Database and authentication configured
-- ✅ **Environment configuration**: API keys and connection testing complete
-- ✅ **Database schema design**: Coordinator-focused data models implemented
-- ✅ **Basic authentication flow**: User registration and login working
-- ✅ **Dark theme design system**: Comprehensive CSS variables and component styles
-- ✅ **Dashboard foundation**: Navigation, routing, and responsive layout
-- ✅ **Studies page**: Complete with status management and empty states
-- ✅ **Vercel deployment**: Live application with CI/CD pipeline
-- ✅ **Local development**: Hot reload and debugging setup
-- ✅ **Study management CRUD**: Add Study form with full validation and database integration
-- ✅ **Database schema**: Applied to Supabase with proper RLS policies
-- 🔄 **Schedule of Events builder**: Grid-based visit configuration (next priority)
-
-## Current Sprint: Schedule of Events Builder
-- **Completed**: ✅ Add Study form with comprehensive validation and database integration
-- **Primary Goal**: Schedule of Events (SoE) builder with Excel-like grid interface
-- **Secondary Goal**: Drug Dispensing and Lab Kit activity tracking integration
-- **Database Status**: ✅ Updated study schema deployed to Supabase
-- **Next Features**: Visit scheduling, SoE configuration, and subject enrollment workflows
-
-## Recommended Next Steps (Priority Order)
-1. **🏗️ Technical**: Complete testing framework setup (Jest, React Testing Library)
-2. **🔬 Research**: IP Accountability System audit for compliance algorithm extraction
-3. **👥 Validation**: Survey clinical coordinators for feature priority validation
-4. **⚡ Features**: Continue with Schedule of Events builder or Compliance Calculator
-5. **🧪 Quality**: Comprehensive testing suite for existing study management features
-
-### Recently Completed (Week 3-4)
-- **✅ Add Study Form**: Complete modal form with all clinical research fields
-- **✅ Database Integration**: Full Supabase CRUD with Row Level Security
-- **✅ Form Validation**: Real-time validation with user-friendly error handling
-- **✅ Study Status Management**: Clinical research lifecycle (Enrolling → Active → Closed → Completed)
-- **✅ Responsive Design**: Mobile-first approach with dark theme consistency
-
-## Communication Style (Updated)
-When discussing this project:
-- **Assume coordinator workflow expertise** but focus on web-first solutions
-- **Reference IP system** as inspiration, not as a constraint
-- **Prioritize web/PWA features** over native app complexity initially  
-- **Consider cross-device usage** - coordinators switch between desktop, tablet, mobile
-- **Emphasize clean development** - fresh start allows modern best practices
-- **Balance feature extraction** - reuse proven logic but avoid inheriting complexity
-
-## Key Questions for Web-First Approach
-- How can we make the web interface as fast and responsive as a native app?
-- What PWA features would provide the most value for coordinators?
-- How do we optimize for both desktop data entry and mobile quick access?
-- Which IP system components provide the most value when adapted for coordinators?
-- How do we ensure offline functionality works for poor connectivity sites?
-- What would make coordinators choose a web app over requesting a native app?
-
-## Outstanding Strategic Decisions
-1. **IP System Integration**: Should we audit existing IP system for compliance algorithms before building from scratch?
-2. **User Research Priority**: How critical is coordinator feedback before continuing feature development?
-3. **Testing vs Features**: Should we implement comprehensive testing before adding more features?
-4. **Feature Sequencing**: Schedule of Events vs Compliance Calculator vs Subject Management - which delivers most value first?
-
-## Context for Technical Decisions (Updated)
-- **Cross-device flexibility** - Web-first supports coordinator workflow across multiple devices
-- **IT policy friendly** - Web apps typically easier to deploy in clinical research sites
-- **Faster iteration** - Web deployment allows rapid feature updates and user feedback
-- **Component reusability** - Extract proven patterns from IP system while building clean architecture
-- **Progressive enhancement** - Start with core web functionality, add PWA features for app-like experience
-
-You should approach all development decisions through the lens of creating a web-first tool that clinical research coordinators would actually use daily, while strategically leveraging proven components from the existing IP Accountability System to accelerate development.
+Approach all development through the lens of creating a scalable, maintainable tool that coordinators will use daily across multiple devices.

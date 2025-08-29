@@ -251,6 +251,160 @@ export interface Database {
           updated_at?: string
         }
       }
+      visit_schedules: {
+        Row: {
+          id: string
+          study_id: string
+          visit_name: string
+          visit_number: number
+          visit_day: number
+          window_before_days: number
+          window_after_days: number
+          is_required: boolean
+          visit_type: 'screening' | 'baseline' | 'regular' | 'unscheduled' | 'early_termination'
+          procedures: string[]
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          study_id: string
+          visit_name: string
+          visit_number: number
+          visit_day: number
+          window_before_days?: number
+          window_after_days?: number
+          is_required?: boolean
+          visit_type?: 'screening' | 'baseline' | 'regular' | 'unscheduled' | 'early_termination'
+          procedures?: string[]
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          study_id?: string
+          visit_name?: string
+          visit_number?: number
+          visit_day?: number
+          window_before_days?: number
+          window_after_days?: number
+          is_required?: boolean
+          visit_type?: 'screening' | 'baseline' | 'regular' | 'unscheduled' | 'early_termination'
+          procedures?: string[]
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      subject_visits: {
+        Row: {
+          id: string
+          study_id: string
+          subject_id: string
+          visit_schedule_id: string | null
+          user_id: string
+          visit_name: string
+          scheduled_date: string
+          actual_date: string | null
+          status: 'scheduled' | 'completed' | 'missed' | 'cancelled'
+          is_within_window: boolean | null
+          days_from_scheduled: number | null
+          procedures_completed: string[]
+          
+          // Lab Kit Accountability
+          lab_kit_required: boolean | null
+          accession_number: string | null
+          airway_bill_number: string | null
+          lab_kit_shipped_date: string | null
+          
+          // Drug Accountability
+          drug_dispensing_required: boolean | null
+          previous_dispense_date: string | null
+          tablets_dispensed: number | null
+          tablets_returned: number | null
+          actual_start_date: string | null
+          
+          // Local Labs
+          local_labs_required: boolean | null
+          local_labs_completed: boolean | null
+          
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          study_id: string
+          subject_id: string
+          visit_schedule_id?: string | null
+          user_id: string
+          visit_name: string
+          scheduled_date: string
+          actual_date?: string | null
+          status?: 'scheduled' | 'completed' | 'missed' | 'cancelled'
+          is_within_window?: boolean | null
+          days_from_scheduled?: number | null
+          procedures_completed?: string[]
+          
+          // Lab Kit Accountability
+          lab_kit_required?: boolean | null
+          accession_number?: string | null
+          airway_bill_number?: string | null
+          lab_kit_shipped_date?: string | null
+          
+          // Drug Accountability
+          drug_dispensing_required?: boolean | null
+          previous_dispense_date?: string | null
+          tablets_dispensed?: number | null
+          tablets_returned?: number | null
+          actual_start_date?: string | null
+          
+          // Local Labs
+          local_labs_required?: boolean | null
+          local_labs_completed?: boolean | null
+          
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          study_id?: string
+          subject_id?: string
+          visit_schedule_id?: string | null
+          user_id?: string
+          visit_name?: string
+          scheduled_date?: string
+          actual_date?: string | null
+          status?: 'scheduled' | 'completed' | 'missed' | 'cancelled'
+          is_within_window?: boolean | null
+          days_from_scheduled?: number | null
+          procedures_completed?: string[]
+          
+          // Lab Kit Accountability
+          lab_kit_required?: boolean | null
+          accession_number?: string | null
+          airway_bill_number?: string | null
+          lab_kit_shipped_date?: string | null
+          
+          // Drug Accountability
+          drug_dispensing_required?: boolean | null
+          previous_dispense_date?: string | null
+          tablets_dispensed?: number | null
+          tablets_returned?: number | null
+          actual_start_date?: string | null
+          
+          // Local Labs
+          local_labs_required?: boolean | null
+          local_labs_completed?: boolean | null
+          
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
       protocol_deviations: {
         Row: {
           id: string
@@ -361,3 +515,11 @@ export type MonitorActionUpdate = Database['public']['Tables']['monitor_actions'
 export type ProtocolDeviation = Database['public']['Tables']['protocol_deviations']['Row']
 export type ProtocolDeviationInsert = Database['public']['Tables']['protocol_deviations']['Insert']
 export type ProtocolDeviationUpdate = Database['public']['Tables']['protocol_deviations']['Update']
+
+export type VisitSchedule = Database['public']['Tables']['visit_schedules']['Row']
+export type VisitScheduleInsert = Database['public']['Tables']['visit_schedules']['Insert']
+export type VisitScheduleUpdate = Database['public']['Tables']['visit_schedules']['Update']
+
+export type SubjectVisit = Database['public']['Tables']['subject_visits']['Row']
+export type SubjectVisitInsert = Database['public']['Tables']['subject_visits']['Insert']
+export type SubjectVisitUpdate = Database['public']['Tables']['subject_visits']['Update']
