@@ -2,6 +2,14 @@
 
 import React, { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import { 
+  calculateDrugCompliance as calcDrugCompliance, 
+  calculateVisitCompliance as calcVisitCompliance,
+  ComplianceResult,
+  DrugComplianceData,
+  VisitComplianceData 
+} from '@/lib/compliance-calculator'
+import ComplianceWidget from '@/components/compliance/ComplianceWidget'
 
 interface VisitCardProps {
   visitId: string
@@ -51,17 +59,18 @@ export default function VisitCard({
   const [visitData, setVisitData] = useState<VisitData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
-  const [drugCompliance, setDrugCompliance] = useState<number | null>(null)
+  const [drugCompliance, setDrugCompliance] = useState<ComplianceResult | null>(null)
+  const [visitCompliance, setVisitCompliance] = useState<ComplianceResult | null>(null)
 
   useEffect(() => {
     loadVisitData()
   }, [visitId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (visitData?.tablets_dispensed && visitData?.tablets_returned) {
-      calculateDrugCompliance()
+    if (visitData) {
+      calculateCompliances()
     }
-  }, [visitData?.tablets_dispensed, visitData?.tablets_returned, visitData?.previous_dispense_date, visitData?.actual_start_date]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [visitData]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadVisitData = async () => {
     try {
@@ -94,20 +103,36 @@ export default function VisitCard({
     }
   }
 
-  const calculateDrugCompliance = () => {
-    if (!visitData?.tablets_dispensed || !visitData?.tablets_returned || !visitData?.previous_dispense_date) {
-      return
+  const calculateCompliances = () => {
+    if (!visitData) return
+
+    // Calculate drug compliance
+    if (visitData.tablets_dispensed && visitData.previous_dispense_date) {
+      const drugData: DrugComplianceData = {
+        tabletsDispensed: visitData.tablets_dispensed,
+        tabletsReturned: visitData.tablets_returned || 0,
+        dispensingDate: new Date(visitData.previous_dispense_date),
+        expectedReturnDate: new Date(scheduledDate),
+        actualReturnDate: visitData.completed_date ? new Date(visitData.completed_date) : undefined,
+        dosingFrequency: 1, // Default to QD - could be made dynamic based on study
+        studyDrug: 'Study Medication'
+      }
+
+      const drugResult = calcDrugCompliance(drugData)
+      setDrugCompliance(drugResult)
     }
 
-    const startDate = new Date(visitData.actual_start_date || visitData.previous_dispense_date)
-    const endDate = new Date(visitData.scheduled_date)
-    const daysBetween = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
-    
-    const tabletsExpected = daysBetween // Assuming QD dosing - this should be dynamic based on study dosing frequency
-    const tabletsActuallyTaken = visitData.tablets_dispensed - visitData.tablets_returned
-    
-    const compliance = Math.min(100, Math.max(0, (tabletsActuallyTaken / tabletsExpected) * 100))
-    setDrugCompliance(Math.round(compliance * 100) / 100)
+    // Calculate visit compliance
+    const visitData_: VisitComplianceData = {
+      scheduledDate: new Date(scheduledDate),
+      actualDate: visitData.completed_date ? new Date(visitData.completed_date) : undefined,
+      visitWindow: 7, // Default visit window - could be made dynamic based on study
+      visitName: visitName,
+      status: visitData.completed_date ? 'completed' : 'scheduled'
+    }
+
+    const visitResult = calcVisitCompliance(visitData_)
+    setVisitCompliance(visitResult)
   }
 
   const handleInputChange = (field: keyof VisitData, value: string | number | boolean) => {
@@ -282,22 +307,28 @@ export default function VisitCard({
                 </div>
               </div>
 
-              {/* Drug Compliance Display */}
-              {drugCompliance !== null && (
-                <div className="bg-gray-900/50 border border-gray-600 rounded-lg p-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium text-gray-300">
-                      Calculated Compliance:
-                    </span>
-                    <span className={`text-lg font-bold ${
-                      drugCompliance >= 80 ? 'text-green-400' : 
-                      drugCompliance >= 70 ? 'text-yellow-400' : 'text-red-400'
-                    }`}>
-                      {drugCompliance}%
-                    </span>
-                  </div>
-                </div>
-              )}
+              {/* Compliance Display */}
+              <div className="space-y-3">
+                {/* Drug Compliance */}
+                {drugCompliance && (
+                  <ComplianceWidget
+                    compliance={drugCompliance}
+                    title="Drug Compliance"
+                    subtitle="Based on tablet accountability"
+                    showDetails={true}
+                  />
+                )}
+
+                {/* Visit Compliance */}
+                {visitCompliance && (
+                  <ComplianceWidget
+                    compliance={visitCompliance}
+                    title="Visit Timing"
+                    subtitle="Adherence to scheduled date"
+                    showDetails={true}
+                  />
+                )}
+              </div>
             </div>
 
             {/* Local Labs Section */}
