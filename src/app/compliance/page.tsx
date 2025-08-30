@@ -35,33 +35,57 @@ function CompliancePageContent() {
 
   const loadStudies = async () => {
     try {
-      // Get the auth token from supabase session
+      // Get the auth session
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
       
-      if (!token) {
-        console.error('No auth token available')
+      if (!session?.user) {
+        console.error('No authenticated user')
         setLoading(false)
         return
       }
 
-      const response = await fetch('/api/studies', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
+      // Try API first
+      if (token) {
+        try {
+          const response = await fetch('/api/studies', {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          })
 
-      if (response.ok) {
-        const { studies } = await response.json()
+          if (response.ok) {
+            const { studies } = await response.json()
+            setStudies(studies || [])
+            
+            if (!selectedStudyId && studies && studies.length > 0) {
+              setSelectedStudyId(studies[0].id)
+            }
+            setLoading(false)
+            return
+          }
+        } catch (apiError) {
+          console.warn('API error, trying direct database access:', apiError)
+        }
+      }
+
+      // Fallback: Try direct database access (client-side with RLS)
+      const { data: studies, error } = await supabase
+        .from('studies')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Database error:', error)
+      } else {
         setStudies(studies || [])
         
-        // Auto-select first study if none selected and studies available
         if (!selectedStudyId && studies && studies.length > 0) {
           setSelectedStudyId(studies[0].id)
         }
-      } else {
-        console.error('Failed to fetch studies:', response.status)
       }
+
     } catch (error) {
       console.error('Error loading studies:', error)
     } finally {
