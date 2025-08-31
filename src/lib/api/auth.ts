@@ -95,3 +95,44 @@ export async function verifyStudyOwnership(studyId: string, userId: string): Pro
     }
   }
 }
+
+/**
+ * Verify user is a member of the site that owns this study
+ */
+export async function verifyStudyMembership(studyId: string, userId: string): Promise<{ success: boolean; error?: string; status?: number }> {
+  try {
+    const supabase = createSupabaseAdmin()
+    // Get study with site reference
+    const { data: study, error: studyError } = await supabase
+      .from('studies')
+      .select('id, site_id')
+      .eq('id', studyId)
+      .single()
+
+    if (studyError || !study) {
+      return { success: false, error: 'Study not found', status: 404 }
+    }
+
+    // If site_id is not set, fall back to legacy user ownership check
+    if (!study.site_id) {
+      return verifyStudyOwnership(studyId, userId)
+    }
+
+    // Check membership
+    const { data: member, error: memberError } = await supabase
+      .from('site_members')
+      .select('user_id')
+      .eq('site_id', study.site_id as string)
+      .eq('user_id', userId)
+      .single()
+
+    if (memberError || !member) {
+      return { success: false, error: 'Access denied', status: 403 }
+    }
+
+    return { success: true }
+  } catch (error) {
+    console.error('Study membership verification error:', error)
+    return { success: false, error: 'Failed to verify study membership', status: 500 }
+  }
+}

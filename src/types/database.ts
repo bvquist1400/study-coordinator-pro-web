@@ -1,6 +1,46 @@
 export interface Database {
   public: {
     Tables: {
+      sites: {
+        Row: {
+          id: string
+          name: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          created_at?: string
+          updated_at?: string
+        }
+      },
+      site_members: {
+        Row: {
+          site_id: string
+          user_id: string
+          role: 'owner' | 'coordinator' | 'pi' | 'monitor'
+          created_at: string
+        }
+        Insert: {
+          site_id: string
+          user_id: string
+          role?: 'owner' | 'coordinator' | 'pi' | 'monitor'
+          created_at?: string
+        }
+        Update: {
+          site_id?: string
+          user_id?: string
+          role?: 'owner' | 'coordinator' | 'pi' | 'monitor'
+          created_at?: string
+        }
+      },
       user_profiles: {
         Row: {
           id: string
@@ -36,6 +76,7 @@ export interface Database {
           user_id: string
           protocol_number: string
           study_title: string
+          protocol_version: string | null
           sponsor: string | null
           principal_investigator: string | null
           phase: string | null
@@ -45,9 +86,12 @@ export interface Database {
           end_date: string | null
           target_enrollment: number | null
           visit_window_days: number
+          anchor_day: number
           dosing_frequency: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom'
           compliance_threshold: number
           notes: string | null
+          site_id?: string | null
+          created_by?: string | null
           created_at: string
           updated_at: string
         }
@@ -56,6 +100,7 @@ export interface Database {
           user_id: string
           protocol_number: string
           study_title: string
+          protocol_version?: string | null
           sponsor?: string | null
           principal_investigator?: string | null
           phase?: string | null
@@ -65,9 +110,12 @@ export interface Database {
           end_date?: string | null
           target_enrollment?: number | null
           visit_window_days?: number
+          anchor_day?: number
           dosing_frequency?: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom'
           compliance_threshold?: number
           notes?: string | null
+          site_id?: string | null
+          created_by?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -76,6 +124,7 @@ export interface Database {
           user_id?: string
           protocol_number?: string
           study_title?: string
+          protocol_version?: string | null
           sponsor?: string | null
           principal_investigator?: string | null
           phase?: string | null
@@ -85,9 +134,12 @@ export interface Database {
           end_date?: string | null
           target_enrollment?: number | null
           visit_window_days?: number
+          anchor_day?: number
           dosing_frequency?: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom'
           compliance_threshold?: number
           notes?: string | null
+          site_id?: string | null
+          created_by?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -98,13 +150,11 @@ export interface Database {
           study_id: string
           user_id: string
           subject_number: string
-          initials: string | null
-          date_of_birth: string | null
           gender: 'M' | 'F' | 'Other' | null
           enrollment_date: string
           randomization_date: string | null
           treatment_arm: string | null
-          status: 'screening' | 'enrolled' | 'active' | 'completed' | 'discontinued' | 'withdrawn'
+          status: 'screening' | 'active' | 'completed' | 'discontinued' | 'withdrawn'
           discontinuation_reason: string | null
           discontinuation_date: string | null
           notes: string | null
@@ -116,13 +166,11 @@ export interface Database {
           study_id: string
           user_id: string
           subject_number: string
-          initials?: string | null
-          date_of_birth?: string | null
           gender?: 'M' | 'F' | 'Other' | null
           enrollment_date?: string
           randomization_date?: string | null
           treatment_arm?: string | null
-          status?: 'screening' | 'enrolled' | 'active' | 'completed' | 'discontinued' | 'withdrawn'
+          status?: 'screening' | 'active' | 'completed' | 'discontinued' | 'withdrawn'
           discontinuation_reason?: string | null
           discontinuation_date?: string | null
           notes?: string | null
@@ -134,13 +182,11 @@ export interface Database {
           study_id?: string
           user_id?: string
           subject_number?: string
-          initials?: string | null
-          date_of_birth?: string | null
           gender?: 'M' | 'F' | 'Other' | null
           enrollment_date?: string
           randomization_date?: string | null
           treatment_arm?: string | null
-          status?: 'screening' | 'enrolled' | 'active' | 'completed' | 'discontinued' | 'withdrawn'
+          status?: 'screening' | 'active' | 'completed' | 'discontinued' | 'withdrawn'
           discontinuation_reason?: string | null
           discontinuation_date?: string | null
           notes?: string | null
@@ -306,8 +352,7 @@ export interface Database {
           visit_schedule_id: string | null
           user_id: string
           visit_name: string
-          scheduled_date: string
-          actual_date: string | null
+          visit_date: string
           status: 'scheduled' | 'completed' | 'missed' | 'cancelled'
           is_within_window: boolean | null
           days_from_scheduled: number | null
@@ -315,6 +360,7 @@ export interface Database {
           
           // Lab Kit Accountability
           lab_kit_required: boolean | null
+          lab_kit_id: string | null
           accession_number: string | null
           airway_bill_number: string | null
           lab_kit_shipped_date: string | null
@@ -341,8 +387,7 @@ export interface Database {
           visit_schedule_id?: string | null
           user_id: string
           visit_name: string
-          scheduled_date: string
-          actual_date?: string | null
+          visit_date: string
           status?: 'scheduled' | 'completed' | 'missed' | 'cancelled'
           is_within_window?: boolean | null
           days_from_scheduled?: number | null
@@ -350,6 +395,7 @@ export interface Database {
           
           // Lab Kit Accountability
           lab_kit_required?: boolean | null
+          lab_kit_id?: string | null
           accession_number?: string | null
           airway_bill_number?: string | null
           lab_kit_shipped_date?: string | null
@@ -376,8 +422,7 @@ export interface Database {
           visit_schedule_id?: string | null
           user_id?: string
           visit_name?: string
-          scheduled_date?: string
-          actual_date?: string | null
+          visit_date?: string
           status?: 'scheduled' | 'completed' | 'missed' | 'cancelled'
           is_within_window?: boolean | null
           days_from_scheduled?: number | null
@@ -385,6 +430,7 @@ export interface Database {
           
           // Lab Kit Accountability
           lab_kit_required?: boolean | null
+          lab_kit_id?: string | null
           accession_number?: string | null
           airway_bill_number?: string | null
           lab_kit_shipped_date?: string | null
@@ -479,6 +525,124 @@ export interface Database {
           updated_at?: string
         }
       }
+      lab_kits: {
+        Row: {
+          id: string
+          study_id: string
+          visit_schedule_id: string | null
+          accession_number: string
+          kit_type: string | null
+          lot_number: string | null
+          expiration_date: string | null
+          status: 'available' | 'assigned' | 'used' | 'shipped' | 'expired' | 'destroyed' | 'archived'
+          received_date: string | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          study_id: string
+          visit_schedule_id?: string | null
+          accession_number: string
+          kit_type?: string | null
+          expiration_date?: string | null
+          status?: 'available' | 'assigned' | 'used' | 'shipped' | 'expired' | 'destroyed' | 'archived'
+          received_date?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          study_id?: string
+          visit_schedule_id?: string | null
+          accession_number?: string
+          kit_type?: string | null
+          expiration_date?: string | null
+          status?: 'available' | 'assigned' | 'used' | 'shipped' | 'expired' | 'destroyed' | 'archived'
+          received_date?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      lab_kit_shipments: {
+        Row: {
+          id: string
+          lab_kit_id: string
+          subject_visit_id: string | null
+          airway_bill_number: string
+          carrier: 'fedex' | 'ups' | 'other'
+          shipped_date: string | null
+          estimated_delivery: string | null
+          actual_delivery: string | null
+          tracking_status: string | null
+          tracking_details: any
+          destination_address: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          lab_kit_id: string
+          subject_visit_id?: string | null
+          airway_bill_number: string
+          carrier?: 'fedex' | 'ups' | 'other'
+          shipped_date?: string | null
+          estimated_delivery?: string | null
+          actual_delivery?: string | null
+          tracking_status?: string | null
+          tracking_details?: any
+          destination_address?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          lab_kit_id?: string
+          subject_visit_id?: string | null
+          airway_bill_number?: string
+          carrier?: 'fedex' | 'ups' | 'other'
+          shipped_date?: string | null
+          estimated_delivery?: string | null
+          actual_delivery?: string | null
+          tracking_status?: string | null
+          tracking_details?: any
+          destination_address?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      lab_kit_usage: {
+        Row: {
+          id: string
+          lab_kit_id: string
+          subject_visit_id: string
+          used_date: string
+          used_by: string
+          notes: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          lab_kit_id: string
+          subject_visit_id: string
+          used_date?: string
+          used_by: string
+          notes?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          lab_kit_id?: string
+          subject_visit_id?: string
+          used_date?: string
+          used_by?: string
+          notes?: string | null
+          created_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never
@@ -523,3 +687,15 @@ export type VisitScheduleUpdate = Database['public']['Tables']['visit_schedules'
 export type SubjectVisit = Database['public']['Tables']['subject_visits']['Row']
 export type SubjectVisitInsert = Database['public']['Tables']['subject_visits']['Insert']
 export type SubjectVisitUpdate = Database['public']['Tables']['subject_visits']['Update']
+
+export type LabKit = Database['public']['Tables']['lab_kits']['Row']
+export type LabKitInsert = Database['public']['Tables']['lab_kits']['Insert']
+export type LabKitUpdate = Database['public']['Tables']['lab_kits']['Update']
+
+export type LabKitShipment = Database['public']['Tables']['lab_kit_shipments']['Row']
+export type LabKitShipmentInsert = Database['public']['Tables']['lab_kit_shipments']['Insert']
+export type LabKitShipmentUpdate = Database['public']['Tables']['lab_kit_shipments']['Update']
+
+export type LabKitUsage = Database['public']['Tables']['lab_kit_usage']['Row']
+export type LabKitUsageInsert = Database['public']['Tables']['lab_kit_usage']['Insert']
+export type LabKitUsageUpdate = Database['public']['Tables']['lab_kit_usage']['Update']

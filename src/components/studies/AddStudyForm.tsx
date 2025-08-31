@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import { useSite } from '@/components/site/SiteProvider'
 
 interface AddStudyFormProps {
   onClose: () => void
@@ -12,6 +13,7 @@ interface AddStudyFormProps {
 interface StudyFormData {
   protocol_number: string
   study_title: string
+  protocol_version: string
   status: 'enrolling' | 'active' | 'closed_to_enrollment' | 'completed'
   sponsor: string
   principal_investigator: string
@@ -22,17 +24,20 @@ interface StudyFormData {
   end_date: string
   dosing_frequency: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom'
   compliance_threshold: string
+  anchor_day: '0' | '1'
   notes: string
 }
 
 export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) {
   const router = useRouter()
+  const { currentSiteId } = useSite()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   
   const [formData, setFormData] = useState<StudyFormData>({
     protocol_number: '',
     study_title: '',
+    protocol_version: '',
     status: 'enrolling',
     sponsor: '',
     principal_investigator: '',
@@ -43,6 +48,7 @@ export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) 
     end_date: '',
     dosing_frequency: 'QD',
     compliance_threshold: '80',
+    anchor_day: '0',
     notes: ''
   })
 
@@ -120,11 +126,30 @@ export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) 
         return
       }
 
+      // Resolve a site_id for the current user (first membership), fallback to null
+      // Prefer current site selection; fallback to first membership if none
+      let siteId: string | null = currentSiteId || null
+      if (!siteId) {
+        try {
+          const { data: memberships } = await supabase
+            .from('site_members')
+            .select('site_id')
+            .eq('user_id', userData.user.id)
+            .limit(1)
+          siteId = memberships && memberships.length > 0 ? memberships[0].site_id : null
+        } catch {
+          // ignore
+        }
+      }
+
       // Prepare data for insertion
       const insertData = {
-        user_id: userData.user.id,
+        user_id: userData.user.id, // legacy/audit
+        site_id: siteId,
+        created_by: userData.user.id,
         protocol_number: formData.protocol_number.trim(),
         study_title: formData.study_title.trim(),
+        protocol_version: formData.protocol_version.trim() || null,
         status: formData.status,
         sponsor: formData.sponsor.trim() || null,
         principal_investigator: formData.principal_investigator.trim() || null,
@@ -136,6 +161,7 @@ export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) 
         visit_window_days: 7, // Default value as defined in schema
         dosing_frequency: formData.dosing_frequency,
         compliance_threshold: Number(formData.compliance_threshold),
+        anchor_day: Number(formData.anchor_day),
         notes: formData.notes.trim() || null
       }
 
@@ -252,6 +278,22 @@ export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) 
               {errors.study_title && (
                 <p className="text-red-400 text-sm mt-1">{errors.study_title}</p>
               )}
+            </div>
+
+            {/* Protocol Version */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Protocol Version
+              </label>
+              <input
+                type="text"
+                name="protocol_version"
+                value={formData.protocol_version}
+                onChange={handleInputChange}
+                className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="e.g., v1.2, Amendment 3"
+                disabled={isSubmitting}
+              />
             </div>
 
             {/* Sponsor & Principal Investigator */}
@@ -402,7 +444,7 @@ export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) 
               </div>
             </div>
 
-            {/* Compliance Threshold */}
+            {/* Compliance Threshold & Anchor Day */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -422,6 +464,25 @@ export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) 
                 {errors.compliance_threshold && (
                   <p className="text-red-400 text-sm mt-1">{errors.compliance_threshold}</p>
                 )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Anchor Day
+                </label>
+                <select
+                  name="anchor_day"
+                  value={formData.anchor_day}
+                  onChange={handleInputChange}
+                  className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  disabled={isSubmitting}
+                >
+                  <option value="0">Day 0 (Baseline = Day 0)</option>
+                  <option value="1">Day 1 (Baseline = Day 1)</option>
+                </select>
+                <p className="text-gray-400 text-xs mt-1">
+                  Determines how visit windows are calculated from the baseline date.
+                </p>
               </div>
             </div>
 

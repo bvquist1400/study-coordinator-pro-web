@@ -5,8 +5,11 @@ import { supabase } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { type User } from '@supabase/supabase-js'
 import { type Study } from '@/types/database'
+import { useSite } from '@/components/site/SiteProvider'
 import DashboardLayout from '@/components/dashboard/DashboardLayout'
 import AddStudyForm from '@/components/studies/AddStudyForm'
+import EditStudyForm from '@/components/studies/EditStudyForm'
+import StudyDetailsModal from '@/components/studies/StudyDetailsModal'
 import ScheduleOfEventsBuilder from '@/components/studies/ScheduleOfEventsBuilder'
 
 export default function StudiesPage() {
@@ -16,6 +19,12 @@ export default function StudiesPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [showAddForm, setShowAddForm] = useState(false)
   const [selectedStudyForSoE, setSelectedStudyForSoE] = useState<Study | null>(null)
+  const [showDetailsStudy, setShowDetailsStudy] = useState<Study | null>(null)
+  const [editingStudy, setEditingStudy] = useState<Study | null>(null)
+  const [windowSummaries, setWindowSummaries] = useState<Record<string, string>>({})
+  const [page, setPage] = useState(1)
+  const pageSize = 10
+  const { currentSiteId } = useSite()
 
   useEffect(() => {
     async function loadStudies() {
@@ -29,17 +38,33 @@ export default function StudiesPage() {
         
         setUser(userData.user)
 
-        // Load user's studies
+        // Try API first for membership-scoped studies, with optional site filter
+        try {
+          const token = (await supabase.auth.getSession()).data.session?.access_token
+          if (token) {
+            const url = currentSiteId ? `/api/studies?site_id=${currentSiteId}` : '/api/studies'
+            const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+            if (resp.ok) {
+              const { studies } = await resp.json()
+              setStudies(studies || [])
+              return
+            }
+          }
+        } catch (apiErr) {
+          console.warn('API error loading studies, falling back to direct DB:', apiErr)
+        }
+
+        // Fallback: direct DB (RLS should restrict to memberships); filter client-side by site
         const { data: studiesData, error: studiesError } = await supabase
           .from('studies')
           .select('*')
-          .eq('user_id', userData.user.id)
           .order('created_at', { ascending: false })
 
         if (studiesError) {
           console.error('Error loading studies:', studiesError)
         } else {
-          setStudies(studiesData || [])
+          const filtered = currentSiteId ? (studiesData || []).filter((s: any) => s.site_id === currentSiteId) : (studiesData || [])
+          setStudies(filtered)
         }
       } catch (error) {
         console.error('Error:', error)
@@ -49,7 +74,7 @@ export default function StudiesPage() {
     }
 
     loadStudies()
-  }, [router])
+  }, [router, currentSiteId])
 
   const handleStudyAdded = () => {
     // Reload studies after successful addition
@@ -64,7 +89,6 @@ export default function StudiesPage() {
         const { data: studiesData, error: studiesError } = await supabase
           .from('studies')
           .select('*')
-          .eq('user_id', userData.user.id)
           .order('created_at', { ascending: false })
 
         if (!studiesError) {
@@ -107,6 +131,73 @@ export default function StudiesPage() {
         return status
     }
   }
+
+  const getDosingLabel = (abbr?: string | null) => {
+    switch ((abbr || '').toUpperCase()) {
+      case 'QD': return 'Once daily'
+      case 'BID': return 'Twice daily'
+      case 'TID': return 'Three times daily'
+      case 'QID': return 'Four times daily'
+      case 'WEEKLY': return 'Weekly'
+      case 'CUSTOM': return 'Custom'
+      default: return abbr || 'Not specified'
+    }
+  }
+
+  const timeAgo = (iso?: string) => {
+    if (!iso) return ''
+    const then = new Date(iso).getTime()
+    const now = Date.now()
+    const diff = Math.max(0, now - then)
+    const sec = Math.floor(diff / 1000)
+    const min = Math.floor(sec / 60)
+    const hr = Math.floor(min / 60)
+    const day = Math.floor(hr / 24)
+    const mon = Math.floor(day / 30)
+    const yr = Math.floor(day / 365)
+    if (yr > 0) return `${yr} year${yr>1?'s':''} ago`
+    if (mon > 0) return `${mon} month${mon>1?'s':''} ago`
+    if (day > 0) return `${day} day${day>1?'s':''} ago`
+    if (hr > 0) return `${hr} hour${hr>1?'s':''} ago`
+    if (min > 0) return `${min} minute${min>1?'s':''} ago`
+    return 'just now'
+  }
+
+  // Load per-study visit window summaries (min/max across visit schedules)
+  useEffect(() => {
+    const loadSummaries = async () => {
+      try {
+        if (studies.length === 0) return
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
+        if (!token) return
+        const start = (page - 1) * pageSize
+        const visible = studies.slice(start, start + pageSize)
+        const entries = await Promise.all(visible.map(async (s) => {
+          try {
+            const resp = await fetch(`/api/visit-schedules?study_id=${s.id}`, { headers: { Authorization: `Bearer ${token}` } })
+            if (!resp.ok) return [s.id, 'No visit schedules'] as const
+            const { visitSchedules } = await resp.json()
+            const arr = (visitSchedules || []) as Array<{ window_before_days?: number; window_after_days?: number }>
+            if (arr.length === 0) return [s.id, 'No visit schedules'] as const
+            const beforeVals = arr.map(v => v.window_before_days ?? 0)
+            const afterVals = arr.map(v => v.window_after_days ?? 0)
+            const minBefore = Math.min(...beforeVals)
+            const maxAfter = Math.max(...afterVals)
+            return [s.id, `−${minBefore} to +${maxAfter} days · ${arr.length} visits`] as const
+          } catch {
+            return [s.id, 'No visit schedules'] as const
+          }
+        }))
+        const map: Record<string, string> = {}
+        for (const [id, summary] of entries) map[id] = summary
+        setWindowSummaries(map)
+      } catch {
+        // best-effort; ignore errors
+      }
+    }
+    loadSummaries()
+  }, [studies, page])
 
   if (isLoading) {
     return (
@@ -155,7 +246,7 @@ export default function StudiesPage() {
           </div>
         ) : (
           <div className="grid gap-6">
-            {studies.map((study) => (
+            {studies.slice((page-1)*pageSize, (page-1)*pageSize + pageSize).map((study) => (
               <div key={study.id} className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-2xl p-6 hover:scale-[1.02] transition-transform hover:shadow-2xl">
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex-1">
@@ -165,7 +256,25 @@ export default function StudiesPage() {
                         {getStatusLabel(study.status)}
                       </span>
                     </div>
-                    <p className="text-blue-400 font-mono text-sm mb-2">Protocol: {study.protocol_number}</p>
+                    <p className="text-blue-400 font-mono text-sm mb-1 flex items-center gap-2">
+                      <span>Protocol: {study.protocol_number}</span>
+                      <button
+                        type="button"
+                        className="text-blue-300 hover:text-blue-200"
+                        title="Copy protocol number"
+                        onClick={async (e) => {
+                          e.preventDefault();
+                          try { await navigator.clipboard.writeText(String(study.protocol_number || '')) } catch {}
+                        }}
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2M8 16h8a2 2 0 002-2v-6M8 16l-2 2m0 0l2 2m-2-2h6" />
+                        </svg>
+                      </button>
+                    </p>
+                    {('protocol_version' in study) && (study as any).protocol_version && (
+                      <p className="text-blue-300 font-mono text-xs mb-2">Version: {(study as any).protocol_version}</p>
+                    )}
                     {study.sponsor && (
                       <p className="text-gray-300 text-sm mb-1">Sponsor: {study.sponsor}</p>
                     )}
@@ -181,7 +290,10 @@ export default function StudiesPage() {
                       Target Enrollment: {study.target_enrollment || 'Not set'}
                     </div>
                     <div className="text-sm text-gray-400">
-                      Dosing: {study.dosing_frequency}
+                      Dosing: {getDosingLabel(study.dosing_frequency as unknown as string)}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-2" title={new Date(study.updated_at).toLocaleString()}>
+                      Last updated: {timeAgo(study.updated_at)}
                     </div>
                   </div>
                 </div>
@@ -189,7 +301,7 @@ export default function StudiesPage() {
                 <div className="flex justify-between items-center pt-4 border-t border-gray-700">
                   <div className="flex space-x-4 text-sm text-gray-400">
                     <span>Compliance: {study.compliance_threshold}%</span>
-                    <span>Visit Window: ±{study.visit_window_days} days</span>
+                    <span>Visit Windows: {windowSummaries[study.id] || 'Loading...'}</span>
                   </div>
                   <div className="flex space-x-2">
                     <button 
@@ -198,16 +310,47 @@ export default function StudiesPage() {
                     >
                       Schedule of Events
                     </button>
-                    <button className="text-blue-400 hover:text-blue-300 px-3 py-1 rounded transition-colors">
+                    <button 
+                      className="text-blue-400 hover:text-blue-300 px-3 py-1 rounded transition-colors"
+                      onClick={() => setShowDetailsStudy(study)}
+                    >
                       View Details
                     </button>
-                    <button className="text-green-400 hover:text-green-300 px-3 py-1 rounded transition-colors">
+                    <button 
+                      className="text-green-400 hover:text-green-300 px-3 py-1 rounded transition-colors"
+                      onClick={() => setEditingStudy(study)}
+                    >
                       Edit
                     </button>
                   </div>
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Pagination Controls */}
+        {studies.length > pageSize && (
+          <div className="flex justify-between items-center mt-6">
+            <div className="text-sm text-gray-400">
+              Page {page} of {Math.ceil(studies.length / pageSize)}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-3 py-1 bg-gray-700/50 border border-gray-600 text-gray-200 rounded disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <button
+                onClick={() => setPage(p => Math.min(Math.ceil(studies.length / pageSize), p + 1))}
+                disabled={page >= Math.ceil(studies.length / pageSize)}
+                className="px-3 py-1 bg-gray-700/50 border border-gray-600 text-gray-200 rounded disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
           </div>
         )}
 
@@ -250,6 +393,26 @@ export default function StudiesPage() {
           <AddStudyForm
             onClose={() => setShowAddForm(false)}
             onSuccess={handleStudyAdded}
+          />
+        )}
+
+        {/* Study Details Modal */}
+        {showDetailsStudy && (
+          <StudyDetailsModal 
+            studyId={showDetailsStudy.id}
+            onClose={() => setShowDetailsStudy(null)}
+          />
+        )}
+
+        {/* Edit Study Modal */}
+        {editingStudy && (
+          <EditStudyForm
+            study={editingStudy}
+            onClose={() => setEditingStudy(null)}
+            onSuccess={() => {
+              setEditingStudy(null)
+              handleStudyAdded()
+            }}
           />
         )}
       </div>

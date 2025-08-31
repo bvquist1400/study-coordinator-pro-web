@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { SiteProvider } from "@/components/site/SiteProvider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -34,7 +35,9 @@ export default function RootLayout({
             defaultTheme="system"
             storageKey="scp-ui-theme"
           >
-            {children}
+            <SiteProvider>
+              {children}
+            </SiteProvider>
           </ThemeProvider>
         </ErrorBoundary>
       </body>

@@ -13,7 +13,8 @@ interface Visit {
   id: string
   visitNumber: string
   visitName: string
-  weekDay: number | string
+  timingValue: number
+  timingUnit: 'days' | 'weeks' | 'months'
   visitWindowBefore: number
   visitWindowAfter: number
   isNew?: boolean
@@ -27,15 +28,15 @@ interface Procedure {
 }
 
 const defaultVisits: Omit<Visit, 'id'>[] = [
-  { visitNumber: 'S1', visitName: 'Screening', weekDay: -14, visitWindowBefore: 30, visitWindowAfter: 0 },
-  { visitNumber: 'V1', visitName: 'Rand', weekDay: 1, visitWindowBefore: 0, visitWindowAfter: 0 },
-  { visitNumber: 'V2', visitName: 'Visit 2', weekDay: 'W4', visitWindowBefore: 7, visitWindowAfter: 7 },
-  { visitNumber: 'V3', visitName: 'Visit 3', weekDay: 'W13', visitWindowBefore: 7, visitWindowAfter: 7 },
-  { visitNumber: 'V4', visitName: 'Visit 4', weekDay: 'W26', visitWindowBefore: 7, visitWindowAfter: 7 },
-  { visitNumber: 'V5', visitName: 'Visit 5', weekDay: 'W39', visitWindowBefore: 7, visitWindowAfter: 7 },
-  { visitNumber: 'V6', visitName: 'Visit 6', weekDay: 'W52', visitWindowBefore: 7, visitWindowAfter: 7 },
-  { visitNumber: 'ET', visitName: 'Early Term', weekDay: '', visitWindowBefore: 0, visitWindowAfter: 0 },
-  { visitNumber: 'FU', visitName: 'Follow-up', weekDay: '', visitWindowBefore: 0, visitWindowAfter: 7 }
+  { visitNumber: 'S1', visitName: 'Screening', timingValue: -14, timingUnit: 'days', visitWindowBefore: 30, visitWindowAfter: 0 },
+  { visitNumber: 'V1', visitName: 'Baseline', timingValue: 1, timingUnit: 'days', visitWindowBefore: 0, visitWindowAfter: 0 },
+  { visitNumber: 'V2', visitName: 'Visit 2', timingValue: 4, timingUnit: 'weeks', visitWindowBefore: 7, visitWindowAfter: 7 },
+  { visitNumber: 'V3', visitName: 'Visit 3', timingValue: 13, timingUnit: 'weeks', visitWindowBefore: 7, visitWindowAfter: 7 },
+  { visitNumber: 'V4', visitName: 'Visit 4', timingValue: 26, timingUnit: 'weeks', visitWindowBefore: 7, visitWindowAfter: 7 },
+  { visitNumber: 'V5', visitName: 'Visit 5', timingValue: 39, timingUnit: 'weeks', visitWindowBefore: 7, visitWindowAfter: 7 },
+  { visitNumber: 'V6', visitName: 'Visit 6', timingValue: 52, timingUnit: 'weeks', visitWindowBefore: 7, visitWindowAfter: 7 },
+  { visitNumber: 'ET', visitName: 'Early Term', timingValue: 0, timingUnit: 'days', visitWindowBefore: 0, visitWindowAfter: 0 },
+  { visitNumber: 'FU', visitName: 'Follow-up', timingValue: 30, timingUnit: 'days', visitWindowBefore: 0, visitWindowAfter: 7 }
 ]
 
 const defaultProcedures: Omit<Procedure, 'id'>[] = [
@@ -63,27 +64,84 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
 
   const loadScheduleData = async () => {
     try {
-      const { data: existingSchedules, error } = await supabase
-        .from('visit_schedules')
-        .select('*')
-        .eq('study_id', study.id)
-        .order('visit_number')
-
-      if (error) throw error
+      // Use API route instead of direct Supabase call to handle RLS properly
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      
+      let existingSchedules = null
+      
+      if (token) {
+        try {
+          const response = await fetch(`/api/visit-schedules?study_id=${study.id}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          })
+          
+          if (response.ok) {
+            const data = await response.json()
+            existingSchedules = data.visitSchedules
+          }
+        } catch (apiError) {
+          console.warn('API error, trying direct database access:', apiError)
+        }
+      }
+      
+      // Fallback to direct Supabase call if API fails
+      if (!existingSchedules) {
+        const { data, error } = await supabase
+          .from('visit_schedules')
+          .select('*')
+          .eq('study_id', study.id)
+          .order('visit_number')
+        
+        if (error) throw error
+        existingSchedules = data
+      }
+      
+      console.log('Loaded existing schedules from DB:', existingSchedules)
 
       let visitsToUse: Visit[]
       let proceduresToUse: Procedure[]
 
       if (existingSchedules && existingSchedules.length > 0) {
         // Load existing data from database
-        visitsToUse = existingSchedules.map((schedule, i) => ({
-          id: `visit-${i}`,
-          visitNumber: `V${schedule.visit_number}`,
-          visitName: schedule.visit_name,
-          weekDay: schedule.visit_day,
-          visitWindowBefore: schedule.window_before_days,
-          visitWindowAfter: schedule.window_after_days
-        }))
+        visitsToUse = existingSchedules.map((schedule, i) => {
+          const visitDay = schedule.visit_day || 0
+          
+          // Convert visit_day back to timingValue and timingUnit
+          let timingValue: number
+          let timingUnit: 'days' | 'weeks' | 'months'
+          
+          if (visitDay === 0) {
+            timingValue = 0
+            timingUnit = 'days'
+          } else if (visitDay < 0) {
+            // Negative values are always in days
+            timingValue = visitDay // Keep negative
+            timingUnit = 'days'
+          } else if (visitDay % 7 === 0) {
+            // Positive values divisible by 7 are likely weeks
+            timingValue = visitDay / 7
+            timingUnit = 'weeks'
+          } else {
+            // Other positive values are days
+            timingValue = visitDay
+            timingUnit = 'days'
+          }
+          
+          return {
+            id: `visit-${i}`,
+            visitNumber: `V${schedule.visit_number}`,
+            visitName: schedule.visit_name,
+            timingValue,
+            timingUnit,
+            visitWindowBefore: schedule.window_before_days,
+            visitWindowAfter: schedule.window_after_days
+          }
+        })
+        
+        console.log('Converted visits for display:', visitsToUse)
 
         // Create procedures with saved procedure assignments
         proceduresToUse = defaultProcedures.map((p, i) => {
@@ -172,7 +230,8 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
       id: `visit-new-${Date.now()}`,
       visitNumber: `V${newVisitNumber}`,
       visitName: `Visit ${newVisitNumber}`,
-      weekDay: '',
+      timingValue: 1,
+      timingUnit: 'weeks',
       visitWindowBefore: 7,
       visitWindowAfter: 7,
       isNew: true
@@ -197,13 +256,13 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
   const saveSchedule = async () => {
     setIsSaving(true)
     try {
-      // First, delete existing visit schedules for this study
-      const { error: deleteError } = await supabase
-        .from('visit_schedules')
-        .delete()
-        .eq('study_id', study.id)
+      // Get auth token
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
       
-      if (deleteError) throw deleteError
+      if (!token) {
+        throw new Error('Authentication required')
+      }
 
       // Convert visits to database format
       const visitSchedulesToSave = visits.map((visit, index) => {
@@ -216,24 +275,41 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
           study_id: study.id,
           visit_name: visit.visitName,
           visit_number: index + 1, // Sequential numbering
-          visit_day: typeof visit.weekDay === 'number' ? visit.weekDay : 0, // Handle string values like 'W4'
+          visit_day: visit.timingUnit === 'days' ? visit.timingValue : visit.timingValue * 7,
           window_before_days: visit.visitWindowBefore,
           window_after_days: visit.visitWindowAfter,
           is_required: true, // Default to required
-          visit_type: (index === 0 ? 'screening' : 
-                       index === visits.length - 2 ? 'early_termination' :
-                       index === visits.length - 1 ? 'unscheduled' : 'regular') as 'screening' | 'baseline' | 'regular' | 'unscheduled' | 'early_termination',
+          visit_type: (visit.visitName.toLowerCase().includes('screening') ? 'screening' : 
+                       visit.visitName.toLowerCase().includes('baseline') || visit.visitName.toLowerCase().includes('rand') ? 'baseline' :
+                       visit.visitName.toLowerCase().includes('early') || visit.visitName.toLowerCase().includes('term') ? 'early_termination' :
+                       visit.visitName.toLowerCase().includes('follow') || visit.visitName.toLowerCase().includes('unscheduled') ? 'unscheduled' : 
+                       'regular') as 'screening' | 'baseline' | 'regular' | 'unscheduled' | 'early_termination',
           procedures: requiredProcedures,
           notes: null
         }
       })
 
-      // Save new visit schedules
-      const { error: insertError } = await supabase
-        .from('visit_schedules')
-        .insert(visitSchedulesToSave)
+      console.log('Saving visit schedules:', JSON.stringify(visitSchedulesToSave, null, 2))
+
+      // Save via API route (handles RLS properly)
+      const response = await fetch('/api/visit-schedules', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          study_id: study.id,
+          visit_schedules: visitSchedulesToSave
+        })
+      })
       
-      if (insertError) throw insertError
+      if (!response.ok) {
+        const errorData = await response.json()
+        console.error('API Error Response:', errorData)
+        console.error('Response status:', response.status)
+        throw new Error(errorData.details || errorData.error || 'Failed to save schedule')
+      }
 
       // Save notes if any
       if (notes.trim()) {
@@ -362,21 +438,36 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
                 </th>
                 {visits.map(visit => (
                   <th key={visit.id} className="px-2 py-2 text-center border-r border-gray-600">
-                    {editingCell?.type === 'visit' && editingCell?.id === visit.id && editingCell?.field === 'weekDay' ? (
-                      <input
-                        type="text"
-                        value={visit.weekDay}
-                        onChange={(e) => updateVisit(visit.id, 'weekDay', e.target.value)}
-                        onBlur={() => setEditingCell(null)}
-                        className="w-full bg-gray-700 text-gray-200 text-xs px-1 py-0.5 rounded text-center"
-                        autoFocus
-                      />
+                    {editingCell?.type === 'visit' && editingCell?.id === visit.id && editingCell?.field === 'timing' ? (
+                      <div 
+                        className="space-y-1"
+                        onMouseLeave={() => setEditingCell(null)}
+                      >
+                        <input
+                          type="number"
+                          value={visit.timingValue}
+                          onChange={(e) => updateVisit(visit.id, 'timingValue', parseInt(e.target.value) || 0)}
+                          className="w-full bg-gray-700 text-gray-200 text-xs px-1 py-0.5 rounded text-center"
+                          placeholder="#"
+                          autoFocus
+                        />
+                        <select
+                          value={visit.timingUnit}
+                          onChange={(e) => updateVisit(visit.id, 'timingUnit', e.target.value)}
+                          className="w-full bg-gray-700 text-gray-200 text-xs px-1 py-0.5 rounded text-center"
+                        >
+                          <option value="days">Days</option>
+                          <option value="weeks">Weeks</option>
+                          <option value="months">Months</option>
+                        </select>
+                      </div>
                     ) : (
                       <div 
                         className="text-gray-300 text-xs cursor-pointer hover:text-gray-100"
-                        onClick={() => setEditingCell({ type: 'visit', id: visit.id, field: 'weekDay' })}
+                        onClick={() => setEditingCell({ type: 'visit', id: visit.id, field: 'timing' })}
                       >
-                        {visit.weekDay || '-'}
+                        <div className="font-semibold">{visit.timingValue}</div>
+                        <div className="text-gray-400 capitalize">{visit.timingUnit}</div>
                       </div>
                     )}
                   </th>

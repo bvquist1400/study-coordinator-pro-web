@@ -24,8 +24,7 @@ interface VisitData {
   id: string
   study_id: string
   visit_name: string
-  scheduled_date: string
-  completed_date?: string
+  visit_date: string
   status: 'scheduled' | 'completed' | 'missed'
   
   // Lab Kit Accountability
@@ -35,10 +34,9 @@ interface VisitData {
   lab_kit_shipped_date?: string
   
   // Drug Accountability
-  drug_dispensing_required?: boolean
   previous_dispense_date?: string
-  tablets_dispensed?: number
-  tablets_returned?: number
+  IP_dispensed?: number
+  IP_returned?: number
   actual_start_date?: string
   
   // Local Labs
@@ -61,6 +59,12 @@ export default function VisitCard({
   const [isSaving, setIsSaving] = useState(false)
   const [drugCompliance, setDrugCompliance] = useState<ComplianceResult | null>(null)
   const [visitCompliance, setVisitCompliance] = useState<ComplianceResult | null>(null)
+  
+  // Multi-bottle IP rows for accountability
+  type BottleRow = { ip_id: string; dispensed: number; returned: number }
+  const [bottles, setBottles] = useState<BottleRow[]>([
+    { ip_id: '', dispensed: 0, returned: 0 }
+  ])
 
   useEffect(() => {
     loadVisitData()
@@ -85,14 +89,14 @@ export default function VisitCard({
       }
 
       if (data) {
-        setVisitData(data)
+        setVisitData(data as unknown as VisitData)
       } else {
         // Initialize new visit data
         setVisitData({
           id: visitId,
           study_id: studyId,
           visit_name: visitName,
-          scheduled_date: scheduledDate,
+          visit_date: scheduledDate,
           status: 'scheduled'
         })
       }
@@ -107,13 +111,13 @@ export default function VisitCard({
     if (!visitData) return
 
     // Calculate drug compliance
-    if (visitData.tablets_dispensed && visitData.previous_dispense_date) {
+    if (visitData.IP_dispensed && visitData.previous_dispense_date) {
       const drugData: DrugComplianceData = {
-        tabletsDispensed: visitData.tablets_dispensed,
-        tabletsReturned: visitData.tablets_returned || 0,
+        tabletsDispensed: visitData.IP_dispensed,
+        tabletsReturned: visitData.IP_returned || 0,
         dispensingDate: new Date(visitData.previous_dispense_date),
         expectedReturnDate: new Date(scheduledDate),
-        actualReturnDate: visitData.completed_date ? new Date(visitData.completed_date) : undefined,
+        actualReturnDate: undefined,
         dosingFrequency: 1, // Default to QD - could be made dynamic based on study
         studyDrug: 'Study Medication'
       }
@@ -125,10 +129,10 @@ export default function VisitCard({
     // Calculate visit compliance
     const visitData_: VisitComplianceData = {
       scheduledDate: new Date(scheduledDate),
-      actualDate: visitData.completed_date ? new Date(visitData.completed_date) : undefined,
+      actualDate: undefined,
       visitWindow: 7, // Default visit window - could be made dynamic based on study
       visitName: visitName,
-      status: visitData.completed_date ? 'completed' : 'scheduled'
+      status: visitData.status
     }
 
     const visitResult = calcVisitCompliance(visitData_)
@@ -149,11 +153,85 @@ export default function VisitCard({
     
     setIsSaving(true)
     try {
-      const { error } = await supabase
+      const { data: saved, error } = await supabase
         .from('subject_visits')
-        .upsert(visitData)
+        .upsert(visitData as unknown as never)
+        .select()
+        .single()
 
       if (error) throw error
+
+      // Create/update drug_compliance per bottle row
+      const meaningful = bottles.filter(b => (b.ip_id && (b.dispensed > 0 || b.returned > 0)))
+      if (meaningful.length > 0) {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          const subjectId = (saved as any)?.subject_id || ''
+          const visitDay = visitData.visit_date || scheduledDate
+          const msPerDay = 1000 * 60 * 60 * 24
+          // Load dosing frequency for expected taken multiplier
+          let factor = 1
+          try {
+            const { data: studyRow } = await supabase
+              .from('studies')
+              .select('dosing_frequency')
+              .eq('id', studyId)
+              .single()
+            const df = (studyRow?.dosing_frequency || 'QD') as string
+            switch (df) {
+              case 'QD': factor = 1; break
+              case 'BID': factor = 2; break
+              case 'TID': factor = 3; break
+              case 'QID': factor = 4; break
+              case 'weekly': factor = 1/7; break
+              default: factor = 1
+            }
+          } catch { /* ignore */ }
+          for (const b of meaningful) {
+            const ipId = b.ip_id.trim()
+            if (b.dispensed > 0) {
+              await supabase
+                .from('drug_compliance')
+                .insert({
+                  subject_id: subjectId,
+                  user_id: user.id,
+                  assessment_date: visitDay,
+                  dispensed_count: b.dispensed,
+                  returned_count: 0,
+                  expected_taken: 0,
+                  visit_id: visitId,
+                  ip_id: ipId,
+                  dispensing_date: visitDay
+                } as unknown as never)
+            }
+            if (b.returned > 0) {
+              const { data: existing } = await supabase
+                .from('drug_compliance')
+                .select('*')
+                .eq('subject_id', subjectId)
+                .eq('ip_id', ipId)
+                .order('assessment_date', { ascending: false })
+                .limit(1)
+              if (existing && existing.length > 0) {
+                const row = existing[0]
+                const dispStr = row.dispensing_date || row.assessment_date
+                const start = new Date(String(dispStr).split('T')[0])
+                const end = new Date(String(visitDay).split('T')[0])
+                const days = Math.max(0, Math.round((end.getTime() - start.getTime()) / msPerDay))
+                const expected = Math.max(0, Math.round(days * factor))
+                await supabase
+                  .from('drug_compliance')
+                  .update({
+                    returned_count: b.returned,
+                    assessment_date: visitDay,
+                    expected_taken: expected
+                  } as unknown as never)
+                  .eq('id', row.id)
+              }
+            }
+          }
+        }
+      }
 
       onSave?.()
       onClose()
@@ -279,15 +357,60 @@ export default function VisitCard({
                 </div>
               </div>
 
+              <div className="space-y-3">
+                {bottles.map((b, idx) => (
+                  <div key={idx} className="grid grid-cols-3 gap-3">
+                    <input
+                      type="text"
+                      value={b.ip_id}
+                      onChange={(e) => setBottles(prev => prev.map((x,i) => i===idx ? { ...x, ip_id: e.target.value } : x))}
+                      className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none"
+                      placeholder="IP ID"
+                    />
+                    <input
+                      type="number"
+                      value={b.dispensed || ''}
+                      onChange={(e) => setBottles(prev => prev.map((x,i) => i===idx ? { ...x, dispensed: parseInt(e.target.value)||0 } : x))}
+                      className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none"
+                      placeholder="Dispensed"
+                    />
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="number"
+                        value={b.returned || ''}
+                        onChange={(e) => setBottles(prev => prev.map((x,i) => i===idx ? { ...x, returned: parseInt(e.target.value)||0 } : x))}
+                        className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none"
+                        placeholder="Returned"
+                      />
+                      <button
+                        type="button"
+                        className="px-2 py-2 text-red-400 hover:text-red-300"
+                        onClick={() => setBottles(prev => prev.filter((_,i) => i!==idx))}
+                        title="Remove row"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  className="text-green-400 hover:text-green-300 text-sm"
+                  onClick={() => setBottles(prev => [...prev, { ip_id: '', dispensed: 0, returned: 0 }])}
+                >
+                  + Add bottle row
+                </button>
+              </div>
+
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Tablets Dispensed
+                    IP Dispensed
                   </label>
                   <input
                     type="number"
-                    value={visitData.tablets_dispensed || ''}
-                    onChange={(e) => handleInputChange('tablets_dispensed', parseInt(e.target.value) || 0)}
+                    value={visitData.IP_dispensed || ''}
+                    onChange={(e) => handleInputChange('IP_dispensed', parseInt(e.target.value) || 0)}
                     className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="0"
                   />
@@ -295,12 +418,12 @@ export default function VisitCard({
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Tablets Returned
+                    IP Returned
                   </label>
                   <input
                     type="number"
-                    value={visitData.tablets_returned || ''}
-                    onChange={(e) => handleInputChange('tablets_returned', parseInt(e.target.value) || 0)}
+                    value={visitData.IP_returned || ''}
+                    onChange={(e) => handleInputChange('IP_returned', parseInt(e.target.value) || 0)}
                     className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="0"
                   />
@@ -314,7 +437,7 @@ export default function VisitCard({
                   <ComplianceWidget
                     compliance={drugCompliance}
                     title="Drug Compliance"
-                    subtitle="Based on tablet accountability"
+                    subtitle="Based on IP accountability"
                     showDetails={true}
                   />
                 )}

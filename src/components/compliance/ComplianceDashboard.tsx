@@ -23,8 +23,7 @@ interface SubjectVisit {
   id: string
   subject_id: string
   visit_name: string
-  scheduled_date: string
-  actual_date?: string
+  visit_date: string
   status: 'scheduled' | 'completed' | 'missed' | 'delayed'
   tablets_dispensed?: number
   tablets_returned?: number
@@ -115,11 +114,11 @@ export default function ComplianceDashboard({ studyId, subjectId, complianceThre
     }
 
     visits.forEach(visit => {
-      // Calculate visit compliance
-      if (visit.scheduled_date) {
+      // Calculate visit compliance using visit_date only
+      if (visit.visit_date) {
         const visitData: VisitComplianceData = {
-          scheduledDate: new Date(visit.scheduled_date),
-          actualDate: visit.actual_date ? new Date(visit.actual_date) : undefined,
+          scheduledDate: new Date(visit.visit_date),
+          actualDate: undefined,
           visitWindow: study.visit_window_days || 7,
           visitName: visit.visit_name,
           status: visit.status
@@ -130,13 +129,13 @@ export default function ComplianceDashboard({ studyId, subjectId, complianceThre
       }
 
       // Calculate drug compliance (if tablet data available)
-      if (visit.tablets_dispensed && visit.previous_dispense_date && visit.scheduled_date) {
+      if (visit.tablets_dispensed && visit.previous_dispense_date && visit.visit_date) {
         const drugData: DrugComplianceData = {
           tabletsDispensed: visit.tablets_dispensed,
           tabletsReturned: visit.tablets_returned || 0,
           dispensingDate: new Date(visit.previous_dispense_date),
-          expectedReturnDate: new Date(visit.scheduled_date),
-          actualReturnDate: visit.actual_date ? new Date(visit.actual_date) : undefined,
+          expectedReturnDate: new Date(visit.visit_date),
+          actualReturnDate: undefined,
           dosingFrequency: getDailyDoseFromFrequency(study.dosing_frequency || 'QD'),
           studyDrug: 'Study Medication'
         }
@@ -211,9 +210,9 @@ export default function ComplianceDashboard({ studyId, subjectId, complianceThre
 
       {/* Compliance Summary Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Drug Compliance */}
+        {/* IP Compliance */}
         <div className="bg-gray-800/50 rounded-lg border border-gray-700 p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">Drug Compliance</h3>
+          <h3 className="text-lg font-semibold text-white mb-4">IP Compliance</h3>
           {drugCompliances.length > 0 ? (
             <div className="space-y-3">
               {drugCompliances.map((compliance, index) => (
@@ -230,7 +229,7 @@ export default function ComplianceDashboard({ studyId, subjectId, complianceThre
               </div>
             </div>
           ) : (
-            <p className="text-gray-400 text-sm">No drug compliance data available</p>
+            <p className="text-gray-400 text-sm">No IP compliance data available</p>
           )}
         </div>
 

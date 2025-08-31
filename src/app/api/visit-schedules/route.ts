@@ -25,16 +25,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'study_id parameter is required' }, { status: 400 })
     }
 
-    // Verify user owns the study
+    // Verify membership for the study
     const { data: study, error: studyError } = await supabase
       .from('studies')
-      .select('id')
+      .select('id, site_id, user_id')
       .eq('id', studyId)
-      .eq('user_id', user.id)
       .single()
 
     if (studyError || !study) {
-      return NextResponse.json({ error: 'Study not found or access denied' }, { status: 404 })
+      return NextResponse.json({ error: 'Study not found' }, { status: 404 })
+    }
+    if (study.site_id) {
+      const { data: member } = await supabase
+        .from('site_members')
+        .select('user_id')
+        .eq('site_id', study.site_id)
+        .eq('user_id', user.id)
+        .maybeSingle()
+      if (!member) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      }
+    } else if (study.user_id !== user.id) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
     // Get visit schedules for the study
@@ -81,16 +93,28 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Verify user owns the study
+    // Verify membership for the study
     const { data: study, error: studyError } = await supabase
       .from('studies')
-      .select('id')
+      .select('id, site_id, user_id')
       .eq('id', study_id)
-      .eq('user_id', user.id)
       .single()
 
     if (studyError || !study) {
-      return NextResponse.json({ error: 'Study not found or access denied' }, { status: 404 })
+      return NextResponse.json({ error: 'Study not found' }, { status: 404 })
+    }
+    if (study.site_id) {
+      const { data: member } = await supabase
+        .from('site_members')
+        .select('user_id')
+        .eq('site_id', study.site_id)
+        .eq('user_id', user.id)
+        .maybeSingle()
+      if (!member) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      }
+    } else if (study.user_id !== user.id) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
     // Use a transaction to replace visit schedules
@@ -112,14 +136,29 @@ export async function POST(request: NextRequest) {
         .insert(visit_schedules.map(schedule => ({
           ...schedule,
           study_id // Ensure study_id is set
+          // Note: user_id column doesn't exist in database, but security is handled via study ownership verification
         })) as unknown as never)
         .select()
 
       if (insertError) {
         console.error('Insert error:', insertError)
-        return NextResponse.json({ error: 'Failed to create visit schedules' }, { status: 500 })
+        console.error('Error details:', {
+          code: insertError.code,
+          message: insertError.message,
+          details: insertError.details,
+          hint: insertError.hint
+        })
+        console.error('Data being inserted:', visit_schedules.map(schedule => ({
+          ...schedule,
+          study_id
+        })))
+        return NextResponse.json({ 
+          error: 'Failed to create visit schedules',
+          details: insertError.message 
+        }, { status: 500 })
       }
 
+      console.log('Successfully saved visit schedules:', newSchedules)
       return NextResponse.json({ visitSchedules: newSchedules }, { status: 201 })
     }
 
@@ -153,16 +192,28 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Visit schedule ID and study_id are required' }, { status: 400 })
     }
 
-    // Verify user owns the study
+    // Verify membership for the study
     const { data: study, error: studyError } = await supabase
       .from('studies')
-      .select('id')
+      .select('id, site_id, user_id')
       .eq('id', study_id)
-      .eq('user_id', user.id)
       .single()
 
     if (studyError || !study) {
-      return NextResponse.json({ error: 'Study not found or access denied' }, { status: 404 })
+      return NextResponse.json({ error: 'Study not found' }, { status: 404 })
+    }
+    if (study.site_id) {
+      const { data: member } = await supabase
+        .from('site_members')
+        .select('user_id')
+        .eq('site_id', study.site_id)
+        .eq('user_id', user.id)
+        .maybeSingle()
+      if (!member) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      }
+    } else if (study.user_id !== user.id) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
     // Update visit schedule

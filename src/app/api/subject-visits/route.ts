@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/api/auth'
 
-// GET /api/subject-visits?study_id=xxx&subject_id=xxx - Get subject visits
+// GET /api/subject-visits?studyId|study_id=xxx&subjectId|subject_id=xxx&startDate=xxx&endDate=xxx&summary=true - Get subject visits
 export async function GET(request: NextRequest) {
   try {
     const authHeader = request.headers.get('authorization')
@@ -19,44 +19,75 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const studyId = searchParams.get('study_id')
-    const subjectId = searchParams.get('subject_id')
+    const studyId = searchParams.get('studyId') || searchParams.get('study_id')
+    const subjectId = searchParams.get('subjectId') || searchParams.get('subject_id')
+    const startDate = searchParams.get('startDate')
+    const endDate = searchParams.get('endDate')
+    const summary = searchParams.get('summary')
     
     if (!studyId) {
-      return NextResponse.json({ error: 'study_id parameter is required' }, { status: 400 })
+      return NextResponse.json({ error: 'studyId parameter is required' }, { status: 400 })
     }
 
-    // Verify user owns the study
+    // Verify user membership on the study
     const { data: study, error: studyError } = await supabase
       .from('studies')
-      .select('id')
+      .select('id, site_id, user_id')
       .eq('id', studyId)
-      .eq('user_id', user.id)
       .single()
 
     if (studyError || !study) {
-      return NextResponse.json({ error: 'Study not found or access denied' }, { status: 404 })
+      return NextResponse.json({ error: 'Study not found' }, { status: 404 })
+    }
+    if (study.site_id) {
+      const { data: member } = await supabase
+        .from('site_members')
+        .select('user_id')
+        .eq('site_id', study.site_id)
+        .eq('user_id', user.id)
+        .maybeSingle()
+      if (!member) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      }
+    } else if (study.user_id !== user.id) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
-    // Build query
+    // Build query with join to get subject information (order by visit_date if available)
     let query = supabase
       .from('subject_visits')
-      .select('*')
+      .select(`
+        *,
+        subjects!inner(subject_number)
+      `)
       .eq('study_id', studyId)
-      .eq('user_id', user.id) // Extra security
-      .order('scheduled_date')
+      .order('visit_date', { ascending: true })
 
     // Filter by subject if provided
     if (subjectId) {
       query = query.eq('subject_id', subjectId)
     }
 
-    const { data: subjectVisits, error } = await query
+    // Filter by date range if provided
+    if (startDate) {
+      query = query.gte('visit_date', startDate)
+    }
+    if (endDate) {
+      query = query.lte('visit_date', endDate)
+    }
+
+    const { data: rawVisits, error } = await query
 
     if (error) {
       console.error('Database error:', error)
       return NextResponse.json({ error: 'Failed to fetch subject visits' }, { status: 500 })
     }
+
+    // Transform the data to include subject_number at the top level
+    const subjectVisits = rawVisits?.map(visit => ({
+      ...visit,
+      subject_number: visit.subjects.subject_number
+    })) || []
 
     return NextResponse.json({ subjectVisits })
   } catch (error) {
@@ -84,23 +115,35 @@ export async function POST(request: NextRequest) {
 
     const visitData = await request.json()
     
-    // Validate required fields
-    if (!visitData.study_id || !visitData.subject_id || !visitData.visit_name || !visitData.scheduled_date) {
+    // Validate required fields (visit_date is required)
+    if (!visitData.study_id || !visitData.subject_id || !visitData.visit_name || !visitData.visit_date) {
       return NextResponse.json({ 
-        error: 'Missing required fields: study_id, subject_id, visit_name, scheduled_date' 
+        error: 'Missing required fields: study_id, subject_id, visit_name, visit_date' 
       }, { status: 400 })
     }
 
-    // Verify user owns the study
+    // Verify user membership on the study
     const { data: study, error: studyError } = await supabase
       .from('studies')
-      .select('id')
+      .select('id, site_id, user_id')
       .eq('id', visitData.study_id)
-      .eq('user_id', user.id)
       .single()
 
     if (studyError || !study) {
-      return NextResponse.json({ error: 'Study not found or access denied' }, { status: 404 })
+      return NextResponse.json({ error: 'Study not found' }, { status: 404 })
+    }
+    if (study.site_id) {
+      const { data: member } = await supabase
+        .from('site_members')
+        .select('user_id')
+        .eq('site_id', study.site_id)
+        .eq('user_id', user.id)
+        .maybeSingle()
+      if (!member) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      }
+    } else if (study.user_id !== user.id) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
     // Insert subject visit with user ID
@@ -108,6 +151,7 @@ export async function POST(request: NextRequest) {
       .from('subject_visits')
       .insert({
         ...visitData,
+        visit_date: visitData.visit_date,
         user_id: user.id,
         status: visitData.status || 'scheduled'
       })
@@ -119,7 +163,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create subject visit' }, { status: 500 })
     }
 
-    return NextResponse.json({ subjectVisit }, { status: 201 })
+    // If a lab kit was assigned, update its status to 'assigned'
+    if (visitData.lab_kit_id) {
+      const { error: kitError } = await supabase
+        .from('lab_kits')
+        .update({ 
+          status: 'assigned',
+          visit_schedule_id: visitData.visit_schedule_id || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', visitData.lab_kit_id)
+        .eq('study_id', visitData.study_id) // Ensure kit belongs to same study
+
+      if (kitError) {
+        console.error('Failed to update lab kit status:', kitError)
+        // Don't fail the visit creation, just log the error
+      }
+    }
+
+    return NextResponse.json({ visit: subjectVisit }, { status: 201 })
   } catch (error) {
     console.error('API error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

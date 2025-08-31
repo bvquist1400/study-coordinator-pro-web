@@ -11,7 +11,7 @@ export interface DrugComplianceData {
   dispensingDate: Date
   expectedReturnDate: Date
   actualReturnDate?: Date
-  dosingFrequency: number // tablets per day
+  dosingFrequency: number // IP doses per day
   studyDrug: string
 }
 
@@ -45,7 +45,7 @@ export const DEFAULT_THRESHOLDS: StudyComplianceThresholds = {
 }
 
 /**
- * Calculate drug compliance based on tablet accountability
+ * Calculate drug compliance based on IP accountability
  */
 export function calculateDrugCompliance(
   data: DrugComplianceData,
@@ -54,7 +54,7 @@ export function calculateDrugCompliance(
   const deviations: string[] = []
   const recommendations: string[] = []
 
-  // Calculate expected tablets to be taken
+  // Calculate expected IP doses to be taken
   const daysBetween = Math.ceil(
     (data.expectedReturnDate.getTime() - data.dispensingDate.getTime()) / (1000 * 60 * 60 * 24)
   )
@@ -80,23 +80,23 @@ export function calculateDrugCompliance(
 
   // Detect deviations
   if (tabletsActuallyTaken > tabletsExpected) {
-    deviations.push(`Over-compliance: ${tabletsActuallyTaken} tablets taken vs ${tabletsExpected} expected`)
+    deviations.push(`Over-compliance: ${tabletsActuallyTaken} IP doses taken vs ${tabletsExpected} expected`)
     recommendations.push('Reinforce proper dosing instructions with subject')
   }
 
   if (percentage < thresholds.acceptable) {
     deviations.push(`Poor compliance: ${percentage.toFixed(1)}% (below ${thresholds.acceptable}% threshold)`)
     recommendations.push('Schedule additional subject counseling session')
-    recommendations.push('Consider pill counting and compliance aids')
+    recommendations.push('Consider IP counting and compliance aids')
   }
 
   if (data.tabletsReturned < 0) {
-    deviations.push('Negative tablet return count - data entry error')
-    recommendations.push('Verify tablet accountability data with site staff')
+    deviations.push('Negative IP return count - data entry error')
+    recommendations.push('Verify IP accountability data with site staff')
   }
 
   if (data.tabletsDispensed <= 0) {
-    deviations.push('No tablets dispensed recorded')
+    deviations.push('No IP dispensed recorded')
     recommendations.push('Verify dispensing records')
   }
 

@@ -1,0 +1,559 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase/client'
+import { calculateVisitDate } from '@/lib/visit-calculator'
+
+interface Subject {
+  id: string
+  subject_number: string
+  status: string
+  randomization_date: string | null
+}
+
+interface VisitSchedule {
+  id: string
+  visit_name: string
+  visit_number: number
+  visit_day: number
+  window_before_days: number
+  window_after_days: number
+  is_required: boolean
+  visit_type: string
+}
+
+interface Study {
+  id: string
+  anchor_day: number
+  visit_window_days: number
+}
+
+interface ScheduleVisitModalProps {
+  studyId: string
+  onClose: () => void
+  onSchedule: () => void
+}
+
+export default function ScheduleVisitModal({ studyId, onClose, onSchedule }: ScheduleVisitModalProps) {
+  const [subjects, setSubjects] = useState<Subject[]>([])
+  const [visitSchedules, setVisitSchedules] = useState<VisitSchedule[]>([])
+  const [study, setStudy] = useState<Study | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [scheduling, setScheduling] = useState(false)
+  
+  const [selectedSubjectId, setSelectedSubjectId] = useState('')
+  const [selectedVisitScheduleId, setSelectedVisitScheduleId] = useState('')
+  const [scheduledDate, setScheduledDate] = useState('')
+  const [customVisitName, setCustomVisitName] = useState('')
+  const [isCustomVisit, setIsCustomVisit] = useState(false)
+  
+  // Lab kit assignment state
+  const [availableLabKits, setAvailableLabKits] = useState<any[]>([])
+  const [labKitSearch, setLabKitSearch] = useState('')
+  const [selectedLabKit, setSelectedLabKit] = useState<any>(null)
+  const [showLabKitDropdown, setShowLabKitDropdown] = useState(false)
+  const [labKitRequired, setLabKitRequired] = useState(false)
+
+  useEffect(() => {
+    loadData()
+  }, [studyId])
+
+  const loadData = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      
+      if (!token) return
+
+      // Load subjects, visit schedules, study data, and available lab kits in parallel
+      const [subjectsRes, schedulesRes, studyRes, labKitsRes] = await Promise.all([
+        fetch(`/api/subjects?study_id=${studyId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch(`/api/visit-schedules?study_id=${studyId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch(`/api/studies/${studyId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch(`/api/lab-kits?studyId=${studyId}&status=available`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+      ])
+
+      if (subjectsRes.ok) {
+        const data = await subjectsRes.json()
+        console.log('Raw subjects data:', data.subjects)
+        // For now, show all subjects regardless of status to ensure visits can be scheduled
+        const filteredSubjects = data.subjects || []
+        console.log('Filtered subjects:', filteredSubjects)
+        setSubjects(filteredSubjects)
+      } else {
+        console.error('Failed to fetch subjects:', subjectsRes.status, await subjectsRes.text())
+      }
+
+      if (schedulesRes.ok) {
+        const data = await schedulesRes.json()
+        setVisitSchedules(data.visitSchedules || [])
+      }
+
+      if (studyRes.ok) {
+        const data = await studyRes.json()
+        setStudy(data.study)
+      }
+
+      if (labKitsRes.ok) {
+        const data = await labKitsRes.json()
+        console.log('Available lab kits:', data.labKits)
+        setAvailableLabKits(data.labKits || [])
+      } else {
+        console.error('Failed to fetch lab kits:', labKitsRes.status, await labKitsRes.text())
+      }
+    } catch (error) {
+      console.error('Error loading data:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSubjectChange = (subjectId: string) => {
+    setSelectedSubjectId(subjectId)
+    setScheduledDate('') // Reset date when subject changes
+  }
+
+  const handleVisitScheduleChange = (scheduleId: string) => {
+    setSelectedVisitScheduleId(scheduleId)
+    
+    // Check if this visit type requires a lab kit
+    const schedule = visitSchedules.find(s => s.id === scheduleId)
+    if (schedule) {
+      const procNames: string[] = (schedule as any)?.procedures || []
+      const lower = procNames.map(p => String(p).toLowerCase())
+      const requiresKit = lower.includes('lab kit') || lower.includes('labkit')
+      setLabKitRequired(requiresKit)
+    }
+    
+    if (scheduleId && selectedSubjectId && study) {
+      // Auto-calculate visit date based on subject's anchor date
+      const subject = subjects.find(s => s.id === selectedSubjectId)
+      
+      if (subject?.randomization_date && schedule) {
+        const calc = calculateVisitDate(
+          new Date(subject.randomization_date),
+          schedule.visit_day,
+          'days',
+          study.anchor_day,
+          schedule.window_before_days,
+          schedule.window_after_days
+        )
+        // Format as local YYYY-MM-DD to avoid timezone shifts
+        const y = calc.scheduledDate.getFullYear()
+        const m = String(calc.scheduledDate.getMonth() + 1).padStart(2, '0')
+        const d = String(calc.scheduledDate.getDate()).padStart(2, '0')
+        setScheduledDate(`${y}-${m}-${d}`)
+      }
+    }
+  }
+
+  // Lab kit search and selection handlers
+  const filteredLabKits = availableLabKits.filter(kit => 
+    kit.accession_number?.toLowerCase().includes(labKitSearch.toLowerCase())
+  )
+
+  const handleLabKitSearch = (value: string) => {
+    setLabKitSearch(value)
+    setShowLabKitDropdown(value.length > 0 && filteredLabKits.length > 0)
+  }
+
+  const handleLabKitSelect = (kit: any) => {
+    setSelectedLabKit(kit)
+    setLabKitSearch(kit.accession_number)
+    setShowLabKitDropdown(false)
+  }
+
+  const handleLabKitInputKeyDown = (e: React.KeyboardEvent) => {
+    if (!showLabKitDropdown || filteredLabKits.length === 0) return
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      // Focus first item or implement navigation logic
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      // Navigate up
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      if (filteredLabKits.length > 0) {
+        handleLabKitSelect(filteredLabKits[0])
+      }
+    } else if (e.key === 'Escape') {
+      setShowLabKitDropdown(false)
+    }
+  }
+
+  const handleSchedule = async () => {
+    if (!selectedSubjectId || (!selectedVisitScheduleId && !isCustomVisit) || !scheduledDate) {
+      alert('Please fill in all required fields')
+      return
+    }
+
+    if (labKitRequired && !selectedLabKit) {
+      alert('This visit requires a lab kit assignment')
+      return
+    }
+
+    try {
+      setScheduling(true)
+      
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      
+      if (!token) return
+
+      let visitName = customVisitName
+      let visitScheduleId: string | null = null
+      let labKitRequired = false
+      let drugDispensingRequired = false
+      let localLabsRequired = false
+
+      if (!isCustomVisit && selectedVisitScheduleId) {
+        const schedule = visitSchedules.find(s => s.id === selectedVisitScheduleId)
+        visitName = schedule?.visit_name || 'Unknown Visit'
+        visitScheduleId = selectedVisitScheduleId
+        // Map procedures in visit schedule to required flags
+        // Assumes visit_schedules has a procedures array (string[]); if not present in this type, we can fetch from API later
+        const procNames: string[] = (schedule as any)?.procedures || []
+        const lower = procNames.map(p => String(p).toLowerCase())
+        labKitRequired = lower.includes('lab kit') || lower.includes('labkit')
+        drugDispensingRequired = lower.includes('medication dispensing') || lower.includes('drug dispensing')
+        localLabsRequired = lower.includes('local labs') || lower.includes('local lab')
+      }
+
+      const visitData = {
+        study_id: studyId,
+        subject_id: selectedSubjectId,
+        visit_schedule_id: visitScheduleId,
+        visit_name: visitName,
+        visit_date: scheduledDate,
+        status: 'scheduled',
+        // Pre-populate required flags based on schedule
+        lab_kit_required: labKitRequired || undefined,
+        drug_dispensing_required: drugDispensingRequired || undefined,
+        local_labs_required: localLabsRequired || undefined,
+        // Include selected lab kit if assigned
+        lab_kit_id: selectedLabKit?.id || undefined
+      }
+
+      const response = await fetch('/api/subject-visits', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(visitData)
+      })
+
+      if (response.ok) {
+        onSchedule()
+      } else {
+        const error = await response.json()
+        alert(`Error scheduling visit: ${error.error}`)
+      }
+    } catch (error) {
+      console.error('Error scheduling visit:', error)
+      alert('Failed to schedule visit')
+    } finally {
+      setScheduling(false)
+    }
+  }
+
+  const getVisitWindow = () => {
+    // Window MUST be anchored to the target date (anchor + visit_day), not the chosen scheduled date
+    if (!selectedVisitScheduleId) return null
+    const schedule = visitSchedules.find(s => s.id === selectedVisitScheduleId)
+    if (!schedule) return null
+    const subject = subjects.find(s => s.id === selectedSubjectId)
+    if (!subject || !subject.randomization_date || !study) return null
+
+    const calc = calculateVisitDate(
+      new Date(subject.randomization_date),
+      schedule.visit_day,
+      'days',
+      study.anchor_day,
+      schedule.window_before_days,
+      schedule.window_after_days
+    )
+    // calc.scheduledDate here represents the target date (anchor + visit_day + anchor offset)
+    const windowStart = calc.windowStart
+    const windowEnd = calc.windowEnd
+
+    return {
+      start: windowStart.toLocaleDateString(),
+      end: windowEnd.toLocaleDateString()
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-gray-800/95 backdrop-blur-sm border border-gray-700 rounded-2xl p-8">
+          <div className="animate-pulse flex items-center space-x-4">
+            <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            <span className="text-white">Loading...</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const visitWindow = getVisitWindow()
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-800/95 backdrop-blur-sm border border-gray-700 rounded-2xl max-w-2xl w-full">
+        <div className="p-6">
+          {/* Header */}
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold text-white">Schedule Visit</h2>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-white transition-colors"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+              </svg>
+            </button>
+          </div>
+
+          <div className="space-y-6">
+            {/* Subject Selection */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Subject *
+              </label>
+              <select
+                value={selectedSubjectId}
+                onChange={(e) => handleSubjectChange(e.target.value)}
+                className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select Subject...</option>
+                {subjects.map((subject) => (
+                  <option key={subject.id} value={subject.id}>
+                    {subject.subject_number} ({subject.status})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Visit Type Toggle */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Visit Type
+              </label>
+              <div className="flex space-x-4">
+                <button
+                  onClick={() => setIsCustomVisit(false)}
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                    !isCustomVisit
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                >
+                  Protocol Visit
+                </button>
+                <button
+                  onClick={() => setIsCustomVisit(true)}
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                    isCustomVisit
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                >
+                  Custom Visit
+                </button>
+              </div>
+            </div>
+
+            {/* Visit Selection */}
+            {!isCustomVisit ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Visit Template *
+                </label>
+                <select
+                  value={selectedVisitScheduleId}
+                  onChange={(e) => handleVisitScheduleChange(e.target.value)}
+                  className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select Visit...</option>
+                  {visitSchedules.map((schedule) => (
+                    <option key={schedule.id} value={schedule.id}>
+                      {schedule.visit_name} (Day {schedule.visit_day})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Custom Visit Name *
+                </label>
+                <input
+                  type="text"
+                  value={customVisitName}
+                  onChange={(e) => setCustomVisitName(e.target.value)}
+                  placeholder="e.g., Unscheduled Visit, Safety Follow-up"
+                  className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            )}
+
+            {/* Scheduled Date */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Scheduled Date *
+              </label>
+              <input
+                type="date"
+                value={scheduledDate}
+                onChange={(e) => setScheduledDate(e.target.value)}
+                className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {visitWindow && (
+                <p className="text-sm text-gray-400 mt-1">
+                  Visit window: {visitWindow.start} - {visitWindow.end}
+                </p>
+              )}
+            </div>
+
+            {/* Lab Kit Assignment */}
+            {(labKitRequired || selectedLabKit) && (
+              <div className="relative">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Lab Kit Assignment {labKitRequired && '*'}
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={labKitSearch}
+                    onChange={(e) => handleLabKitSearch(e.target.value)}
+                    onKeyDown={handleLabKitInputKeyDown}
+                    onFocus={() => setShowLabKitDropdown(labKitSearch.length > 0 && filteredLabKits.length > 0)}
+                    placeholder="Type accession number to search..."
+                    className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  {selectedLabKit && (
+                    <button
+                      onClick={() => {
+                        setSelectedLabKit(null)
+                        setLabKitSearch('')
+                        setShowLabKitDropdown(false)
+                      }}
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+
+                {/* Autocomplete Dropdown */}
+                {showLabKitDropdown && filteredLabKits.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-gray-700 border border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {filteredLabKits.map((kit) => (
+                      <button
+                        key={kit.id}
+                        onClick={() => handleLabKitSelect(kit)}
+                        className="w-full px-3 py-2 text-left text-gray-100 hover:bg-gray-600 focus:bg-gray-600 focus:outline-none first:rounded-t-lg last:rounded-b-lg"
+                      >
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <span className="font-medium">{kit.accession_number}</span>
+                            {kit.kit_type && (
+                              <span className="ml-2 text-sm text-gray-400">({kit.kit_type})</span>
+                            )}
+                          </div>
+                          {kit.expiration_date && (
+                            <span className="text-xs text-gray-400">
+                              Exp: {new Date(kit.expiration_date).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {selectedLabKit && (
+                  <div className="mt-2 p-3 bg-green-900/20 border border-green-700/50 rounded-lg">
+                    <div className="flex items-center space-x-2">
+                      <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+                      </svg>
+                      <span className="text-sm text-green-400">Lab Kit Assigned</span>
+                    </div>
+                    <div className="mt-1 text-sm text-gray-300">
+                      <p><span className="text-gray-400">Accession:</span> {selectedLabKit.accession_number}</p>
+                      {selectedLabKit.kit_type && (
+                        <p><span className="text-gray-400">Type:</span> {selectedLabKit.kit_type}</p>
+                      )}
+                      {selectedLabKit.expiration_date && (
+                        <p><span className="text-gray-400">Expires:</span> {new Date(selectedLabKit.expiration_date).toLocaleDateString()}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {labKitRequired && !selectedLabKit && (
+                  <p className="text-sm text-yellow-400 mt-1">
+                    This visit type requires a lab kit assignment
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Preview */}
+            {selectedSubjectId && (selectedVisitScheduleId || customVisitName) && scheduledDate && (
+              <div className="bg-gray-700/30 rounded-lg p-4">
+                <h3 className="text-sm font-medium text-gray-300 mb-2">Preview</h3>
+                <div className="text-gray-100 space-y-1">
+                  <p><span className="text-gray-400">Subject:</span> {subjects.find(s => s.id === selectedSubjectId)?.subject_number}</p>
+                  <p><span className="text-gray-400">Visit:</span> {
+                    isCustomVisit 
+                      ? customVisitName 
+                      : visitSchedules.find(s => s.id === selectedVisitScheduleId)?.visit_name
+                  }</p>
+                  <p><span className="text-gray-400">Date:</span> {new Date(scheduledDate).toLocaleDateString()}</p>
+                  {selectedLabKit && (
+                    <p><span className="text-gray-400">Lab Kit:</span> {selectedLabKit.accession_number}</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex justify-end space-x-4 pt-6 border-t border-gray-700">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-6 py-2 text-gray-400 hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSchedule}
+                disabled={scheduling || !selectedSubjectId || (!selectedVisitScheduleId && !customVisitName) || !scheduledDate || (labKitRequired && !selectedLabKit)}
+                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+              >
+                {scheduling && (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                )}
+                <span>{scheduling ? 'Scheduling...' : 'Schedule Visit'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

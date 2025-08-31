@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { useRouter, usePathname } from 'next/navigation'
 import { ThemeToggle } from '@/components/theme/ThemeToggle'
+import { useSite } from '@/components/site/SiteProvider'
 
 interface DashboardLayoutProps {
   children: React.ReactNode
@@ -13,6 +14,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
+  const { sites, currentSiteId, setCurrentSiteId } = useSite()
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -24,7 +26,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { name: 'Studies', href: '/studies', icon: FolderIcon },
     { name: 'Subjects', href: '/subjects', icon: UsersIcon },
     { name: 'Visits', href: '/visits', icon: CalendarIcon },
+    { name: 'Lab Kits', href: '/lab-kits', icon: BeakerIcon },
     { name: 'Compliance', href: '/compliance', icon: ChartBarIcon },
+    { name: 'Members', href: '/members', icon: UsersIcon },
     { name: 'Monitor Actions', href: '/monitor-actions', icon: ClipboardListIcon },
     { name: 'Deviations', href: '/deviations', icon: ExclamationTriangleIcon },
   ]
@@ -76,6 +80,19 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 <span className="text-xs text-gray-400">Theme</span>
                 <ThemeToggle />
               </div>
+              <div className="space-y-1">
+                <label className="block text-xs text-gray-400">Site</label>
+                <select
+                  value={currentSiteId || ''}
+                  onChange={(e) => setCurrentSiteId(e.target.value || null)}
+                  className="w-full bg-gray-800 border border-gray-700 text-gray-100 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  {sites.length === 0 && <option value="">No sites</option>}
+                  {sites.map(site => (
+                    <option key={site.id} value={site.id}>{site.name}</option>
+                  ))}
+                </select>
+              </div>
               <button
                 onClick={handleSignOut}
                 className="flex items-center w-full text-sm text-gray-400 hover:text-white transition-colors"
@@ -122,6 +139,19 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             <div className="flex items-center justify-between">
               <span className="text-xs text-gray-400">Theme</span>
               <ThemeToggle />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-xs text-gray-400">Site</label>
+              <select
+                value={currentSiteId || ''}
+                onChange={(e) => setCurrentSiteId(e.target.value || null)}
+                className="w-full bg-gray-800 border border-gray-700 text-gray-100 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                {sites.length === 0 && <option value="">No sites</option>}
+                {sites.map(site => (
+                  <option key={site.id} value={site.id}>{site.name}</option>
+                ))}
+              </select>
             </div>
             <button
               onClick={handleSignOut}
@@ -225,6 +255,14 @@ function Bars3Icon(props: React.ComponentProps<'svg'>) {
   return (
     <svg {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+  )
+}
+
+function BeakerIcon(props: React.ComponentProps<'svg'>) {
+  return (
+    <svg {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2z" />
     </svg>
   )
 }

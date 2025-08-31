@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { useSite } from '@/components/site/SiteProvider'
 import { supabase } from '@/lib/supabase/client'
 import DashboardLayout from '@/components/dashboard/DashboardLayout'
 import ComplianceDashboard from '@/components/compliance/ComplianceDashboard'
@@ -15,6 +16,7 @@ interface Study {
 function CompliancePageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { currentSiteId } = useSite()
   const [studies, setStudies] = useState<Study[]>([])
   const [selectedStudyId, setSelectedStudyId] = useState<string>('')
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('')
@@ -31,7 +33,8 @@ function CompliancePageContent() {
 
   useEffect(() => {
     loadStudies()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSiteId])
 
   const loadStudies = async () => {
     try {
@@ -48,7 +51,7 @@ function CompliancePageContent() {
       // Try API first
       if (token) {
         try {
-          const response = await fetch('/api/studies', {
+          const response = await fetch(currentSiteId ? `/api/studies?site_id=${currentSiteId}` : '/api/studies', {
             headers: {
               'Authorization': `Bearer ${token}`
             }
@@ -73,13 +76,13 @@ function CompliancePageContent() {
       const { data: studies, error } = await supabase
         .from('studies')
         .select('*')
-        .eq('user_id', session.user.id)
         .order('created_at', { ascending: false })
 
       if (error) {
         console.error('Database error:', error)
       } else {
-        setStudies(studies || [])
+        const filtered = currentSiteId ? (studies || []).filter((s: any) => s.site_id === currentSiteId) : (studies || [])
+        setStudies(filtered)
         
         if (!selectedStudyId && studies && studies.length > 0) {
           setSelectedStudyId(studies[0].id)
