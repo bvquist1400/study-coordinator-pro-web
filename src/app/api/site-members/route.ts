@@ -13,6 +13,7 @@ async function requireUser(request: NextRequest) {
   return { supabase, user }
 }
 
+type SiteMemberRole = 'owner' | 'coordinator' | 'pi' | 'monitor'
 async function requireOwner(supabase: ReturnType<typeof createSupabaseAdmin>, siteId: string, userId: string) {
   const { data: member } = await supabase
     .from('site_members')
@@ -20,7 +21,8 @@ async function requireOwner(supabase: ReturnType<typeof createSupabaseAdmin>, si
     .eq('site_id', siteId)
     .eq('user_id', userId)
     .maybeSingle()
-  if (!member || member.role !== 'owner') return false
+  const memberRow = member as { role?: SiteMemberRole } | null
+  if (!memberRow || memberRow.role !== 'owner') return false
   return true
 }
 
