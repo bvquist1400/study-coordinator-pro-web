@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/api/auth'
 
+type StudyAccessRow = { id: string; site_id: string | null; user_id: string }
+
 // GET /api/lab-kits?studyId=xxx&status=xxx&summary=true - Get lab kits
 export async function GET(request: NextRequest) {
   try {
@@ -34,20 +36,21 @@ export async function GET(request: NextRequest) {
       .eq('id', studyId)
       .single()
 
-    if (studyError || !study) {
+    const studyRow = study as StudyAccessRow | null
+    if (studyError || !studyRow) {
       return NextResponse.json({ error: 'Study not found' }, { status: 404 })
     }
-    if (study.site_id) {
+    if (studyRow.site_id) {
       const { data: member } = await supabase
         .from('site_members')
         .select('user_id')
-        .eq('site_id', study.site_id)
+        .eq('site_id', studyRow.site_id)
         .eq('user_id', user.id)
         .maybeSingle()
       if (!member) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
-    } else if (study.user_id !== user.id) {
+    } else if (studyRow.user_id !== user.id) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
@@ -113,20 +116,21 @@ export async function POST(request: NextRequest) {
       .eq('id', kitData.study_id)
       .single()
 
-    if (studyError || !study) {
+    const studyRow2 = study as StudyAccessRow | null
+    if (studyError || !studyRow2) {
       return NextResponse.json({ error: 'Study not found' }, { status: 404 })
     }
-    if (study.site_id) {
+    if (studyRow2.site_id) {
       const { data: member } = await supabase
         .from('site_members')
         .select('user_id')
-        .eq('site_id', study.site_id)
+        .eq('site_id', studyRow2.site_id)
         .eq('user_id', user.id)
         .maybeSingle()
       if (!member) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
-    } else if (study.user_id !== user.id) {
+    } else if (studyRow2.user_id !== user.id) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
