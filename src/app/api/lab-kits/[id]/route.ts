@@ -147,7 +147,7 @@ export async function PUT(
       .update({
         ...updateData,
         updated_at: new Date().toISOString()
-      })
+      } as unknown as never)
       .eq('id', kitId)
       .select()
       .single()

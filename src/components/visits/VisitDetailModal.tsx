@@ -26,7 +26,11 @@ interface VisitDetail {
   previous_dispense_date: string | null
   tablets_dispensed: number | null
   tablets_returned: number | null
-  actual_start_date: string | null
+  ip_start_date: string | null
+  ip_last_dose_date: string | null
+  ip_dispensed: number | null
+  ip_returned: number | null
+  ip_id: string | null
 
   // Local Labs
   local_labs_required: boolean | null
@@ -42,14 +46,16 @@ interface VisitDetail {
 type VisitStatus = VisitDetail['status']
 
 interface FormData {
-  actual_start_date: string
+  ip_start_date: string
+  ip_last_dose_date: string
   status: VisitStatus
   procedures_completed: string[]
   accession_number: string
   airway_bill_number: string
   lab_kit_shipped_date: string
-  tablets_dispensed: string
-  tablets_returned: string
+  ip_dispensed: string
+  ip_returned: string
+  ip_id: string
   local_labs_completed: boolean
   notes: string
 }
@@ -95,14 +101,16 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
   const [dosingLabel, setDosingLabel] = useState('Once daily')
 
   const [formData, setFormData] = useState<FormData>({
-    actual_start_date: '',
+    ip_start_date: '',
+    ip_last_dose_date: '',
     status: 'scheduled',
     procedures_completed: [],
     accession_number: '',
     airway_bill_number: '',
     lab_kit_shipped_date: '',
-    tablets_dispensed: '',
-    tablets_returned: '',
+    ip_dispensed: '',
+    ip_returned: '',
+    ip_id: '',
     local_labs_completed: false,
     notes: ''
   })
@@ -133,14 +141,16 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
         setVisit(visit)
 
         setFormData({
-          actual_start_date: visit.actual_start_date?.split('T')[0] || '',
+          ip_start_date: visit.ip_start_date?.split('T')[0] || '',
+          ip_last_dose_date: visit.ip_last_dose_date?.split('T')[0] || '',
           status: visit.status as VisitStatus,
           procedures_completed: visit.procedures_completed || [],
           accession_number: visit.accession_number || '',
           airway_bill_number: visit.airway_bill_number || '',
           lab_kit_shipped_date: visit.lab_kit_shipped_date?.split('T')[0] || '',
-          tablets_dispensed: visit.tablets_dispensed?.toString() || '',
-          tablets_returned: visit.tablets_returned?.toString() || '',
+          ip_dispensed: visit.ip_dispensed?.toString() || '',
+          ip_returned: visit.ip_returned?.toString() || '',
+          ip_id: visit.ip_id || '',
           local_labs_completed: visit.local_labs_completed || false,
           notes: visit.notes || ''
         })
@@ -226,8 +236,8 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
 
   const computeDaysAndExpected = () => {
     if (!visit) return { days: 0, expectedBase: 0 }
-    const startStr = (visit?.previous_dispense_date || formData.actual_start_date || '').toString()
-    const endStr = (visit?.visit_date || '').toString()
+    const startStr = (visit?.previous_dispense_date || formData.ip_start_date || '').toString()
+    const endStr = (formData.ip_last_dose_date || visit?.visit_date || '').toString()
     const msPerDay = 1000 * 60 * 60 * 24
     let days = 0
     if (startStr && endStr) {
@@ -268,9 +278,8 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
   }
 
   const upsertDrugComplianceForIP = async (assessmentDateISO: string) => {
-    const meaningfulDispenses = dispenseRows.filter(r => r.ip_id && r.dispensed > 0)
-    const meaningfulReturns = returnRows.filter(r => r.ip_id && r.returned > 0)
-    if (!visit || (meaningfulDispenses.length === 0 && meaningfulReturns.length === 0)) return
+    // Use the new IP fields from formData instead of dispenseRows/returnRows
+    if (!visit || !formData.ip_id) return
 
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
@@ -300,48 +309,56 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
       /* ignore */
     }
 
-    // Inserts for dispenses at this visit
-    for (const b of meaningfulDispenses) {
+    // Handle IP dispensing if we have dispensed amount and IP start date
+    if (formData.ip_dispensed && formData.ip_start_date && parseInt(formData.ip_dispensed) > 0) {
       const payload: DrugComplianceRow = {
         subject_id: subjectId,
         user_id: user.id,
         assessment_date: visitDay,
-        dispensed_count: b.dispensed,
+        dispensed_count: parseInt(formData.ip_dispensed),
         returned_count: 0,
         expected_taken: 0,
         visit_id: visitId,
-        ip_id: b.ip_id.trim(),
-        dispensing_date: visitDay
+        ip_id: formData.ip_id.trim(),
+        dispensing_date: formData.ip_start_date
       }
       await supabase.from('drug_compliance').insert(payload)
     }
 
-    // Updates for returns from prior visit
-    for (const b of meaningfulReturns) {
-      const ipId = b.ip_id.trim()
+    // Handle IP returns if we have return amount and last dose date
+    if (formData.ip_returned && formData.ip_last_dose_date && parseInt(formData.ip_returned) > 0) {
+      const ipId = formData.ip_id.trim()
+      
+      // Find the most recent compliance record for this IP
       const { data: existing } = await supabase
         .from('drug_compliance')
         .select('*')
         .eq('subject_id', subjectId)
         .eq('ip_id', ipId)
-        .order('assessment_date', { ascending: false })
+        .order('dispensing_date', { ascending: false })
         .limit(1)
 
       if (existing && existing.length > 0) {
-        const row = existing[0] as { id: string; dispensing_date?: string | null; assessment_date: string }
-        const dispStr = row.dispensing_date || row.assessment_date
-        const start = new Date(String(dispStr).split('T')[0])
-        const end = new Date(String(visitDay).split('T')[0])
-        const days = Math.max(0, Math.round((end.getTime() - start.getTime()) / msPerDay))
-        const expected = Math.max(0, Math.round(days * factor))
-        await supabase
-          .from('drug_compliance')
-          .update({
-            returned_count: b.returned,
-            assessment_date: visitDay,
-            expected_taken: expected
-          })
-          .eq('id', row.id)
+        const row = existing[0] as { id: string; dispensing_date?: string | null }
+        const dispensingDate = row.dispensing_date
+        
+        if (dispensingDate) {
+          // Calculate expected taken based on dispensing date to last dose date
+          const start = new Date(String(dispensingDate).split('T')[0])
+          const end = new Date(String(formData.ip_last_dose_date).split('T')[0])
+          const days = Math.max(0, Math.round((end.getTime() - start.getTime()) / msPerDay))
+          const expected = Math.max(0, Math.round(days * factor))
+          
+          await supabase
+            .from('drug_compliance')
+            .update({
+              returned_count: parseInt(formData.ip_returned),
+              assessment_date: visitDay,
+              expected_taken: expected,
+              ip_last_dose_date: formData.ip_last_dose_date
+            })
+            .eq('id', row.id)
+        }
       }
     }
     showToast('IP compliance updated', 'success')
@@ -363,14 +380,16 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
       if (!token) return
 
       const updateData = {
-        actual_start_date: formData.actual_start_date || null,
+        ip_start_date: formData.ip_start_date || null,
+        ip_last_dose_date: formData.ip_last_dose_date || null,
         status: formData.status,
         procedures_completed: formData.procedures_completed,
         accession_number: formData.accession_number || null,
         airway_bill_number: formData.airway_bill_number || null,
         lab_kit_shipped_date: formData.lab_kit_shipped_date || null,
-        tablets_dispensed: formData.tablets_dispensed ? parseInt(formData.tablets_dispensed) : null,
-        tablets_returned: formData.tablets_returned ? parseInt(formData.tablets_returned) : null,
+        ip_dispensed: formData.ip_dispensed ? parseInt(formData.ip_dispensed) : null,
+        ip_returned: formData.ip_returned ? parseInt(formData.ip_returned) : null,
+        ip_id: formData.ip_id || null,
         local_labs_completed: formData.local_labs_completed,
         notes: formData.notes || null
       }
@@ -622,25 +641,6 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
                   )}
                 </div>
 
-                {/* Actual Start Date - for backfilling or when visit date differs from actual occurrence */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">
-                    Actual Start Date 
-                    <span className="text-gray-500 text-xs ml-1">(for backfilling past visits)</span>
-                  </label>
-                  {isEditing ? (
-                    <input
-                      type="date"
-                      value={formData.actual_start_date}
-                      onChange={(e) => handleChange('actual_start_date', e.target.value)}
-                      className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  ) : (
-                    <p className="text-gray-100">
-                      {visit.actual_start_date ? formatDate(visit.actual_start_date) : '-'}
-                    </p>
-                  )}
-                </div>
               </div>
             </div>
           </div>
@@ -743,193 +743,93 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
               <div className="bg-gray-700/30 rounded-lg p-6">
                 <h3 className="text-lg font-semibold text-white mb-4">IP Accountability</h3>
 
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                {/* Dispense at this visit section */}
+                <div className="mb-6">
+                  <h4 className="text-md font-semibold text-gray-100 mb-3">Dispense at this visit</h4>
+                  <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-1">IP Dispensed</label>
+                      <label className="block text-sm font-medium text-gray-300 mb-1">First Dose of This Assignment</label>
                       {isEditing ? (
                         <input
-                          type="number"
-                          value={formData.tablets_dispensed}
-                          onChange={(e) => handleChange('tablets_dispensed', e.target.value)}
+                          type="date"
+                          value={formData.ip_start_date}
+                          onChange={(e) => handleChange('ip_start_date', e.target.value)}
                           className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       ) : (
-                        <p className="text-gray-100">{visit.tablets_dispensed || '-'}</p>
+                        <p className="text-gray-100">{visit.ip_start_date ? formatDate(visit.ip_start_date) : '-'}</p>
                       )}
                     </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Bottle or Kit Number</label>
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={formData.ip_id}
+                            onChange={(e) => handleChange('ip_id', e.target.value)}
+                            className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Enter bottle/kit number"
+                          />
+                        ) : (
+                          <p className="text-gray-100">{visit.ip_id || '-'}</p>
+                        )}
+                      </div>
 
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Dispensed (# of tablets/pills per bottle/kit)</label>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            value={formData.ip_dispensed}
+                            onChange={(e) => handleChange('ip_dispensed', e.target.value)}
+                            className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Number dispensed"
+                          />
+                        ) : (
+                          <p className="text-gray-100">{visit.ip_dispensed || '-'}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Returns from previous visit section */}
+                <div className="mb-4">
+                  <h4 className="text-md font-semibold text-gray-100 mb-3">Returns from previous visit</h4>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-1">Last Dose from Assignment</label>
+                      {isEditing ? (
+                        <input
+                          type="date"
+                          value={formData.ip_last_dose_date}
+                          onChange={(e) => handleChange('ip_last_dose_date', e.target.value)}
+                          className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <p className="text-gray-100">{visit.ip_last_dose_date ? formatDate(visit.ip_last_dose_date) : '-'}</p>
+                      )}
+                    </div>
+                    
                     <div>
                       <label className="block text-sm font-medium text-gray-300 mb-1">IP Returned</label>
                       {isEditing ? (
                         <input
                           type="number"
-                          value={formData.tablets_returned}
-                          onChange={(e) => handleChange('tablets_returned', e.target.value)}
+                          value={formData.ip_returned}
+                          onChange={(e) => handleChange('ip_returned', e.target.value)}
                           className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Number returned"
                         />
                       ) : (
-                        <p className="text-gray-100">{visit.tablets_returned || '-'}</p>
+                        <p className="text-gray-100">{visit.ip_returned || '-'}</p>
                       )}
                     </div>
                   </div>
-
-                  {/* Multi-bottle IP rows */}
-                  <div className="space-y-6">
-                    {/* Dispense at this visit */}
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="text-md font-semibold text-gray-100">Dispense at this visit</h4>
-                        <div className="flex items-center gap-3 text-xs">
-                          <button
-                            type="button"
-                            className="text-gray-300 hover:text-white"
-                            onClick={() => setDispenseRows([{ ip_id: '', dispensed: 0 }])}
-                          >
-                            Reset
-                          </button>
-                          <button
-                            type="button"
-                            className="text-red-300 hover:text-red-200"
-                            onClick={() => setDispenseRows([])}
-                          >
-                            Clear all
-                          </button>
-                        </div>
-                      </div>
-                      {dispenseRows.map((r, idx) => (
-                        <div key={idx} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mb-2">
-                          <input
-                            type="text"
-                            value={r.ip_id}
-                            onChange={(e) =>
-                              setDispenseRows(prev => prev.map((x, i) => (i === idx ? { ...x, ip_id: e.target.value } : x)))
-                            }
-                            className="w-full px-3 py-2 bg-gray-700/50 border border-gray-600 rounded-lg text-gray-100 focus:outline-none"
-                            placeholder="IP ID"
-                          />
-                          <input
-                            type="number"
-                            value={r.dispensed || ''}
-                            onChange={(e) =>
-                              setDispenseRows(prev =>
-                                prev.map((x, i) => (i === idx ? { ...x, dispensed: parseInt(e.target.value) || 0 } : x))
-                              )
-                            }
-                            className="w-full px-3 py-2 bg-gray-700/50 border border-gray-600 rounded-lg text-gray-100 focus:outline-none"
-                            placeholder="Dispensed"
-                          />
-                          <div className="flex items-center">
-                            <button
-                              type="button"
-                              className="ml-auto px-2 py-2 text-red-400 hover:text-red-300"
-                              onClick={() => setDispenseRows(prev => prev.filter((_, i) => i !== idx))}
-                              title="Remove row"
-                            >
-                              x
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                      <button
-                        type="button"
-                        className="text-green-400 hover:text-green-300 text-sm"
-                        onClick={() => setDispenseRows(prev => [...prev, { ip_id: '', dispensed: 0 }])}
-                      >
-                        + Add dispense row
-                      </button>
-                    </div>
-
-                    {/* Returns from prior visit */}
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-3">
-                          <h4 className="text-md font-semibold text-gray-100">Returns from prior visit</h4>
-                          <span className="text-xs text-gray-500">Dosing: {dosingLabel}</span>
-                        </div>
-                        <div className="flex items-center gap-3 text-xs">
-                          <button
-                            type="button"
-                            className="text-gray-300 hover:text-white"
-                            onClick={() => setReturnRows([{ ip_id: '', returned: 0 }])}
-                          >
-                            Reset
-                          </button>
-                          <button
-                            type="button"
-                            className="text-red-300 hover:text-red-200"
-                            onClick={() => setReturnRows([])}
-                          >
-                            Clear all
-                          </button>
-                          <button type="button" className="text-blue-300 hover:text-blue-200" onClick={copyComplianceSummary}>
-                            Copy compliance summary
-                          </button>
-                        </div>
-                      </div>
-
-                      {returnRows.map((r, idx) => {
-                        const startStr = (visit?.previous_dispense_date || formData.actual_start_date || '').toString()
-                        const endStr = (visit?.visit_date || '').toString()
-                        const msPerDay = 1000 * 60 * 60 * 24
-                        let days = 0
-                        let expected = 0
-                        if (startStr && endStr) {
-                          const start = new Date(startStr.split('T')[0])
-                          const end = new Date(endStr.split('T')[0])
-                          days = Math.max(0, Math.round((end.getTime() - start.getTime()) / msPerDay))
-                          expected = Math.max(0, Math.round(days * dosingFactor))
-                        }
-                        return (
-                          <div key={idx} className="mb-2">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                              <input
-                                type="text"
-                                value={r.ip_id}
-                                onChange={(e) =>
-                                  setReturnRows(prev => prev.map((x, i) => (i === idx ? { ...x, ip_id: e.target.value } : x)))
-                                }
-                                className="w-full px-3 py-2 bg-gray-700/50 border border-gray-600 rounded-lg text-gray-100 focus:outline-none"
-                                placeholder="IP ID"
-                              />
-                              <input
-                                type="number"
-                                value={r.returned || ''}
-                                onChange={(e) =>
-                                  setReturnRows(prev =>
-                                    prev.map((x, i) => (i === idx ? { ...x, returned: parseInt(e.target.value) || 0 } : x))
-                                  )
-                                }
-                                className="w-full px-3 py-2 bg-gray-700/50 border border-gray-600 rounded-lg text-gray-100 focus:outline-none"
-                                placeholder="Returned"
-                              />
-                              <div className="flex items-center">
-                                <button
-                                  type="button"
-                                  className="ml-auto px-2 py-2 text-red-400 hover:text-red-300"
-                                  onClick={() => setReturnRows(prev => prev.filter((_, i) => i !== idx))}
-                                  title="Remove row"
-                                >
-                                  x
-                                </button>
-                              </div>
-                            </div>
-                            <div className="text-xs text-gray-400 mt-1">
-                              Expected = {days} days x {dosingLabel} = {expected}
-                            </div>
-                          </div>
-                        )
-                      })}
-                      <button
-                        type="button"
-                        className="text-green-400 hover:text-green-300 text-sm"
-                        onClick={() => setReturnRows(prev => [...prev, { ip_id: '', returned: 0 }])}
-                      >
-                        + Add return row
-                      </button>
-                    </div>
-                  </div>
                 </div>
+
               </div>
 
               {/* Local Labs */}
@@ -1013,12 +913,14 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
                       if (!token) return
                       const body = {
                         status: 'completed' as VisitStatus,
-                        actual_start_date: formData.actual_start_date || visit.visit_date, // Use visit date if no actual date set
+                        ip_start_date: formData.ip_start_date || null,
+                        ip_last_dose_date: formData.ip_last_dose_date || null,
                         accession_number: formData.accession_number || null,
                         airway_bill_number: formData.airway_bill_number || null,
                         lab_kit_shipped_date: formData.lab_kit_shipped_date || null,
-                        tablets_dispensed: formData.tablets_dispensed ? parseInt(formData.tablets_dispensed) : null,
-                        tablets_returned: formData.tablets_returned ? parseInt(formData.tablets_returned) : null,
+                        ip_dispensed: formData.ip_dispensed ? parseInt(formData.ip_dispensed) : null,
+                        ip_returned: formData.ip_returned ? parseInt(formData.ip_returned) : null,
+                        ip_id: formData.ip_id || null,
                         local_labs_completed: formData.local_labs_completed
                       }
                       const resp = await fetch('/api/subject-visits/' + visitId, {

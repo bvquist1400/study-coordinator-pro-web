@@ -219,6 +219,9 @@ export interface Database {
           notes: string | null
           created_at: string
           updated_at: string
+          ip_id: string | null
+          dispensing_date: string | null
+          ip_last_dose_date: string | null
         }
         Insert: {
           id?: string
@@ -230,6 +233,9 @@ export interface Database {
           expected_taken: number
           visit_id?: string | null
           notes?: string | null
+          ip_id?: string | null
+          dispensing_date?: string | null
+          ip_last_dose_date?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -243,6 +249,9 @@ export interface Database {
           expected_taken?: number
           visit_id?: string | null
           notes?: string | null
+          ip_id?: string | null
+          dispensing_date?: string | null
+          ip_last_dose_date?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -374,12 +383,16 @@ export interface Database {
           airway_bill_number: string | null
           lab_kit_shipped_date: string | null
           
-          // Drug Accountability
+          // Drug Accountability  
           drug_dispensing_required: boolean | null
           previous_dispense_date: string | null
           tablets_dispensed: number | null
           tablets_returned: number | null
-          actual_start_date: string | null
+          ip_start_date: string | null
+          ip_last_dose_date: string | null
+          ip_dispensed: number | null
+          ip_returned: number | null
+          ip_id: string | null
           
           // Local Labs
           local_labs_required: boolean | null
@@ -414,7 +427,11 @@ export interface Database {
           previous_dispense_date?: string | null
           tablets_dispensed?: number | null
           tablets_returned?: number | null
-          actual_start_date?: string | null
+          ip_start_date?: string | null
+          ip_last_dose_date?: string | null
+          ip_dispensed?: number | null
+          ip_returned?: number | null
+          ip_id?: string | null
           
           // Local Labs
           local_labs_required?: boolean | null
@@ -449,7 +466,11 @@ export interface Database {
           previous_dispense_date?: string | null
           tablets_dispensed?: number | null
           tablets_returned?: number | null
-          actual_start_date?: string | null
+          ip_start_date?: string | null
+          ip_last_dose_date?: string | null
+          ip_dispensed?: number | null
+          ip_returned?: number | null
+          ip_id?: string | null
           
           // Local Labs
           local_labs_required?: boolean | null
