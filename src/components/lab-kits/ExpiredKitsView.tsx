@@ -24,6 +24,27 @@ export default function ExpiredKitsView({ studyId, refreshKey, onRefresh }: Expi
   const [destroying, setDestroying] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
 
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return '-'
+    // Handle date-only strings (YYYY-MM-DD) by treating as local timezone
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      const [year, month, day] = dateString.split('-').map(Number)
+      const dt = new Date(year, month - 1, day) // month is 0-indexed
+      return dt.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric', 
+        year: 'numeric' 
+      })
+    }
+    // Handle full datetime strings
+    const dt = new Date(dateString)
+    return dt.toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric', 
+      year: 'numeric' 
+    })
+  }
+
   const loadExpiredKits = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -60,13 +81,25 @@ export default function ExpiredKitsView({ studyId, refreshKey, onRefresh }: Expi
   }, [loadExpiredKits])
 
   const autoExpireKits = async (kits: LabKitWithVisit[], token: string) => {
-    const now = new Date()
-    const kitsToExpire = kits.filter((kit: LabKitWithVisit) => 
-      kit.expiration_date && 
-      new Date(kit.expiration_date) < now && 
-      kit.status !== 'expired' &&
-      kit.status !== 'destroyed'
-    )
+    const today = new Date()
+    today.setHours(0, 0, 0, 0) // Start of today
+    
+    const kitsToExpire = kits.filter((kit: LabKitWithVisit) => {
+      if (!kit.expiration_date || kit.status === 'expired' || kit.status === 'destroyed') {
+        return false
+      }
+      
+      // Handle date-only strings (YYYY-MM-DD) by treating as local timezone
+      let expDate: Date
+      if (/^\d{4}-\d{2}-\d{2}$/.test(kit.expiration_date)) {
+        const [year, month, day] = kit.expiration_date.split('-').map(Number)
+        expDate = new Date(year, month - 1, day) // month is 0-indexed
+      } else {
+        expDate = new Date(kit.expiration_date)
+      }
+      
+      return expDate < today // Kit expires before today (is already expired)
+    })
 
     if (kitsToExpire.length > 0) {
       // Update status to expired for kits past expiration date
@@ -150,8 +183,19 @@ export default function ExpiredKitsView({ studyId, refreshKey, onRefresh }: Expi
 
   const getDaysExpired = (expirationDate: string | null) => {
     if (!expirationDate) return 0
-    const expDate = new Date(expirationDate)
+    
+    // Handle date-only strings (YYYY-MM-DD) by treating as local timezone
+    let expDate: Date
+    if (/^\d{4}-\d{2}-\d{2}$/.test(expirationDate)) {
+      const [year, month, day] = expirationDate.split('-').map(Number)
+      expDate = new Date(year, month - 1, day) // month is 0-indexed
+    } else {
+      expDate = new Date(expirationDate)
+    }
+    
     const today = new Date()
+    today.setHours(0, 0, 0, 0) // Start of today
+    
     const diffTime = today.getTime() - expDate.getTime()
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
   }
@@ -268,7 +312,7 @@ export default function ExpiredKitsView({ studyId, refreshKey, onRefresh }: Expi
                   <td className="py-3 px-4">
                     {kit.expiration_date ? (
                       <span className="text-red-400 font-medium">
-                        {new Date(kit.expiration_date).toLocaleDateString()}
+                        {formatDate(kit.expiration_date)}
                       </span>
                     ) : (
                       <span className="text-gray-500">N/A</span>

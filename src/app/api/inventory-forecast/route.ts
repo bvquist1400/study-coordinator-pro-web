@@ -40,26 +40,28 @@ export async function GET(request: NextRequest) {
     }
 
     // Verify user membership on the study
+    type StudyAccessRow = { id: string; site_id: string | null; user_id: string }
     const { data: study, error: studyError } = await supabase
       .from('studies')
       .select('id, site_id, user_id')
       .eq('id', studyId)
       .single()
 
-    if (studyError || !study) {
+    const studyRow = study as StudyAccessRow | null
+    if (studyError || !studyRow) {
       return NextResponse.json({ error: 'Study not found' }, { status: 404 })
     }
-    if (study.site_id) {
+    if (studyRow.site_id) {
       const { data: member } = await supabase
         .from('site_members')
         .select('user_id')
-        .eq('site_id', study.site_id)
+        .eq('site_id', studyRow.site_id)
         .eq('user_id', user.id)
         .maybeSingle()
       if (!member) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
-    } else if (study.user_id !== user.id) {
+    } else if (studyRow.user_id !== user.id) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 

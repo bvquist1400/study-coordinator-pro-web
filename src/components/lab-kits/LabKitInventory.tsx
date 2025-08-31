@@ -81,6 +81,17 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-'
+    // Handle date-only strings (YYYY-MM-DD) by treating as local timezone
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      const [year, month, day] = dateString.split('-').map(Number)
+      const dt = new Date(year, month - 1, day) // month is 0-indexed
+      return dt.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric', 
+        year: 'numeric' 
+      })
+    }
+    // Handle full datetime strings
     const dt = new Date(dateString)
     return dt.toLocaleDateString('en-US', { 
       month: 'short', 
@@ -91,10 +102,23 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
 
   const isExpiringSoon = (expirationDate: string | null) => {
     if (!expirationDate) return false
-    const expDate = new Date(expirationDate)
-    const thirtyDaysFromNow = new Date()
-    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30)
-    return expDate <= thirtyDaysFromNow && expDate >= new Date()
+    
+    // Handle date-only strings (YYYY-MM-DD) by treating as local timezone
+    let expDate: Date
+    if (/^\d{4}-\d{2}-\d{2}$/.test(expirationDate)) {
+      const [year, month, day] = expirationDate.split('-').map(Number)
+      expDate = new Date(year, month - 1, day) // month is 0-indexed
+    } else {
+      expDate = new Date(expirationDate)
+    }
+    
+    const today = new Date()
+    today.setHours(0, 0, 0, 0) // Start of today
+    
+    const thirtyDaysFromNow = new Date(today)
+    thirtyDaysFromNow.setDate(today.getDate() + 30)
+    
+    return expDate <= thirtyDaysFromNow && expDate >= today
   }
 
   const filteredLabKits = labKits.filter(kit => {
