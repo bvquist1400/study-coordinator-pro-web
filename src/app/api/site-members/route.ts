@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
       if (emailErr || !profile) {
         return NextResponse.json({ error: 'User not found by email. Ensure the user has signed up.' }, { status: 404 })
       }
-      targetUserId = profile.id
+      targetUserId = (profile as { id: string }).id
     }
 
     // Insert membership
