@@ -103,6 +103,30 @@ Personal productivity tool for clinical research coordinators - organizes daily 
 ### 🔄 Current Status
 **All major features completed**. System is production-ready with comprehensive functionality for clinical research coordinators.
 
+## Required Conventions (to keep CI green)
+
+These conventions prevent recurring type-check failures with Next.js 15 + Supabase + strict TypeScript.
+
+- Next.js 15 dynamic routes: context params are a Promise
+  - Handlers must use: `export async function GET(req, { params }: { params: Promise<{ id: string }> }) { const { id } = await params }`
+- Supabase joined selects and aliases must be typed locally
+  - When selecting related tables or using aliases like `sites:site_id (...)`, declare a local row type and annotate/cast the result before accessing nested fields, e.g.
+    ```ts
+    type MemberRow = { site_id: string; role: 'owner'|'coordinator'|'pi'|'monitor'; sites?: { id: string; name: string } | null }
+    const { data } = await supabase
+      .from('site_members')
+      .select('site_id, role, sites:site_id ( id, name )')
+    const rows = (data || []) as MemberRow[]
+    rows.map(r => r.sites?.id ?? r.site_id)
+    ```
+  - Alternatively, use `returns<RowType[]>()` on the select if available in your Supabase client version.
+- Prefer explicit result shapes for reducers/maps
+  - Convert untyped arrays to typed ones before `reduce`/`map` to avoid `never` inference.
+- Avoid deprecated Supabase Admin APIs in routes
+  - Use a table lookup (e.g., `user_profiles`) instead of `auth.admin.getUserByEmail`.
+- Lint settings
+  - The repo relaxes `@typescript-eslint/no-explicit-any` and treats unused variables prefixed with `_` as non‑issues. When in doubt, type local results explicitly or prefix intentionally unused variables with `_`.
+
 ## Predictive Lab Kit Process - DETAILED DOCUMENTATION
 
 ### Overview

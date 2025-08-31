@@ -20,7 +20,7 @@ interface SubjectFormData {
   notes: string
 }
 
-export default function EditSubjectForm({ subjectId, studyId, onClose, onSave }: EditSubjectFormProps) {
+export default function EditSubjectForm({ subjectId, studyId: _studyId, onClose, onSave }: EditSubjectFormProps) {
   const [formData, setFormData] = useState<SubjectFormData>({
     subject_number: '',
     gender: '',

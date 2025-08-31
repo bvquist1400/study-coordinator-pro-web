@@ -68,7 +68,7 @@ export default function StudyDetailsModal({ studyId, onClose }: StudyDetailsModa
         }
         if (vsRes.ok) {
           const { visitSchedules } = await vsRes.json()
-          const arr: any[] = visitSchedules || []
+          const arr: Array<{ window_before_days?: number; window_after_days?: number }> = visitSchedules || []
           if (arr.length > 0) {
             const beforeVals = arr.map(v => v.window_before_days ?? 0)
             const afterVals = arr.map(v => v.window_after_days ?? 0)
@@ -126,7 +126,7 @@ export default function StudyDetailsModal({ studyId, onClose }: StudyDetailsModa
       await navigator.clipboard.writeText(lines)
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
-    } catch (_) {
+    } catch {
       // noop
     }
   }

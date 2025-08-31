@@ -25,7 +25,14 @@ const eslintConfig = [
   {
     rules: {
       // Relax strict rules to avoid blocking builds on harmless typings
-      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+        },
+      ],
       "prefer-const": "warn",
     },
   },

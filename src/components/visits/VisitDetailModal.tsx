@@ -31,6 +31,7 @@ interface VisitDetail {
   ip_dispensed: number | null
   ip_returned: number | null
   ip_id: string | null
+  return_ip_id: string | null
 
   // Local Labs
   local_labs_required: boolean | null
@@ -55,7 +56,8 @@ interface FormData {
   lab_kit_shipped_date: string
   ip_dispensed: string
   ip_returned: string
-  ip_id: string
+  ip_id: string // For new dispensing
+  return_ip_id: string // For returns from previous visit
   local_labs_completed: boolean
   notes: string
 }
@@ -97,8 +99,10 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
   const [availableLabKits, setAvailableLabKits] = useState<Array<{id: string; accession_number: string; kit_type?: string; expiration_date?: string}>>([])
   const [showAccessionDropdown, setShowAccessionDropdown] = useState(false)
 
+  // Previously dispensed IP IDs for returns dropdown
+  const [previousIpIds, setPreviousIpIds] = useState<string[]>([])
+
   const [dosingFactor, setDosingFactor] = useState(1)
-  const [dosingLabel, setDosingLabel] = useState('Once daily')
 
   const [formData, setFormData] = useState<FormData>({
     ip_start_date: '',
@@ -111,6 +115,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
     ip_dispensed: '',
     ip_returned: '',
     ip_id: '',
+    return_ip_id: '',
     local_labs_completed: false,
     notes: ''
   })
@@ -151,6 +156,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
           ip_dispensed: visit.ip_dispensed?.toString() || '',
           ip_returned: visit.ip_returned?.toString() || '',
           ip_id: visit.ip_id || '',
+          return_ip_id: visit.return_ip_id || '',
           local_labs_completed: visit.local_labs_completed || false,
           notes: visit.notes || ''
         })
@@ -164,17 +170,15 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
             .single()
           const df = (studyRow?.dosing_frequency || 'QD') as string
           let factor = 1
-          let label = 'Once daily'
           switch (df) {
-            case 'QD': factor = 1; label = 'Once daily'; break
-            case 'BID': factor = 2; label = 'Twice daily'; break
-            case 'TID': factor = 3; label = 'Three times daily'; break
-            case 'QID': factor = 4; label = 'Four times daily'; break
-            case 'weekly': factor = 1 / 7; label = 'Weekly'; break
-            default: factor = 1; label = df
+            case 'QD': factor = 1; break
+            case 'BID': factor = 2; break
+            case 'TID': factor = 3; break
+            case 'QID': factor = 4; break
+            case 'weekly': factor = 1 / 7; break
+            default: factor = 1
           }
           setDosingFactor(factor)
-          setDosingLabel(label)
         } catch {
           /* ignore */
         }
@@ -190,6 +194,23 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
           }
         } catch (error) {
           console.warn('Failed to load lab kits for autocomplete:', error)
+        }
+
+        // Load previous IP IDs for this subject
+        try {
+          const visitsResponse = await fetch(`/api/subject-visits?subjectId=${visit.subject_id}`, {
+            headers: { Authorization: 'Bearer ' + token }
+          })
+          if (visitsResponse.ok) {
+            const visitsData = await visitsResponse.json()
+            const ipIds = visitsData.subjectVisits
+              ?.filter((v: any) => v.ip_id && v.id !== visitId) // Exclude current visit
+              ?.map((v: any) => v.ip_id)
+              ?.filter((value: string, index: number, array: string[]) => array.indexOf(value) === index) // Remove duplicates
+            setPreviousIpIds(ipIds || [])
+          }
+        } catch (error) {
+          console.warn('Failed to load previous IP IDs:', error)
         }
 
         // infer required flags from visit schedule
@@ -234,20 +255,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
     setTimeout(() => setToast(null), 2200)
   }
 
-  const computeDaysAndExpected = () => {
-    if (!visit) return { days: 0, expectedBase: 0 }
-    const startStr = (visit?.previous_dispense_date || formData.ip_start_date || '').toString()
-    const endStr = (formData.ip_last_dose_date || visit?.visit_date || '').toString()
-    const msPerDay = 1000 * 60 * 60 * 24
-    let days = 0
-    if (startStr && endStr) {
-      const start = new Date(startStr.split('T')[0])
-      const end = new Date(endStr.split('T')[0])
-      days = Math.max(0, Math.round((end.getTime() - start.getTime()) / msPerDay))
-    }
-    const expectedBase = Math.max(0, Math.round(days * dosingFactor))
-    return { days, expectedBase }
-  }
+  // computeDaysAndExpected removed (no longer used)
 
   // Removed unused copyComplianceSummary helper to reduce warnings
 
@@ -313,8 +321,8 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
     }
 
     // Handle IP returns if we have return amount and last dose date
-    if (formData.ip_returned && formData.ip_last_dose_date && parseInt(formData.ip_returned) > 0) {
-      const ipId = formData.ip_id.trim()
+    if (formData.ip_returned && formData.ip_last_dose_date && formData.return_ip_id && parseInt(formData.ip_returned) > 0) {
+      const ipId = formData.return_ip_id.trim()
       
       // Find the most recent compliance record for this IP
       const { data: existing } = await supabase
@@ -377,6 +385,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
         ip_dispensed: formData.ip_dispensed ? parseInt(formData.ip_dispensed) : null,
         ip_returned: formData.ip_returned ? parseInt(formData.ip_returned) : null,
         ip_id: formData.ip_id || null,
+        return_ip_id: formData.return_ip_id || null,
         local_labs_completed: formData.local_labs_completed,
         notes: formData.notes || null
       }
@@ -833,19 +842,41 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
                       )}
                     </div>
                     
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-1">IP Returned</label>
-                      {isEditing ? (
-                        <input
-                          type="number"
-                          value={formData.ip_returned}
-                          onChange={(e) => handleChange('ip_returned', e.target.value)}
-                          className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="Number returned"
-                        />
-                      ) : (
-                        <p className="text-gray-100">{visit.ip_returned || '-'}</p>
-                      )}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Bottle or Kit Number (for returns)</label>
+                        {isEditing ? (
+                          <div className="relative">
+                            <select
+                              value={formData.return_ip_id}
+                              onChange={(e) => handleChange('return_ip_id', e.target.value)}
+                              className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                              <option value="">Select previously dispensed IP...</option>
+                              {previousIpIds.map((ipId) => (
+                                <option key={ipId} value={ipId}>{ipId}</option>
+                              ))}
+                            </select>
+                          </div>
+                        ) : (
+                          <p className="text-gray-100">{visit.return_ip_id || '-'}</p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">IP Returned</label>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            value={formData.ip_returned}
+                            onChange={(e) => handleChange('ip_returned', e.target.value)}
+                            className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Number returned"
+                          />
+                        ) : (
+                          <p className="text-gray-100">{visit.ip_returned || '-'}</p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -941,6 +972,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
                         ip_dispensed: formData.ip_dispensed ? parseInt(formData.ip_dispensed) : null,
                         ip_returned: formData.ip_returned ? parseInt(formData.ip_returned) : null,
                         ip_id: formData.ip_id || null,
+                        return_ip_id: formData.return_ip_id || null,
                         local_labs_completed: formData.local_labs_completed
                       }
                       const resp = await fetch('/api/subject-visits/' + visitId, {

@@ -175,7 +175,7 @@ export default function VisitListView({ studyId, onVisitClick, refreshKey }: Vis
       const endStr = windowEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
       
       return `${startStr} - ${endStr}`
-    } catch (error) {
+    } catch {
       // Fallback to showing days from scheduled
       return visit.days_from_scheduled !== null ? (
         <span className={visit.days_from_scheduled === 0 ? 'text-green-300' : 

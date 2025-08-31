@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import type { Study } from '@/types/database'
 
 interface EditStudyFormProps {
-  study: any
+  study: Study
   onClose: () => void
   onSuccess: () => void
 }
@@ -109,10 +110,10 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
       if (resp.ok) {
         onSuccess()
       } else {
-        const err = await resp.json().catch(() => ({}))
-        setErrors({ general: err.error || 'Failed to update study' })
+        const _err = await resp.json().catch(() => ({}))
+        setErrors({ general: _err.error || 'Failed to update study' })
       }
-    } catch (err) {
+    } catch {
       setErrors({ general: 'Unexpected error updating study' })
     } finally {
       setIsSubmitting(false)

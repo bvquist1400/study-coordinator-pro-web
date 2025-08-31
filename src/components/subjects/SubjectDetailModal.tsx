@@ -142,7 +142,7 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
     } finally {
       setLoading(false)
     }
-  }, [subjectId, studyId, isOpen])
+  }, [subjectId, studyId])
 
   useEffect(() => {
     if (isOpen && subjectId) {

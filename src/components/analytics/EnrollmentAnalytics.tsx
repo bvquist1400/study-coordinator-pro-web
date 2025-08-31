@@ -270,7 +270,7 @@ export default function EnrollmentAnalytics({ studyId, className }: EnrollmentAn
                       borderRadius: '6px',
                       color: '#f3f4f6'
                     }}
-                    formatter={(value, _name) => [`${value} subjects`, 'Enrolled']}
+                    formatter={(value) => [`${value} subjects`, 'Enrolled']}
                   />
                 </PieChart>
               </ResponsiveContainer>

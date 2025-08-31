@@ -26,12 +26,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch sites' }, { status: 500 })
     }
 
-    const sites = (data || []).map(row => ({
-      id: row.sites?.id,
-      name: row.sites?.name,
+    type MemberRow = {
+      site_id: string
+      role: 'owner' | 'coordinator' | 'pi' | 'monitor'
+      sites?: { id: string; name: string; created_at: string; updated_at: string } | null
+    }
+    const rows = (data || []) as MemberRow[]
+    const sites = rows.map(row => ({
+      id: row.sites?.id || row.site_id,
+      name: row.sites?.name || 'Site',
       role: row.role,
-      created_at: row.sites?.created_at,
-      updated_at: row.sites?.updated_at
+      created_at: row.sites?.created_at || null,
+      updated_at: row.sites?.updated_at || null
     }))
 
     return NextResponse.json({ sites })
@@ -87,4 +93,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-
