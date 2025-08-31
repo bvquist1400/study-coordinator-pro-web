@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const studyId = searchParams.get('studyId')
     const status = searchParams.get('status')
-    const summary = searchParams.get('summary')
+    // 'summary' parameter is accepted but not used in this endpoint
     
     if (!studyId) {
       return NextResponse.json({ error: 'studyId parameter is required' }, { status: 400 })

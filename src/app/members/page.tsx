@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import DashboardLayout from '@/components/dashboard/DashboardLayout'
 import { supabase } from '@/lib/supabase/client'
 import { useSite } from '@/components/site/SiteProvider'
@@ -24,13 +24,7 @@ export default function MembersPage() {
 
   const currentSite = useMemo(() => sites.find(s => s.id === currentSiteId) || null, [sites, currentSiteId])
 
-  useEffect(() => {
-    if (currentSiteId) loadMembers()
-  }, [currentSiteId])
-
-  const getToken = async () => (await supabase.auth.getSession()).data.session?.access_token
-
-  const loadMembers = async () => {
+  const loadMembers = useCallback(async () => {
     if (!currentSiteId) return
     setLoading(true)
     try {
@@ -45,7 +39,14 @@ export default function MembersPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [currentSiteId])
+
+  useEffect(() => {
+    if (currentSiteId) loadMembers()
+  }, [currentSiteId, loadMembers])
+
+  const getToken = async () => (await supabase.auth.getSession()).data.session?.access_token
+
 
   const createSite = async () => {
     if (!siteName.trim()) return
@@ -266,4 +267,3 @@ export default function MembersPage() {
     </DashboardLayout>
   )
 }
-

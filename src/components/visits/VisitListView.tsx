@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 
 interface Visit {
@@ -30,9 +30,35 @@ export default function VisitListView({ studyId, onVisitClick, refreshKey }: Vis
   const [searchTerm, setSearchTerm] = useState('')
   const [userId, setUserId] = useState<string | null>(null)
 
+  const loadVisits = useCallback(async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      
+      if (!token) return
+
+      const response = await fetch(`/api/subject-visits?study_id=${studyId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setVisits(data.subjectVisits || [])
+      } else {
+        const err = await response.json().catch(() => ({}))
+        console.error('Failed loading visits:', response.status, err)
+        setVisits([])
+      }
+    } catch (error) {
+      console.error('Error loading visits:', error)
+    } finally {
+      setLoading(false)
+    }
+  }, [studyId])
+
   useEffect(() => {
     loadVisits()
-  }, [studyId, refreshKey])
+  }, [loadVisits, refreshKey])
 
   // Load userId for personalized persistence
   useEffect(() => {
@@ -68,31 +94,6 @@ export default function VisitListView({ studyId, onVisitClick, refreshKey }: Vis
     } catch {}
   }, [statusFilter, searchTerm, userId, studyId])
 
-  const loadVisits = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      const token = session?.access_token
-      
-      if (!token) return
-
-      const response = await fetch(`/api/subject-visits?study_id=${studyId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        setVisits(data.subjectVisits || [])
-      } else {
-        const err = await response.json().catch(() => ({}))
-        console.error('Failed loading visits:', response.status, err)
-        setVisits([])
-      }
-    } catch (error) {
-      console.error('Error loading visits:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const handleSort = (field: keyof Visit) => {
     if (sortField === field) {

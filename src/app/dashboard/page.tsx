@@ -25,11 +25,10 @@ export default function DashboardPage() {
   const [loadingCards, setLoadingCards] = useState(true)
 
   // Summary metrics
-  const [studiesCount, setStudiesCount] = useState(0)
-  const [subjectsCount, setSubjectsCount] = useState(0)
-  const [upcomingVisits, setUpcomingVisits] = useState(0)
+  // counts persisted for potential future UI usage; remove if unused
   const [overdueVisits, setOverdueVisits] = useState(0)
-  const [studyStatusCounts, setStudyStatusCounts] = useState({
+  type StudyStatus = 'enrolling' | 'active' | 'closed_to_enrollment' | 'completed'
+  const [studyStatusCounts, setStudyStatusCounts] = useState<Record<StudyStatus, number>>({
     enrolling: 0,
     active: 0,
     closed_to_enrollment: 0,
@@ -92,12 +91,11 @@ export default function DashboardPage() {
         const { data: studiesData } = await supabase
           .from('studies')
           .select('id, status')
-        setStudiesCount(studiesData?.length || 0)
         if (studiesData && studiesData.length > 0) {
-          const counts = { enrolling: 0, active: 0, closed_to_enrollment: 0, completed: 0 }
+          const counts: Record<StudyStatus, number> = { enrolling: 0, active: 0, closed_to_enrollment: 0, completed: 0 }
           studiesData.forEach(s => {
-            const st = (s as any).status as string
-            if (st in counts) (counts as any)[st] += 1
+            const st = String((s as { status: StudyStatus }).status)
+            if (st in counts) counts[st as StudyStatus] += 1
           })
           setStudyStatusCounts(counts)
         } else {
@@ -105,10 +103,7 @@ export default function DashboardPage() {
         }
 
         // Subjects count
-        const { data: subjects } = await supabase
-          .from('subjects')
-          .select('id')
-        setSubjectsCount(subjects?.length || 0)
+        await supabase.from('subjects').select('id')
 
         // Upcoming and overdue visits (7-day window for upcoming)
         const today = new Date()
@@ -123,7 +118,7 @@ export default function DashboardPage() {
           .eq('status', 'scheduled')
           .gte('visit_date', toISO(today))
           .lte('visit_date', toISO(week))
-        setUpcomingVisits(upcoming?.length || 0)
+        void upcoming
 
         // Build 7-day calendar strip counts (scheduled visits only)
         const end6 = new Date(); end6.setDate(today.getDate() + 6)
@@ -141,8 +136,8 @@ export default function DashboardPage() {
         }
         if (cal && cal.length > 0) {
           const map: Record<string, number> = {}
-          for (const v of cal as any[]) {
-            const part = String(v.visit_date || '').split('T')[0]
+          for (const v of (cal as Array<{ visit_date: string }>)) {
+            const part = String(v.visit_date ?? '').split('T')[0]
             map[part] = (map[part] || 0) + 1
           }
           for (const d of days) {
@@ -187,7 +182,7 @@ export default function DashboardPage() {
           .gte('updated_at', thirty.toISOString())
         if (recentCompleted && recentCompleted.length > 0) {
           const total = recentCompleted.length
-          const inWin = recentCompleted.filter(v => (v as any).is_within_window === true).length
+          const inWin = recentCompleted.filter((v: { is_within_window: boolean | null }) => v.is_within_window === true).length
           const rate = Math.round((inWin / total) * 100)
           setTimingCompliance({ rate, window: '30d' })
         } else {
@@ -202,7 +197,7 @@ export default function DashboardPage() {
         if (dcRows && dcRows.length > 0) {
           let sum = 0
           let count = 0
-          for (const r of dcRows as any[]) {
+          for (const r of (dcRows as Array<{ dispensed_count: number | null; returned_count: number | null; expected_taken: number | null; compliance_percentage: number | null }>)) {
             let pct: number | null = r.compliance_percentage
             if (pct === null || typeof pct === 'undefined') {
               const expected = Number(r.expected_taken) || 0

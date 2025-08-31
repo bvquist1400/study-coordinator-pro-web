@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase/client'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 
 interface ComplianceTrend {
   month: string
@@ -35,6 +35,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const months = parseInt(searchParams.get('months') || '12')
     const studyId = searchParams.get('studyId')
+
+    const supabase = await createServerSupabaseClient()
 
     // Get user from session
     const { data: { user }, error: userError } = await supabase.auth.getUser()

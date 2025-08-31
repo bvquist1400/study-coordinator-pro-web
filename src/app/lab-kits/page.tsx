@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import DashboardLayout from '@/components/dashboard/DashboardLayout'
 import { supabase } from '@/lib/supabase/client'
 import LabKitSummaryCards from '@/components/lab-kits/LabKitSummaryCards'
@@ -29,11 +29,7 @@ export default function LabKitsPage() {
   const { currentSiteId } = useSite()
 
   // Load studies on mount
-  useEffect(() => {
-    loadStudies()
-  }, [currentSiteId])
-
-  const loadStudies = async () => {
+  const loadStudies = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
@@ -56,7 +52,11 @@ export default function LabKitsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [currentSiteId, selectedStudyId])
+
+  useEffect(() => {
+    loadStudies()
+  }, [loadStudies])
 
   const handleRefresh = () => {
     setRefreshKey(prev => prev + 1)

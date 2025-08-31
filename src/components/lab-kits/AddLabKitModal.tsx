@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 
 interface AddLabKitModalProps {
@@ -41,11 +41,7 @@ export default function AddLabKitModal({ studyId, onClose, onAdd }: AddLabKitMod
   
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  useEffect(() => {
-    loadVisitSchedules()
-  }, [studyId])
-
-  const loadVisitSchedules = async () => {
+  const loadVisitSchedules = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
@@ -65,7 +61,11 @@ export default function AddLabKitModal({ studyId, onClose, onAdd }: AddLabKitMod
     } finally {
       setLoading(false)
     }
-  }
+  }, [studyId])
+
+  useEffect(() => {
+    loadVisitSchedules()
+  }, [loadVisitSchedules])
 
   const handleChange = (field: keyof LabKitFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))

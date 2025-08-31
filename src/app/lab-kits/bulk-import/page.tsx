@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { useSite } from '@/components/site/SiteProvider'
@@ -50,19 +50,7 @@ export default function BulkImportPage() {
     { id: '5', accession_number: '' }
   ])
 
-  useEffect(() => {
-    loadStudies()
-  }, [currentSiteId])
-
-  useEffect(() => {
-    if (selectedStudyId) {
-      loadVisitSchedules()
-    } else {
-      setVisitSchedules([])
-    }
-  }, [selectedStudyId])
-
-  const loadStudies = async () => {
+  const loadStudies = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
@@ -85,9 +73,13 @@ export default function BulkImportPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [currentSiteId])
 
-  const loadVisitSchedules = async () => {
+  useEffect(() => {
+    loadStudies()
+  }, [loadStudies])
+
+  const loadVisitSchedules = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
@@ -105,7 +97,15 @@ export default function BulkImportPage() {
     } catch (error) {
       console.error('Error loading visit schedules:', error)
     }
-  }
+  }, [selectedStudyId])
+
+  useEffect(() => {
+    if (selectedStudyId) {
+      loadVisitSchedules()
+    } else {
+      setVisitSchedules([])
+    }
+  }, [selectedStudyId, loadVisitSchedules])
 
   const addRow = () => {
     const newId = String(Date.now())

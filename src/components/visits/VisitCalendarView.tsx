@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 
 interface Visit {
@@ -31,31 +31,12 @@ export default function VisitCalendarView({ studyId, onVisitClick, refreshKey, i
   })
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    loadVisits()
-  }, [studyId, currentDate, refreshKey])
-
-  // If initialDate changes (e.g., navigation with a different ?date=), update current month
-  useEffect(() => {
-    if (initialDate) {
-      const parsed = new Date(initialDate)
-      if (!isNaN(parsed.getTime())) {
-        setCurrentDate(parsed)
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialDate])
-
-  const loadVisits = async () => {
+  const loadVisits = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
       
       if (!token) return
-
-      // Get first and last day of current month
-      const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
-      const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0)
 
       const response = await fetch(
         `/api/subject-visits?study_id=${studyId}`,
@@ -75,7 +56,21 @@ export default function VisitCalendarView({ studyId, onVisitClick, refreshKey, i
     } finally {
       setLoading(false)
     }
-  }
+  }, [studyId])
+
+  useEffect(() => {
+    loadVisits()
+  }, [loadVisits, currentDate, refreshKey])
+
+  // If initialDate changes (e.g., navigation with a different ?date=), update current month
+  useEffect(() => {
+    if (initialDate) {
+      const parsed = new Date(initialDate)
+      if (!isNaN(parsed.getTime())) {
+        setCurrentDate(parsed)
+      }
+    }
+  }, [initialDate])
 
   const getDaysInMonth = () => {
     const year = currentDate.getFullYear()

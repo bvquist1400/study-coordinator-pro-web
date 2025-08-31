@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { calculateVisitDate } from '@/lib/visit-calculator'
+import type { VisitSchedule as DbVisitSchedule, LabKit } from '@/types/database'
 
 interface Subject {
   id: string
@@ -11,16 +12,7 @@ interface Subject {
   randomization_date: string | null
 }
 
-interface VisitSchedule {
-  id: string
-  visit_name: string
-  visit_number: number
-  visit_day: number
-  window_before_days: number
-  window_after_days: number
-  is_required: boolean
-  visit_type: string
-}
+type VisitSchedule = DbVisitSchedule
 
 interface Study {
   id: string
@@ -48,17 +40,13 @@ export default function ScheduleVisitModal({ studyId, onClose, onSchedule }: Sch
   const [isCustomVisit, setIsCustomVisit] = useState(false)
   
   // Lab kit assignment state
-  const [availableLabKits, setAvailableLabKits] = useState<any[]>([])
+  const [availableLabKits, setAvailableLabKits] = useState<LabKit[]>([])
   const [labKitSearch, setLabKitSearch] = useState('')
-  const [selectedLabKit, setSelectedLabKit] = useState<any>(null)
+  const [selectedLabKit, setSelectedLabKit] = useState<LabKit | null>(null)
   const [showLabKitDropdown, setShowLabKitDropdown] = useState(false)
   const [labKitRequired, setLabKitRequired] = useState(false)
 
-  useEffect(() => {
-    loadData()
-  }, [studyId])
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
@@ -114,7 +102,11 @@ export default function ScheduleVisitModal({ studyId, onClose, onSchedule }: Sch
     } finally {
       setLoading(false)
     }
-  }
+  }, [studyId])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   const handleSubjectChange = (subjectId: string) => {
     setSelectedSubjectId(subjectId)
@@ -127,7 +119,7 @@ export default function ScheduleVisitModal({ studyId, onClose, onSchedule }: Sch
     // Check if this visit type requires a lab kit
     const schedule = visitSchedules.find(s => s.id === scheduleId)
     if (schedule) {
-      const procNames: string[] = (schedule as any)?.procedures || []
+      const procNames: string[] = (schedule.procedures || []) as string[]
       const lower = procNames.map(p => String(p).toLowerCase())
       const requiresKit = lower.includes('lab kit') || lower.includes('labkit')
       setLabKitRequired(requiresKit)
@@ -165,7 +157,7 @@ export default function ScheduleVisitModal({ studyId, onClose, onSchedule }: Sch
     setShowLabKitDropdown(value.length > 0 && filteredLabKits.length > 0)
   }
 
-  const handleLabKitSelect = (kit: any) => {
+  const handleLabKitSelect = (kit: LabKit) => {
     setSelectedLabKit(kit)
     setLabKitSearch(kit.accession_number)
     setShowLabKitDropdown(false)

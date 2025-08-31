@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { LabKit } from '@/types/database'
 
@@ -24,11 +24,7 @@ export default function ExpiredKitsView({ studyId, refreshKey, onRefresh }: Expi
   const [destroying, setDestroying] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
 
-  useEffect(() => {
-    loadExpiredKits()
-  }, [studyId, refreshKey])
-
-  const loadExpiredKits = async () => {
+  const loadExpiredKits = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
@@ -57,7 +53,11 @@ export default function ExpiredKitsView({ studyId, refreshKey, onRefresh }: Expi
     } finally {
       setLoading(false)
     }
-  }
+  }, [studyId, refreshKey])
+
+  useEffect(() => {
+    loadExpiredKits()
+  }, [loadExpiredKits])
 
   const autoExpireKits = async (kits: LabKitWithVisit[], token: string) => {
     const now = new Date()

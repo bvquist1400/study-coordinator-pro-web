@@ -5,6 +5,7 @@ import DashboardLayout from '@/components/dashboard/DashboardLayout'
 import EnrollmentAnalytics from '@/components/analytics/EnrollmentAnalytics'
 import ComplianceAnalytics from '@/components/analytics/ComplianceAnalytics'
 import VisitAnalytics from '@/components/analytics/VisitAnalytics'
+import StudyAnalytics from '@/components/analytics/StudyAnalytics'
 
 type AnalyticsTab = 'enrollment' | 'compliance' | 'visits' | 'studies'
 
@@ -62,14 +63,7 @@ export default function AnalyticsPage() {
           )}
           
           {activeTab === 'studies' && (
-            <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-8 text-center">
-              <div className="text-4xl mb-4">📋</div>
-              <h3 className="text-xl font-semibold text-white mb-2">Study Comparisons</h3>
-              <p className="text-gray-400 mb-4">Study performance comparisons coming soon</p>
-              <div className="text-sm text-gray-500">
-                Will include cross-study metrics, milestone tracking, and performance benchmarks
-              </div>
-            </div>
+            <StudyAnalytics />
           )}
         </div>
 

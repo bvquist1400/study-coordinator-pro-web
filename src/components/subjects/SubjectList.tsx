@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import SubjectCard from './SubjectCard'
 
@@ -62,13 +62,7 @@ export default function SubjectList({ studyId, onSubjectClick, refreshKey }: Sub
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [searchTerm, setSearchTerm] = useState('')
 
-  useEffect(() => {
-    if (studyId) {
-      loadSubjects()
-    }
-  }, [studyId, refreshKey])
-
-  const loadSubjects = async () => {
+  const loadSubjects = useCallback(async () => {
     try {
       setLoading(true)
       
@@ -120,7 +114,14 @@ export default function SubjectList({ studyId, onSubjectClick, refreshKey }: Sub
     } finally {
       setLoading(false)
     }
-  }
+  }, [studyId])
+
+  useEffect(() => {
+    if (studyId) {
+      loadSubjects()
+    }
+  }, [studyId, refreshKey, loadSubjects])
+
 
   const filteredSubjects = subjects.filter(subject => {
     const matchesStatus = statusFilter === 'all' || subject.status === statusFilter

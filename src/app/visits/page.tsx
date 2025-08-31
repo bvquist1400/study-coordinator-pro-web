@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import DashboardLayout from '@/components/dashboard/DashboardLayout'
 import { supabase } from '@/lib/supabase/client'
@@ -39,11 +39,7 @@ export default function VisitsPage() {
   const { currentSiteId } = useSite()
 
   // Load studies on mount
-  useEffect(() => {
-    loadStudies()
-  }, [currentSiteId])
-
-  const loadStudies = async () => {
+  const loadStudies = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const { data: { user } } = await supabase.auth.getUser()
@@ -80,7 +76,11 @@ export default function VisitsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [currentSiteId, selectedStudyId])
+
+  useEffect(() => {
+    loadStudies()
+  }, [loadStudies])
 
   // Persist view mode to localStorage (generic and per-user if available)
   useEffect(() => {

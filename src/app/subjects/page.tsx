@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, Suspense, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useSite } from '@/components/site/SiteProvider'
 import { supabase } from '@/lib/supabase/client'
@@ -10,11 +10,7 @@ import AddSubjectForm from '@/components/subjects/AddSubjectForm'
 import EditSubjectForm from '@/components/subjects/EditSubjectForm'
 import SubjectDetailModal from '@/components/subjects/SubjectDetailModal'
 
-interface Study {
-  id: string
-  study_title: string
-  protocol_number: string
-}
+import type { Study } from '@/types/database'
 
 function SubjectsPageContent() {
   const router = useRouter()
@@ -36,11 +32,7 @@ function SubjectsPageContent() {
     if (studyId) setSelectedStudyId(studyId)
   }, [searchParams])
 
-  useEffect(() => {
-    loadStudies()
-  }, [currentSiteId])
-
-  const loadStudies = async () => {
+  const loadStudies = useCallback(async () => {
     try {
       // Get the auth session
       const { data: { session } } = await supabase.auth.getSession()
@@ -85,7 +77,7 @@ function SubjectsPageContent() {
       if (error) {
         console.error('Database error:', error)
       } else {
-        const filtered = currentSiteId ? (studies || []).filter((s: any) => s.site_id === currentSiteId) : (studies || [])
+        const filtered = currentSiteId ? (studies || []).filter((s: { site_id: string | null }) => s.site_id === currentSiteId) : (studies || [])
         setStudies(filtered)
         
         if (!selectedStudyId && studies && studies.length > 0) {
@@ -98,7 +90,12 @@ function SubjectsPageContent() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [currentSiteId, selectedStudyId])
+
+  useEffect(() => {
+    loadStudies()
+  }, [loadStudies])
+
 
   const handleStudyChange = (studyId: string) => {
     setSelectedStudyId(studyId)
@@ -119,10 +116,7 @@ function SubjectsPageContent() {
     setShowDetailModal(true)
   }
 
-  const handleSubjectEdit = (subjectId: string) => {
-    setEditingSubjectId(subjectId)
-    setShowEditForm(true)
-  }
+  // Removed unused handleSubjectEdit
 
   const handleSubjectUpdated = () => {
     setShowEditForm(false)
