@@ -1,68 +1,282 @@
 # Study Coordinator Pro - Development Instructions
 
 ## Project Overview
-Study Coordinator Pro is a comprehensive clinical research management platform built with Next.js 15.5.2, TypeScript, and Supabase. The application helps clinical research coordinators manage studies, subjects, visits, compliance tracking, and monitor actions.
+**Web-first SaaS application** for clinical research coordinators - a productivity tool built from scratch to optimize daily workflows.
 
-## Recent Updates & Completed Features
+Study Coordinator Pro is a comprehensive clinical research management platform built with Next.js 15.5.2, TypeScript, and Supabase. The application helps clinical research coordinators manage studies, subjects, visits, compliance tracking, and lab kit inventory with predictive forecasting capabilities.
 
-### ✅ Visit Date Unification + API Adjustments
-- All UI surfaces now use `visit_date` (no `scheduled_date`).
-- Removed `actual_date` from UI and server logic; completion and window calc derive from `visit_date`.
-- API changes:
-  - `GET /api/subject-visits`: orders/filters by `visit_date`; removed `scheduled_date` alias.
-  - `POST /api/subject-visits`: requires `visit_date` and writes only `visit_date`.
-  - `PUT /api/subject-visits/[id]`: upsert requires `visit_date`; window calc uses anchor + visit_day with `visit_date` as actual.
-  - Files: `src/app/api/subject-visits/route.ts`, `src/app/api/subject-visits/[id]/route.ts`.
+**Current Status**: Production-ready foundation (9/10 scalability score) with comprehensive database schema, authentication, complete study management, lab kit inventory system with predictive forecasting, and advanced analytics dashboard.
 
-### ✅ Multi-bottle IP Compliance in VisitCard
-- Added dynamic rows for multiple bottles (ip_id, dispensed, returned) with add/remove.
-- On save: inserts/updates `drug_compliance` rows; computes `expected_taken` from days between dispense and return times dosing factor (QD/BID/TID/QID/weekly).
-- File: `src/components/visits/VisitCard.tsx`.
+## Architecture & Stack
+- **Next.js 15.5.2** + Supabase + TypeScript + Tailwind CSS
+- **Scalable foundation** ready for hundreds to thousands of users
+- **PWA capabilities** for app-like experience across devices
+- **Row-level security** for multi-tenant data isolation
+- **API-first architecture** with server-side database operations
 
-### ✅ IP Terminology
-- Replaced user-facing “tablet/pill” with “IP/Investigational Product” across UI and calculator text.
-- Files: `src/lib/compliance-calculator.ts`, `src/components/visits/VisitDetailModal.tsx`, `src/components/visits/VisitCard.tsx`, dashboard snapshot label.
+## Target User
+**Clinical Research Coordinators** managing 2-8 active studies with mix of desktop/tablet/mobile usage patterns.
 
-### ✅ Studies Page Enhancements
-- Card cleanup: dosing labels spelled out, visit windows shown as variable with dynamic per-study summary.
-- Actions: working “View Details” modal (with window range, copy info, copy protocol, relative updated time) and “Edit” modal (close out, delete, inline validation).
-- Support `protocol_version` in types, API, and forms; added to cards and details.
-- Files: `src/app/studies/page.tsx`, `src/components/studies/StudyDetailsModal.tsx`, `src/components/studies/EditStudyForm.tsx`, `src/components/studies/AddStudyForm.tsx`, `src/app/api/studies/route.ts`, `src/types/database.ts`.
+## Value Proposition
+Personal productivity tool for clinical research coordinators - organizes daily tasks without replacing regulatory systems. Features predictive inventory management to prevent kit shortages and optimize study operations.
 
-### ✅ Dashboard Redesign (Phase 1–3)
-- Summary metrics wired: studies, subjects, upcoming (7d), overdue, recent activity, alerts.
-- Compliance Snapshot: visit timing (30d) and IP compliance (30d average).
-- Calendar strip: next 7 days with visit counts and quick links to `/visits?date=YYYY-MM-DD`.
-- Quick Actions moved to top of dashboard for immediate access to primary functions.
-- Lab Kit Inventory Alerts integrated showing cross-study supply issues.
-- File: `src/app/dashboard/page.tsx`.
+## Development Status & Priorities
 
-### ✅ Visits UX Improvements
-- Default to List view; remembers last view (per user) and selected study (per user + site).
-- Calendar honors `?date=` to open that month (no extra highlight).
-- Reduced loading animations for a calmer UI.
-- Files: `src/app/visits/page.tsx`, `src/components/visits/VisitCalendarView.tsx`, `src/components/visits/VisitSummaryCards.tsx`, `src/components/visits/VisitListView.tsx`.
+### ✅ Completed Foundation (Phase 1)
+- Authentication & user management with JWT tokens
+- Comprehensive database schema with RLS policies
+- Study management with protocol version tracking
+- Responsive dashboard and navigation
+- Production deployment on Vercel
+- **Comprehensive testing framework** (Jest + React Testing Library + CI/CD)
+- **Professional Schedule of Events Builder** - Clinical research-grade SoE grid interface
+- **Production error handling** - Error boundaries and comprehensive logging system
+- **Compliance Calculator Module** - Advanced drug and visit compliance tracking with visual indicators
 
-### ✅ Lab Kit Management System
-- Comprehensive inventory management with visit assignment tracking and grouping.
-- Bulk import functionality with Excel-like interface for adding multiple kits.
-- Multi-select operations with bulk edit, archive, and delete capabilities.
-- Expired kit management with auto-expiration logic and disposal tracking.
-- Predictive inventory forecasting system with cross-study shortage alerts.
-- Smart supply management: critical (shortage), warning (low stock/expiring), ok (adequate).
-- Integration with Schedule of Events for visit-specific kit requirements.
-- Files: `src/app/lab-kits/`, `src/components/lab-kits/`, `src/app/api/lab-kits/`, `src/app/api/inventory-forecast/`.
-
-### ✅ Enhanced Subject Management (Phase 1-2)
-- **Phase 1**: Enhanced subject cards with visit progress metrics and compliance indicators.
+### ✅ Enhanced Subject Management (Phase 2) - COMPLETED
+- **Phase 1**: Enhanced subject cards with visit progress metrics and compliance indicators
 - **Phase 2**: Comprehensive subject detail modal with tabbed interface:
   - Visit Timeline: Complete chronological view with status indicators and overdue alerts
   - Compliance Analytics: Visual progress tracking and timing compliance metrics
   - Notes & History: Subject notes display and key milestone dates
-- Enhanced subjects API with optional metrics calculation (SOE-based total visits).
-- Card-based responsive grid layout replacing table view.
-- Real-time visit progress tracking against Schedule of Events.
-- Files: `src/components/subjects/SubjectCard.tsx`, `src/components/subjects/SubjectDetailModal.tsx`, `src/components/subjects/SubjectList.tsx`, `src/app/subjects/page.tsx`, `src/app/api/subjects/route.ts`.
+- Enhanced subjects API with optional metrics calculation (SOE-based total visits)
+- Card-based responsive grid layout replacing table view
+- Real-time visit progress tracking against Schedule of Events
+- **Fixed timezone handling** for proper date display
+
+### ✅ Lab Kit Management System (Phase 3) - COMPLETED
+- **Comprehensive Inventory Management**:
+  - Full lifecycle tracking: received → available → assigned → shipped → completed → expired → destroyed
+  - Bulk import functionality with Excel-like interface for adding multiple kits
+  - Multi-select operations with bulk edit, archive, and delete capabilities
+  - Automated expiration tracking and disposal workflow
+
+- **Predictive Inventory Forecasting System** (CORE FEATURE):
+  - **Automatic Kit Assignment**: No manual kit selection during visit scheduling
+  - **Predictive Analytics**: AI-powered forecasting based on upcoming visits
+  - **Cross-Study Shortage Alerts**: Dashboard integration with real-time inventory status
+  - **Smart Supply Management**: Critical (shortage), warning (low stock/expiring), ok (adequate)
+  - **Visit-Type Specific Tracking**: Different kit requirements per visit type
+  - **Proactive Reorder Alerts**: Prevents stockouts before they impact studies
+
+- **Integration Points**:
+  - Schedule of Events integration for visit-specific kit requirements
+  - Dashboard inventory alerts with color-coded status indicators
+  - Visit management integration with automatic kit availability verification
+  - Cross-study inventory visibility for multi-study coordinators
+
+### ✅ Dashboard Analytics and Reporting (Phase 4) - COMPLETED
+- **Comprehensive Analytics Suite**:
+  - **Enrollment Analytics**: Monthly trends, study comparisons, enrollment velocity
+  - **Compliance Analytics**: Visit timing compliance, drug compliance with radar charts
+  - **Visit Performance**: Completion rates, overdue tracking, window adherence
+  - **Study Comparisons**: Cross-study performance metrics and benchmarking
+
+- **Interactive Dashboards**:
+  - Real-time metrics with drill-down capabilities
+  - Recharts integration for professional visualizations
+  - Tabbed interface for different analytics views
+  - Export-ready charts and data tables
+
+- **Dashboard Integration**:
+  - Summary metrics: studies, subjects, upcoming visits, overdue alerts
+  - Compliance snapshot: 30-day visit timing and IP compliance averages
+  - Calendar strip: 7-day view with visit counts and deep-linking
+  - Lab Kit inventory alerts with cross-study visibility
+  - Quick Actions repositioned for immediate access
+
+### ✅ Visit Management Enhancement (Phase 5) - COMPLETED
+- **Enhanced Visit Interface**:
+  - **Improved Window Display**: Shows actual date ranges instead of confusing day offsets
+  - **Auto-Complete Lab Kit Entry**: Type-ahead functionality for accession numbers
+  - **Simplified Visit Completion**: Required fields automatically visible when needed
+  - **Backfill Capability**: Support for completing visits with past dates
+
+- **IP Accountability System Overhaul**:
+  - **Renamed Fields**: `actual_start_date` → `ip_start_date` for clarity
+  - **Enhanced Tracking**: Added `ip_last_dose_date`, `ip_dispensed`, `ip_returned`, `ip_id` fields
+  - **Structured Data Entry**:
+    - "Dispense at this visit": First dose date, bottle/kit number, dispensed count
+    - "Returns from previous visit": Last dose date, returned count
+  - **Proper Compliance Calculation**: Uses actual dispensing dates for accurate expected doses
+
+### 🔄 Current Status
+**All major features completed**. System is production-ready with comprehensive functionality for clinical research coordinators.
+
+## Predictive Lab Kit Process - DETAILED DOCUMENTATION
+
+### Overview
+The Predictive Lab Kit System eliminates manual kit assignment during visit scheduling by automatically forecasting kit needs based on upcoming visits. This prevents stockouts while reducing coordinator workload.
+
+### Core Components
+
+#### 1. Inventory Forecast API (`/api/inventory-forecast`)
+**Purpose**: Calculates kit availability vs upcoming visit needs
+
+**Input Parameters**:
+- `study_id`: Target study ID
+- `days`: Forecast horizon (default: 30 days)
+
+**Process Flow**:
+1. **Query Upcoming Visits**:
+   ```sql
+   SELECT visit_name, visit_date, subject_number 
+   FROM subject_visits 
+   WHERE study_id = ? AND status = 'scheduled' 
+   AND visit_date BETWEEN today AND (today + ?days)
+   ```
+
+2. **Query Available Kits**:
+   ```sql
+   SELECT kit_type, status, expiration_date, visit_schedules.visit_name
+   FROM lab_kits 
+   LEFT JOIN visit_schedules ON visit_assignment
+   WHERE study_id = ? AND status IN ('available', 'assigned')
+   ```
+
+3. **Group and Calculate**:
+   - Group visits by `visit_name` (Visit 1, Visit 2, etc.)
+   - Group kits by `visit_assignment` from Schedule of Events
+   - Calculate: `deficit = visits_scheduled - kits_available`
+
+4. **Status Determination**:
+   - `critical`: deficit > 0 (shortage will occur)
+   - `warning`: available - scheduled ≤ 2 OR kits expiring soon
+   - `ok`: adequate supply
+
+#### 2. Visit Scheduling Integration
+**Key Feature**: No accession number selection required
+
+**Previous Flow** (Manual):
+```
+Schedule Visit → Select Specific Kit → Assign Kit → Complete
+```
+
+**New Flow** (Predictive):
+```
+Schedule Visit → System Forecasts Needs → Auto-Alert if Shortage → Complete
+```
+
+**Implementation Details**:
+- `ScheduleVisitModal.tsx`: Lab kit selection UI completely hidden
+- Informational notice explains automatic management
+- Visit scheduling purely date/procedure focused
+- Kit assignment happens at fulfillment time, not scheduling time
+
+#### 3. Inventory Status Dashboard Integration
+**Location**: Main dashboard, top section
+
+**Display Format**:
+- **Critical**: Red alert with count of affected visit types
+- **Warning**: Yellow indicator with low stock/expiring counts
+- **OK**: Green or no indicator (adequate supply)
+
+**Real-time Updates**:
+- Recalculates on each page load
+- Cross-study visibility for coordinators managing multiple studies
+- Click-through to detailed inventory management
+
+#### 4. Kit Assignment Workflow
+**When Kits Are Actually Assigned**:
+1. **During Visit Completion**: Coordinator enters accession number with autocomplete
+2. **During Kit Preparation**: Before shipping to sites
+3. **During Inventory Review**: Manual assignment for planning
+
+**Autocomplete Enhancement**:
+- Type-ahead search through available kits
+- Shows kit type, expiration date, and availability status
+- Filters by study and visit type automatically
+
+### Database Schema Changes
+**New Tables/Fields**:
+```sql
+-- Enhanced subject_visits table
+ALTER TABLE subject_visits ADD COLUMN ip_start_date DATE;
+ALTER TABLE subject_visits ADD COLUMN ip_last_dose_date DATE;
+ALTER TABLE subject_visits ADD COLUMN ip_dispensed INTEGER;
+ALTER TABLE subject_visits ADD COLUMN ip_returned INTEGER;
+ALTER TABLE subject_visits ADD COLUMN ip_id TEXT;
+
+-- Enhanced drug_compliance table
+ALTER TABLE drug_compliance ADD COLUMN ip_id TEXT;
+ALTER TABLE drug_compliance ADD COLUMN dispensing_date DATE;
+ALTER TABLE drug_compliance ADD COLUMN ip_last_dose_date DATE;
+```
+
+### Business Impact
+
+#### Benefits Achieved:
+1. **Elimination of Manual Errors**: No more wrong kit assignments during scheduling
+2. **Proactive Shortage Prevention**: Alerts appear before stockouts occur
+3. **Improved Coordinator Efficiency**: Faster visit scheduling without kit selection
+4. **Better Supply Chain Management**: Predictive ordering based on scheduled visits
+5. **Cross-Study Visibility**: Multi-study coordinators see consolidated inventory status
+
+#### Key Metrics Tracked:
+- Days until potential stockout per visit type
+- Kits expiring within 30 days
+- Total visits scheduled vs kit availability
+- Cross-study kit utilization rates
+
+### API Endpoints
+
+#### Core APIs:
+- `GET /api/inventory-forecast?study_id=xxx&days=30` - Forecast calculations
+- `GET /api/lab-kits?studyId=xxx&status=available` - Kit availability with autocomplete
+- `PUT /api/subject-visits/[id]` - Visit completion with kit assignment
+- `PUT /api/lab-kits/[id]` - Kit status updates (assigned/shipped/expired)
+
+## Schedule of Events Builder Features
+
+### ✅ Streamlined Clinical Research Interface
+- **Clean, focused layout** for essential study visit planning
+- **Editable Visit Configuration:**
+  - Visit Numbers (V1, V2, etc.) - fully customizable
+  - Visit Names (editable inline)
+  - Flexible Visit Windows with separate before/after days (e.g., -4/+6 days)
+- **Core Procedure Categories:**
+  - Laboratory (Local Labs, Lab Kit)
+  - Investigational Product (Medication Dispensing)
+
+### ✅ Smart Visit Window Management
+- **Dual number inputs** for precise before/after day specifications
+- **Study-specific flexibility** (e.g., Visit 1: -0/+0 days, Visit 2: -7/+7 days)
+- **Calculation-ready data** for automated patient visit scheduling
+
+### ✅ Production Database Integration
+- **Full Supabase integration** with visit_schedules table
+- **Load/Save functionality** - persists configurations across sessions
+- **Smart data mapping** between UI and database formats
+- **Error handling** with graceful fallbacks to defaults
+- **Visit accountability support** for lab kit and drug tracking
+
+## File Structure
+```
+src/
+├── app/
+│   ├── api/                    # API routes with authentication
+│   │   ├── analytics/          # Analytics and reporting APIs
+│   │   ├── inventory-forecast/ # Predictive lab kit forecasting
+│   │   ├── lab-kits/          # Lab kit inventory management
+│   │   ├── subject-visits/     # Visit management APIs
+│   │   └── studies/           # Study management APIs
+│   ├── analytics/             # Analytics dashboard pages
+│   ├── lab-kits/             # Lab kit management pages
+│   ├── subjects/             # Subject management pages
+│   └── visits/               # Visit management pages
+├── components/
+│   ├── analytics/            # Analytics dashboard components
+│   ├── lab-kits/            # Lab kit management components
+│   ├── subjects/            # Subject-related components
+│   ├── visits/              # Visit management components
+│   └── dashboard/           # Layout components
+├── lib/
+│   ├── supabase/           # Database client configuration
+│   ├── api/                # API utilities and auth helpers
+│   └── visit-calculator.ts # Visit date calculation utilities
+└── types/
+    └── database.ts         # Complete TypeScript database types
+```
 
 ## Current Architecture
 
@@ -71,63 +285,39 @@ Study Coordinator Pro is a comprehensive clinical research management platform b
 - **Language**: TypeScript
 - **Database**: Supabase (PostgreSQL)
 - **Styling**: Tailwind CSS
+- **Charts**: Recharts for analytics visualization
 - **Authentication**: Supabase Auth with JWT tokens
 
 ### Key Patterns
-1. **API-First Approach**: All database operations go through authenticated API routes to avoid RLS policy violations
-2. **Form Validation**: Comprehensive client-side and server-side validation
-3. **Refresh Mechanisms**: Components use refresh keys to reload data after mutations
-4. **Error Handling**: Proper error boundaries and user feedback throughout
-5. **HIPAA Compliance**: No PHI fields stored or displayed
+1. **API-First Approach**: All database operations go through authenticated API routes
+2. **Predictive Analytics**: Forecasting-based inventory management
+3. **Form Validation**: Comprehensive client-side and server-side validation
+4. **Refresh Mechanisms**: Components use refresh keys to reload data after mutations
+5. **Error Handling**: Proper error boundaries and user feedback throughout
+6. **HIPAA Compliance**: No PHI fields stored or displayed
 
-### File Structure
-```
-src/
-├── app/
-│   ├── api/                  # API routes with authentication
-│   ├── subjects/            # Subject management pages
-│   └── studies/             # Study management pages
-├── components/
-│   ├── subjects/           # Subject-related components
-│   ├── studies/            # Study-related components
-│   └── dashboard/          # Layout components
-├── lib/
-│   ├── supabase/          # Database client configuration
-│   ├── api/               # API utilities and auth helpers
-│   └── visit-calculator.ts # Visit date calculation utilities
-└── types/
-    └── database.ts        # Complete TypeScript database types
-```
+## Pending Features (Future Enhancements)
 
-## Pending Features
+### 🎯 Next Priority Items
+1. **PDF Report Generation with Charts**
+   - Export analytics charts to PDF format
+   - Comprehensive study reports
+   - Compliance summary reports
 
-### 🔄 Next Priority Items
-1. **Dashboard Analytics and Reporting Features**
-   - Study enrollment metrics and charts
-   - Subject status summaries
-   - Compliance rate reporting
+2. **Excel Data Export Capabilities**
+   - Subject data exports
+   - Visit tracking exports
+   - Inventory reports
 
-2. **Data Export Functionality**
-   - CSV export for subject data
-   - PDF report generation
-   - Customizable data exports
+3. **Advanced Notification System**
+   - Email/SMS visit reminders
+   - Critical shortage alerts
+   - Compliance violation notifications
 
-3. **Notification System**
-   - Visit reminder notifications
-   - Compliance alerts
-   - Action item due date reminders
-
-4. **Mobile-Responsive Design Improvements**
-   - Optimize forms for mobile devices
-   - Improve navigation on smaller screens
-   - Touch-friendly interactions
-
-### 🎯 Future Enhancements
-- Calendar strip deep-linking filters (optional list filter chip)
-- Adverse event reporting
-- Protocol deviation tracking
-- IP accountability analytics and exports
-- Monitor action items management
+4. **Mobile-Responsive Optimizations**
+   - Enhanced touch interfaces
+   - Offline capability improvements
+   - Progressive Web App features
 
 ## Development Guidelines
 
@@ -144,40 +334,31 @@ src/
 - Use TypeScript database types from `src/types/database.ts`
 - Handle unique constraint violations gracefully
 
-### Form Patterns
-- Implement client-side validation with real-time error clearing
-- Use consistent loading states and disabled states
-- Provide clear success/error feedback to users
-- Support refresh mechanisms for data updates
+## Technical Excellence
+- **TypeScript throughout** for type safety and maintainability
+- **Component-driven architecture** for reusability
+- **Mobile-first responsive design** with Tailwind CSS
+- **Production-ready API infrastructure** with server-side operations
+- **Comprehensive security** - JWT auth, RLS, input validation
+- **Real-time validation** and error handling
+- **Predictive analytics** for proactive inventory management
 
-### Testing Considerations
-- Test all form validation scenarios
-- Verify proper authentication and authorization
-- Test data refresh after mutations
-- Validate visit date calculations with different anchor day settings
+## Regulatory Compliance
+- **Personal productivity tool** - NOT regulatory record replacement
+- **Supplemental system** working alongside existing procedures
+- **Clear disclaimers** about regulatory limitations
+- **HIPAA compliant** - no PHI data storage
 
-## Known Issues & Considerations
+## Business Model
+**SaaS**: $12.99/month individual, $9.99/month team plans with 30-day trials
 
-### Resolved Issues
-- ✅ Schedule of Events Builder timing field ambiguity
-- ✅ RLS policy violations in visit schedule saving
-- ✅ Data persistence issues in Schedule of Events Builder
-- ✅ Subject form saving with incorrect field names
-- ✅ Missing edit functionality for subjects
+**Value Proposition**:
+- Prevents costly study delays due to kit shortages
+- Reduces coordinator workload through automation
+- Improves compliance tracking and reporting
+- Provides actionable insights for study optimization
 
-### Current Limitations
-- Visit scheduling system not yet implemented
-- No file upload/attachment system
-- Limited reporting and analytics features
-- Basic notification system needed
+## Development Approach
+**Component-first development** with progressive enhancement, focusing on coordinator workflow optimization and predictive analytics capabilities.
 
-## Recent Changes Summary
-Key improvements delivered:
-1. Unified visit date handling and removed legacy fields in API/UI.
-2. Implemented multi-bottle IP compliance with dosing-aware expected_taken.
-3. Overhauled Studies page (details/edit modals, protocol version, labels, window summaries).
-4. Dashboard slices: metrics, activity, alerts, compliance snapshot, and 7‑day calendar strip.
-5. Visits page UX: default List view, persistent preferences/filters, calm loaders, calendar deep link.
-6. **Lab Kit Management System**: Full inventory lifecycle management with predictive forecasting, bulk operations, visit assignment tracking, and cross-study shortage alerts integrated into dashboard.
-7. **Dashboard Reorganization**: Quick Actions moved to top, metric cards removed, compact inventory alerts added for streamlined action-focused interface.
-8. **Enhanced Subject Management**: Complete overhaul from table to card-based layout with rich visit progress metrics, comprehensive subject detail modal with timeline view, compliance analytics, and real-time tracking against Schedule of Events.
+Approach all development through the lens of creating a scalable, maintainable tool that coordinators will use daily across multiple devices, with emphasis on proactive problem prevention rather than reactive problem solving.

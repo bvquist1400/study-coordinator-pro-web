@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
     // Insert all lab kits
     const { data: insertedKits, error: insertError } = await supabase
       .from('lab_kits')
-      .insert(kitsToInsert)
+      .insert(kitsToInsert as unknown as never)
       .select()
 
     if (insertError) {
