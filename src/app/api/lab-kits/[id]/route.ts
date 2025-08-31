@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/api/auth'
 
+type StudyAccessRow = { id: string; site_id: string | null; user_id: string }
+type LabKitWithStudy = Record<string, unknown> & { studies: StudyAccessRow }
+
 // GET /api/lab-kits/[id] - Get specific lab kit details
 export async function GET(
   request: NextRequest,
@@ -39,7 +42,8 @@ export async function GET(
     }
 
     // Verify user access to this lab kit's study
-    const study = labKit.studies
+    const lk = labKit as LabKitWithStudy
+    const study = lk.studies
     if (study.site_id) {
       const { data: member } = await supabase
         .from('site_members')
@@ -55,7 +59,9 @@ export async function GET(
     }
 
     // Clean up the response (omit joined study object)
-    const { studies: _studies, ...labKitClean } = labKit as Record<string, unknown> & { studies?: unknown }
+    const labKitClean = Object.fromEntries(
+      Object.entries(lk).filter(([key]) => key !== 'studies')
+    )
     return NextResponse.json({ labKit: labKitClean })
   } catch (error) {
     console.error('API error:', error)
@@ -103,7 +109,7 @@ export async function PUT(
     }
 
     // Verify user access
-    const study = existingKit.studies
+    const study = (existingKit as Record<string, unknown> & { studies: StudyAccessRow }).studies
     if (study.site_id) {
       const { data: member } = await supabase
         .from('site_members')
@@ -119,11 +125,11 @@ export async function PUT(
     }
 
     // Check for duplicate accession number if it's being changed
-    if (updateData.accession_number && updateData.accession_number !== existingKit.accession_number) {
+    if (updateData.accession_number && updateData.accession_number !== (existingKit as { accession_number: string }).accession_number) {
       const { data: duplicateKit } = await supabase
         .from('lab_kits')
         .select('id')
-        .eq('study_id', existingKit.study_id)
+        .eq('study_id', (existingKit as { study_id: string }).study_id)
         .eq('accession_number', updateData.accession_number)
         .neq('id', kitId)
         .maybeSingle()
@@ -197,7 +203,7 @@ export async function DELETE(
     }
 
     // Verify user access
-    const study = existingKit.studies
+    const study = (existingKit as Record<string, unknown> & { studies: StudyAccessRow }).studies
     if (study.site_id) {
       const { data: member } = await supabase
         .from('site_members')
@@ -213,7 +219,7 @@ export async function DELETE(
     }
 
     // Prevent deletion of used, shipped, or destroyed kits
-    if (existingKit.status === 'used' || existingKit.status === 'shipped' || existingKit.status === 'destroyed') {
+    if ((existingKit as { status: string }).status === 'used' || (existingKit as { status: string }).status === 'shipped' || (existingKit as { status: string }).status === 'destroyed') {
       return NextResponse.json({ 
         error: 'Cannot delete lab kits that have been used, shipped, or destroyed' 
       }, { status: 400 })

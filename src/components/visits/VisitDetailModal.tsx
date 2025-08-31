@@ -87,6 +87,10 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
   const [dispenseRows, setDispenseRows] = useState<DispenseRow[]>([{ ip_id: '', dispensed: 0 }])
   const [returnRows, setReturnRows] = useState<ReturnRow[]>([{ ip_id: '', returned: 0 }])
 
+  // Autocomplete for lab kits
+  const [availableLabKits, setAvailableLabKits] = useState<Array<{id: string; accession_number: string; kit_type?: string; expiration_date?: string}>>([])
+  const [showAccessionDropdown, setShowAccessionDropdown] = useState(false)
+
   const [dosingFactor, setDosingFactor] = useState(1)
   const [dosingLabel, setDosingLabel] = useState('Once daily')
 
@@ -163,6 +167,19 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
           setDosingLabel(label)
         } catch {
           /* ignore */
+        }
+
+        // Load available lab kits for autocomplete
+        try {
+          const labKitsResponse = await fetch(`/api/lab-kits?studyId=${visit.study_id}&status=available`, {
+            headers: { Authorization: 'Bearer ' + token }
+          })
+          if (labKitsResponse.ok) {
+            const labKitsData = await labKitsResponse.json()
+            setAvailableLabKits(labKitsData.labKits || [])
+          }
+        } catch (error) {
+          console.warn('Failed to load lab kits for autocomplete:', error)
         }
 
         // infer required flags from visit schedule
@@ -388,6 +405,21 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
     setFormData(prev => ({ ...prev, [field]: value }))
   }
 
+  // Autocomplete functions for accession numbers
+  const filteredLabKits = availableLabKits.filter(kit => 
+    kit.accession_number.toLowerCase().includes((formData.accession_number || '').toLowerCase())
+  )
+
+  const handleAccessionNumberChange = (value: string) => {
+    setFormData(prev => ({ ...prev, accession_number: value }))
+    setShowAccessionDropdown(value.length > 0 && filteredLabKits.length > 0)
+  }
+
+  const handleAccessionSelect = (accessionNumber: string) => {
+    setFormData(prev => ({ ...prev, accession_number: accessionNumber }))
+    setShowAccessionDropdown(false)
+  }
+
   const formatDate = (dateString: string) => {
     if (!dateString) return '-'
     const re = /(\d{4}-\d{2}-\d{2})/
@@ -589,6 +621,26 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
                     </div>
                   )}
                 </div>
+
+                {/* Actual Start Date - for backfilling or when visit date differs from actual occurrence */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                    Actual Start Date 
+                    <span className="text-gray-500 text-xs ml-1">(for backfilling past visits)</span>
+                  </label>
+                  {isEditing ? (
+                    <input
+                      type="date"
+                      value={formData.actual_start_date}
+                      onChange={(e) => handleChange('actual_start_date', e.target.value)}
+                      className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  ) : (
+                    <p className="text-gray-100">
+                      {visit.actual_start_date ? formatDate(visit.actual_start_date) : '-'}
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -606,15 +658,47 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
                 </div>
 
                 <div className="space-y-4">
-                  <div>
+                  <div className="relative">
                     <label className="block text-sm font-medium text-gray-300 mb-1">Accession Number</label>
-                    {isEditing ? (
-                      <input
-                        type="text"
-                        value={formData.accession_number}
-                        onChange={(e) => handleChange('accession_number', e.target.value)}
-                        className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
+                    {(isEditing || (visit.lab_kit_required || inferredRequirements.lab_kit_required)) ? (
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={formData.accession_number}
+                          onChange={(e) => handleAccessionNumberChange(e.target.value)}
+                          onFocus={() => setShowAccessionDropdown(formData.accession_number.length > 0 && filteredLabKits.length > 0)}
+                          onBlur={() => setTimeout(() => setShowAccessionDropdown(false), 200)} // Delay to allow click on dropdown
+                          className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Type accession number..."
+                        />
+                        
+                        {/* Autocomplete Dropdown */}
+                        {showAccessionDropdown && filteredLabKits.length > 0 && (
+                          <div className="absolute z-10 w-full mt-1 bg-gray-700 border border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                            {filteredLabKits.map((kit) => (
+                              <button
+                                key={kit.id}
+                                onClick={() => handleAccessionSelect(kit.accession_number)}
+                                className="w-full px-3 py-2 text-left text-gray-100 hover:bg-gray-600 focus:bg-gray-600 focus:outline-none first:rounded-t-lg last:rounded-b-lg"
+                              >
+                                <div className="flex justify-between items-center">
+                                  <div>
+                                    <span className="font-medium">{kit.accession_number}</span>
+                                    {kit.kit_type && (
+                                      <span className="ml-2 text-sm text-gray-400">({kit.kit_type})</span>
+                                    )}
+                                  </div>
+                                  {kit.expiration_date && (
+                                    <span className="text-xs text-gray-400">
+                                      Exp: {new Date(kit.expiration_date).toLocaleDateString()}
+                                    </span>
+                                  )}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     ) : (
                       <p className="text-gray-100">{visit.accession_number || '-'}</p>
                     )}
@@ -622,7 +706,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
 
                   <div>
                     <label className="block text-sm font-medium text-gray-300 mb-1">Airway Bill Number</label>
-                    {isEditing ? (
+                    {(isEditing || (visit.lab_kit_required || inferredRequirements.lab_kit_required)) ? (
                       <input
                         type="text"
                         value={formData.airway_bill_number}
@@ -636,7 +720,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
 
                   <div>
                     <label className="block text-sm font-medium text-gray-300 mb-1">Lab Kit Shipped Date</label>
-                    {isEditing ? (
+                    {(isEditing || (visit.lab_kit_required || inferredRequirements.lab_kit_required)) ? (
                       <input
                         type="date"
                         value={formData.lab_kit_shipped_date}
@@ -929,7 +1013,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
                       if (!token) return
                       const body = {
                         status: 'completed' as VisitStatus,
-                        actual_start_date: formData.actual_start_date || null,
+                        actual_start_date: formData.actual_start_date || visit.visit_date, // Use visit date if no actual date set
                         accession_number: formData.accession_number || null,
                         airway_bill_number: formData.airway_bill_number || null,
                         lab_kit_shipped_date: formData.lab_kit_shipped_date || null,
