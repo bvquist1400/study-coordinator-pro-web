@@ -83,11 +83,15 @@ export async function POST(request: NextRequest) {
     // Resolve user by email if needed
     let targetUserId = user_id as string | undefined
     if (!targetUserId && email) {
-      const { data: userByEmail, error: emailErr } = await supabase.auth.admin.getUserByEmail(email)
-      if (emailErr || !userByEmail?.user) {
+      const { data: profile, error: emailErr } = await supabase
+        .from('user_profiles')
+        .select('id')
+        .eq('email', email)
+        .maybeSingle()
+      if (emailErr || !profile) {
         return NextResponse.json({ error: 'User not found by email. Ensure the user has signed up.' }, { status: 404 })
       }
-      targetUserId = userByEmail.user.id
+      targetUserId = profile.id
     }
 
     // Insert membership
