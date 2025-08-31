@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ScatterChart, Scatter, LineChart, Line } from 'recharts'
+import { useCallback, useEffect, useState } from 'react'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ScatterChart, Scatter } from 'recharts'
 
 interface StudyComparison {
   study_id: string
@@ -63,11 +63,7 @@ export default function StudyAnalytics({ className }: StudyAnalyticsProps) {
   })
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    fetchStudyData()
-  }, [])
-
-  const fetchStudyData = async () => {
+  const fetchStudyData = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -89,7 +85,11 @@ export default function StudyAnalytics({ className }: StudyAnalyticsProps) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    fetchStudyData()
+  }, [fetchStudyData])
 
   const getPerformanceColor = (score: number) => {
     if (score >= 85) return '#22c55e'

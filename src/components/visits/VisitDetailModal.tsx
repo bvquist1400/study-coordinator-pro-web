@@ -90,8 +90,8 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
 
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
 
-  const [dispenseRows, setDispenseRows] = useState<DispenseRow[]>([{ ip_id: '', dispensed: 0 }])
-  const [returnRows, setReturnRows] = useState<ReturnRow[]>([{ ip_id: '', returned: 0 }])
+  const [dispenseRows] = useState<DispenseRow[]>([{ ip_id: '', dispensed: 0 }])
+  const [returnRows] = useState<ReturnRow[]>([{ ip_id: '', returned: 0 }])
 
   // Autocomplete for lab kits
   const [availableLabKits, setAvailableLabKits] = useState<Array<{id: string; accession_number: string; kit_type?: string; expiration_date?: string}>>([])
@@ -249,20 +249,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
     return { days, expectedBase }
   }
 
-  const copyComplianceSummary = () => {
-    const { days, expectedBase } = computeDaysAndExpected()
-    const lines = returnRows.map((r, i) => {
-      const key = r.ip_id || 'Row ' + (i + 1)
-      return `- ${key}: Expected ${expectedBase} (${days} days x ${dosingLabel}), Returned ${r.returned}`
-    })
-    const text = ['IP Compliance Summary', ...lines].join('\n')
-    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(text)
-      showToast('Compliance summary copied', 'success')
-    } else {
-      showToast('Copy not supported in this browser', 'error')
-    }
-  }
+  // Removed unused copyComplianceSummary helper to reduce warnings
 
   const validateBottleRows = (): string[] => {
     const warnings: string[] = []
@@ -404,6 +391,16 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
       })
 
       if (response.ok) {
+        // Update lab kit status to 'used' if accession number was provided
+        if (formData.accession_number?.trim()) {
+          try {
+            await updateLabKitStatus(formData.accession_number.trim(), 'used', token)
+          } catch (error) {
+            console.warn('Failed to update lab kit status:', error)
+            // Don't fail the visit save if lab kit update fails
+          }
+        }
+        
         setIsEditing(false)
         await loadVisitDetail()
         onUpdate()
@@ -437,6 +434,29 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
   const handleAccessionSelect = (accessionNumber: string) => {
     setFormData(prev => ({ ...prev, accession_number: accessionNumber }))
     setShowAccessionDropdown(false)
+  }
+
+  // Helper function to update lab kit status
+  const updateLabKitStatus = async (accessionNumber: string, status: string, token: string) => {
+    // Find the lab kit by accession number
+    const availableKit = availableLabKits.find(kit => kit.accession_number === accessionNumber)
+    if (!availableKit) {
+      throw new Error('Lab kit not found')
+    }
+
+    const response = await fetch(`/api/lab-kits/${availableKit.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ status })
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to update lab kit status')
+    }
   }
 
   const formatDate = (dateString: string) => {
@@ -929,6 +949,15 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
                         body: JSON.stringify(body)
                       })
                       if (resp.ok) {
+                        // Update lab kit status to 'used' if accession number was provided
+                        if (formData.accession_number?.trim()) {
+                          try {
+                            await updateLabKitStatus(formData.accession_number.trim(), 'used', token)
+                          } catch (error) {
+                            console.warn('Failed to update lab kit status:', error)
+                          }
+                        }
+                        
                         try {
                           await upsertDrugComplianceForIP(visit.visit_date)
                         } catch (e) {

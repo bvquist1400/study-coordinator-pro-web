@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, ComposedChart } from 'recharts'
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, ComposedChart, Line } from 'recharts'
 
 interface VisitPerformance {
   month: string
@@ -101,7 +101,7 @@ export default function VisitAnalytics({ studyId, className }: VisitAnalyticsPro
     return '#ef4444'
   }
 
-  const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6']
+  // COLORS not used in this chart; removed to reduce warnings
 
   if (loading) {
     return (

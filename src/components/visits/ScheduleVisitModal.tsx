@@ -211,7 +211,7 @@ export default function ScheduleVisitModal({ studyId, onClose, onSchedule }: Sch
         visitScheduleId = selectedVisitScheduleId
         // Map procedures in visit schedule to required flags
         // Assumes visit_schedules has a procedures array (string[]); if not present in this type, we can fetch from API later
-        const procNames: string[] = (schedule as any)?.procedures || []
+        const procNames: string[] = (schedule?.procedures || []) as string[]
         const lower = procNames.map(p => String(p).toLowerCase())
         labKitRequired = lower.includes('lab kit') || lower.includes('labkit')
         drugDispensingRequired = lower.includes('medication dispensing') || lower.includes('drug dispensing')

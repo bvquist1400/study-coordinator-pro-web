@@ -49,13 +49,13 @@ export default function VisitSummaryCards({ studyId, refreshKey }: VisitSummaryC
     } finally {
       setLoading(false)
     }
-  }, [studyId, refreshKey])
+  }, [studyId])
 
   useEffect(() => {
     if (studyId) {
       loadSummary()
     }
-  }, [studyId, loadSummary])
+  }, [studyId, refreshKey, loadSummary])
 
   const calculateSummary = (visits: SubjectVisit[]) => {
     const now = new Date()

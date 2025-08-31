@@ -23,7 +23,8 @@ export async function GET(request: NextRequest) {
     const subjectId = searchParams.get('subjectId') || searchParams.get('subject_id')
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
-    const summary = searchParams.get('summary')
+    // Accept but do not use summary param for now
+    searchParams.get('summary')
     
     if (!studyId) {
       return NextResponse.json({ error: 'studyId parameter is required' }, { status: 400 })

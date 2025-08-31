@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 
 interface Subject {
@@ -82,13 +82,7 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'timeline' | 'compliance' | 'notes'>('timeline')
 
-  useEffect(() => {
-    if (isOpen && subjectId) {
-      loadSubjectDetail()
-    }
-  }, [isOpen, subjectId])
-
-  const loadSubjectDetail = async () => {
+  const loadSubjectDetail = useCallback(async () => {
     try {
       setLoading(true)
 
@@ -110,7 +104,7 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
 
       if (response.ok) {
         const { subjects } = await response.json()
-        const currentSubject = subjects.find((s: any) => s.id === subjectId)
+        const currentSubject = (subjects as Array<Subject & { metrics?: SubjectMetrics }>).find((s) => s.id === subjectId)
         
         if (currentSubject) {
           setSubject(currentSubject)
@@ -148,7 +142,13 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
     } finally {
       setLoading(false)
     }
-  }
+  }, [subjectId, studyId, isOpen])
+
+  useEffect(() => {
+    if (isOpen && subjectId) {
+      loadSubjectDetail()
+    }
+  }, [isOpen, subjectId, loadSubjectDetail])
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return null
@@ -251,14 +251,14 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
             {/* Tabs */}
             <div className="px-6 pt-4">
               <div className="flex space-x-4 border-b border-gray-700">
-                {[
+                {([
                   { id: 'timeline', label: 'Visit Timeline', icon: '📅' },
                   { id: 'compliance', label: 'Compliance Analytics', icon: '📊' },
                   { id: 'notes', label: 'Notes & History', icon: '📝' }
-                ].map((tab) => (
+                ] as Array<{ id: 'timeline' | 'compliance' | 'notes'; label: string; icon: string }>).map((tab) => (
                   <button
                     key={tab.id}
-                    onClick={() => setActiveTab(tab.id as any)}
+                    onClick={() => setActiveTab(tab.id)}
                     className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
                       activeTab === tab.id
                         ? 'border-blue-500 text-blue-400'

@@ -219,7 +219,7 @@ export async function PUT(request: NextRequest) {
       const msg = (((error as { message?: string; hint?: string }).message || (error as { message?: string; hint?: string }).hint) || '').toString().toLowerCase()
       if ((msg.includes('protocol_version') && msg.includes('does not exist')) || (msg.includes('anchor_day') && msg.includes('does not exist'))) {
         try {
-          const { protocol_version, anchor_day, ...fallback } = updateObject as Record<string, unknown>
+          const { protocol_version: _pv, anchor_day: _ad, ...fallback } = updateObject as Record<string, unknown>
           const retry = await supabase
             .from('studies')
             .update(fallback as unknown as never)
@@ -232,7 +232,7 @@ export async function PUT(request: NextRequest) {
             return NextResponse.json({ error: 'Failed to update study', details }, { status: 500 })
           }
           study = retry.data
-        } catch (e) {
+        } catch {
           console.error('Database error:', error)
           const details = (error as { message?: string; hint?: string }).message || (error as { message?: string; hint?: string }).hint || String(error)
           return NextResponse.json({ error: 'Failed to update study', details }, { status: 500 })

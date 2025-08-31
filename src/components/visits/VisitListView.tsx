@@ -59,8 +59,8 @@ export default function VisitListView({ studyId, onVisitClick, refreshKey }: Vis
         console.error('Failed loading visits:', response.status, err)
         setVisits([])
       }
-    } catch (error) {
-      console.error('Error loading visits:', error)
+    } catch (e) {
+      console.error('Error loading visits:', e)
     } finally {
       setLoading(false)
     }

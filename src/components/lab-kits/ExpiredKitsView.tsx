@@ -176,10 +176,7 @@ export default function ExpiredKitsView({ studyId, refreshKey, onRefresh }: Expi
     }
   }
 
-  const isExpired = (expirationDate: string | null) => {
-    if (!expirationDate) return false
-    return new Date(expirationDate) < new Date()
-  }
+  // Removed unused isExpired function
 
   const getDaysExpired = (expirationDate: string | null) => {
     if (!expirationDate) return 0

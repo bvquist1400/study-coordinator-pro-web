@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { LabKit } from '@/types/database'
 
@@ -30,11 +30,7 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
   const [showBulkEditModal, setShowBulkEditModal] = useState(false)
   const [groupByVisit, setGroupByVisit] = useState(true)
 
-  useEffect(() => {
-    loadLabKits()
-  }, [studyId, refreshKey])
-
-  const loadLabKits = async () => {
+  const loadLabKits = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
@@ -58,7 +54,11 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
     } finally {
       setLoading(false)
     }
-  }
+  }, [studyId])
+
+  useEffect(() => {
+    loadLabKits()
+  }, [loadLabKits, refreshKey])
 
   const getStatusBadge = (status: string) => {
     const baseClasses = "px-2 py-1 text-xs font-medium rounded-full"
