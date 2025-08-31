@@ -13,6 +13,16 @@ interface Visit {
   subject_number: string
   subject_id: string
   procedures_completed: string[]
+  visit_schedule_id: string | null
+  // We'll need these to calculate window
+  subjects?: {
+    randomization_date: string | null
+  }
+  visit_schedules?: {
+    visit_day: number
+    window_before_days: number | null
+    window_after_days: number | null
+  }
 }
 
 interface VisitListViewProps {
@@ -133,6 +143,47 @@ export default function VisitListView({ studyId, onVisitClick, refreshKey }: Vis
       dt = new Date(dateString)
     }
     return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  }
+
+  const getVisitWindow = (visit: Visit) => {
+    if (!visit.subjects?.randomization_date || !visit.visit_schedules) {
+      return visit.days_from_scheduled !== null ? (
+        <span className={visit.days_from_scheduled === 0 ? 'text-green-300' : 
+          Math.abs(visit.days_from_scheduled) <= 3 ? 'text-yellow-300' : 'text-red-300'}>
+          {visit.days_from_scheduled > 0 ? '+' : ''}{visit.days_from_scheduled}d
+        </span>
+      ) : '-'
+    }
+
+    try {
+      // Calculate target date (randomization + visit_day)
+      const randomDate = new Date(visit.subjects.randomization_date)
+      const targetDate = new Date(randomDate)
+      targetDate.setDate(randomDate.getDate() + visit.visit_schedules.visit_day)
+
+      // Calculate window
+      const windowBefore = visit.visit_schedules.window_before_days || 7
+      const windowAfter = visit.visit_schedules.window_after_days || 7
+      
+      const windowStart = new Date(targetDate)
+      windowStart.setDate(targetDate.getDate() - windowBefore)
+      
+      const windowEnd = new Date(targetDate)  
+      windowEnd.setDate(targetDate.getDate() + windowAfter)
+
+      const startStr = windowStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      const endStr = windowEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      
+      return `${startStr} - ${endStr}`
+    } catch (error) {
+      // Fallback to showing days from scheduled
+      return visit.days_from_scheduled !== null ? (
+        <span className={visit.days_from_scheduled === 0 ? 'text-green-300' : 
+          Math.abs(visit.days_from_scheduled) <= 3 ? 'text-yellow-300' : 'text-red-300'}>
+          {visit.days_from_scheduled > 0 ? '+' : ''}{visit.days_from_scheduled}d
+        </span>
+      ) : '-'
+    }
   }
 
   const filteredAndSortedVisits = visits
@@ -297,12 +348,7 @@ export default function VisitListView({ studyId, onVisitClick, refreshKey }: Vis
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-300">
-                      {visit.days_from_scheduled !== null ? (
-                        <span className={visit.days_from_scheduled === 0 ? 'text-green-300' : 
-                          Math.abs(visit.days_from_scheduled) <= 3 ? 'text-yellow-300' : 'text-red-300'}>
-                          {visit.days_from_scheduled > 0 ? '+' : ''}{visit.days_from_scheduled}d
-                        </span>
-                      ) : '-'}
+                      {getVisitWindow(visit)}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">

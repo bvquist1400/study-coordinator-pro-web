@@ -152,6 +152,17 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return null
+    // Handle date-only strings (YYYY-MM-DD) by treating as local timezone
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      const [year, month, day] = dateString.split('-').map(Number)
+      const dt = new Date(year, month - 1, day) // month is 0-indexed
+      return dt.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric',
+        year: 'numeric'
+      })
+    }
+    // Handle full datetime strings
     return new Date(dateString).toLocaleDateString('en-US', { 
       month: 'short', 
       day: 'numeric',
@@ -161,6 +172,7 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
 
   const formatDateTime = (dateString: string | null) => {
     if (!dateString) return null
+    // For datetime strings, use the regular Date constructor
     return new Date(dateString).toLocaleDateString('en-US', { 
       month: 'short', 
       day: 'numeric',

@@ -53,12 +53,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
-    // Build query with join to get subject information (order by visit_date if available)
+    // Build query with join to get subject information and visit schedules (order by visit_date if available)
     let query = supabase
       .from('subject_visits')
       .select(`
         *,
-        subjects!inner(subject_number)
+        subjects!inner(subject_number, randomization_date),
+        visit_schedules(visit_day, window_before_days, window_after_days)
       `)
       .eq('study_id', studyId)
       .order('visit_date', { ascending: true })
@@ -83,10 +84,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch subject visits' }, { status: 500 })
     }
 
-    // Transform the data to include subject_number at the top level
+    // Transform the data to include subject_number at the top level while preserving relationships
     const subjectVisits = rawVisits?.map(visit => ({
       ...visit,
-      subject_number: visit.subjects.subject_number
+      subject_number: visit.subjects.subject_number,
+      // Keep the subjects and visit_schedules objects for window calculation
+      subjects: {
+        randomization_date: visit.subjects.randomization_date
+      },
+      visit_schedules: visit.visit_schedules
     })) || []
 
     return NextResponse.json({ subjectVisits })
