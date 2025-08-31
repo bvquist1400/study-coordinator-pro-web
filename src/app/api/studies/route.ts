@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/api/auth'
+import type { StudyUpdate } from '@/types/database'
 
 // GET /api/studies - Get all studies for authenticated user
 export async function GET(request: NextRequest) {
@@ -121,10 +122,12 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('Database error:', error)
-      if ((error as any).code === '23505') { // Unique constraint violation
+      const errCode = (error as { code?: string }).code
+      if (errCode === '23505') { // Unique constraint violation
         return NextResponse.json({ error: 'Protocol number already exists' }, { status: 409 })
       }
-      return NextResponse.json({ error: 'Failed to create study', details: (error as any).message || (error as any).hint || String(error) }, { status: 500 })
+      const details = (error as { message?: string; hint?: string }).message || (error as { message?: string; hint?: string }).hint || String(error)
+      return NextResponse.json({ error: 'Failed to create study', details }, { status: 500 })
     }
 
     return NextResponse.json({ study }, { status: 201 })
@@ -158,7 +161,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // Build update object only with provided fields (avoid touching non-existent columns)
-    const updateObject: Record<string, any> = { updated_at: new Date().toISOString() }
+    const updateObject: Partial<StudyUpdate> & { updated_at: string } = { updated_at: new Date().toISOString() }
     if (typeof updateData.protocol_number !== 'undefined') updateObject.protocol_number = updateData.protocol_number
     if (typeof updateData.study_title !== 'undefined') updateObject.study_title = updateData.study_title
     if (typeof updateData.protocol_version !== 'undefined') updateObject.protocol_version = updateData.protocol_version
@@ -202,19 +205,21 @@ export async function PUT(request: NextRequest) {
     }
 
     // Update study
-    let { data: study, error } = await supabase
+    const updateRes = await supabase
       .from('studies')
       .update(updateObject as unknown as never) // Type assertion for update object
       .eq('id', id)
       .select()
       .single()
+    let study = updateRes.data
+    const error = updateRes.error
 
     if (error) {
       // Backward-compat: if protocol_version column doesn't exist in DB, retry without it
-      const msg = ((error as any).message || (error as any).hint || '').toString().toLowerCase()
+      const msg = (((error as { message?: string; hint?: string }).message || (error as { message?: string; hint?: string }).hint) || '').toString().toLowerCase()
       if ((msg.includes('protocol_version') && msg.includes('does not exist')) || (msg.includes('anchor_day') && msg.includes('does not exist'))) {
         try {
-          const { protocol_version, anchor_day, ...fallback } = updateObject as any
+          const { protocol_version, anchor_day, ...fallback } = updateObject as Record<string, unknown>
           const retry = await supabase
             .from('studies')
             .update(fallback as unknown as never)
@@ -223,16 +228,19 @@ export async function PUT(request: NextRequest) {
             .single()
           if (retry.error) {
             console.error('Database retry error:', retry.error)
-            return NextResponse.json({ error: 'Failed to update study', details: (retry.error as any).message || (retry.error as any).hint || String(retry.error) }, { status: 500 })
+            const details = (retry.error as { message?: string; hint?: string }).message || (retry.error as { message?: string; hint?: string }).hint || String(retry.error)
+            return NextResponse.json({ error: 'Failed to update study', details }, { status: 500 })
           }
           study = retry.data
         } catch (e) {
           console.error('Database error:', error)
-          return NextResponse.json({ error: 'Failed to update study', details: (error as any).message || (error as any).hint || String(error) }, { status: 500 })
+          const details = (error as { message?: string; hint?: string }).message || (error as { message?: string; hint?: string }).hint || String(error)
+          return NextResponse.json({ error: 'Failed to update study', details }, { status: 500 })
         }
       } else {
         console.error('Database error:', error)
-        return NextResponse.json({ error: 'Failed to update study', details: (error as any).message || (error as any).hint || String(error) }, { status: 500 })
+        const details = (error as { message?: string; hint?: string }).message || (error as { message?: string; hint?: string }).hint || String(error)
+        return NextResponse.json({ error: 'Failed to update study', details }, { status: 500 })
       }
     }
 

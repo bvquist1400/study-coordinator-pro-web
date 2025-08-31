@@ -94,7 +94,8 @@ export async function POST(request: NextRequest) {
       .insert({ site_id, user_id: targetUserId!, role } as unknown as never)
 
     if (error) {
-      if ((error as any).code === '23505') {
+      const errCode = (error as { code?: string }).code
+      if (errCode === '23505') {
         return NextResponse.json({ error: 'User is already a member of this site' }, { status: 409 })
       }
       console.error('Add member error:', error)
@@ -175,4 +176,3 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

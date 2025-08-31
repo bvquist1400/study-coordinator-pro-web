@@ -1,3 +1,12 @@
+// Generic JSON type for Supabase JSON/JSONB columns
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json }
+  | Json[]
+
 export interface Database {
   public: {
     Tables: {
@@ -578,7 +587,7 @@ export interface Database {
           estimated_delivery: string | null
           actual_delivery: string | null
           tracking_status: string | null
-          tracking_details: any
+          tracking_details: Json | null
           destination_address: string | null
           created_at: string
           updated_at: string
@@ -593,7 +602,7 @@ export interface Database {
           estimated_delivery?: string | null
           actual_delivery?: string | null
           tracking_status?: string | null
-          tracking_details?: any
+          tracking_details?: Json | null
           destination_address?: string | null
           created_at?: string
           updated_at?: string
@@ -608,7 +617,7 @@ export interface Database {
           estimated_delivery?: string | null
           actual_delivery?: string | null
           tracking_status?: string | null
-          tracking_details?: any
+          tracking_details?: Json | null
           destination_address?: string | null
           created_at?: string
           updated_at?: string

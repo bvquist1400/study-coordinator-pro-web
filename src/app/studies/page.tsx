@@ -63,7 +63,7 @@ export default function StudiesPage() {
         if (studiesError) {
           console.error('Error loading studies:', studiesError)
         } else {
-          const filtered = currentSiteId ? (studiesData || []).filter((s: any) => s.site_id === currentSiteId) : (studiesData || [])
+          const filtered = currentSiteId ? (studiesData || []).filter((s: { site_id: string | null }) => s.site_id === currentSiteId) : (studiesData || [])
           setStudies(filtered)
         }
       } catch (error) {
@@ -272,8 +272,8 @@ export default function StudiesPage() {
                         </svg>
                       </button>
                     </p>
-                    {('protocol_version' in study) && (study as any).protocol_version && (
-                      <p className="text-blue-300 font-mono text-xs mb-2">Version: {(study as any).protocol_version}</p>
+                    {Boolean((study as Partial<Study>).protocol_version) && (
+                      <p className="text-blue-300 font-mono text-xs mb-2">Version: {(study as Partial<Study>).protocol_version}</p>
                     )}
                     {study.sponsor && (
                       <p className="text-gray-300 text-sm mb-1">Sponsor: {study.sponsor}</p>

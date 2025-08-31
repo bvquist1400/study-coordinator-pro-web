@@ -63,7 +63,7 @@ export default function VisitsPage() {
         try {
           const key = `visits:selectedStudyId:${(user?.id)||'anon'}:${currentSiteId||'all'}`
           const stored = typeof window !== 'undefined' ? localStorage.getItem(key) : null
-          const exists = stored && (studies || []).some((s: any) => s.id === stored)
+          const exists = stored && (studies || []).some((s: { id: string }) => s.id === stored)
           if (exists) {
             setSelectedStudyId(stored as string)
           } else if (studies.length > 0 && !selectedStudyId) {

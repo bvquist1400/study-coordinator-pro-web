@@ -81,7 +81,7 @@ function CompliancePageContent() {
       if (error) {
         console.error('Database error:', error)
       } else {
-        const filtered = currentSiteId ? (studies || []).filter((s: any) => s.site_id === currentSiteId) : (studies || [])
+        const filtered = currentSiteId ? (studies || []).filter((s: { site_id: string | null }) => s.site_id === currentSiteId) : (studies || [])
         setStudies(filtered)
         
         if (!selectedStudyId && studies && studies.length > 0) {

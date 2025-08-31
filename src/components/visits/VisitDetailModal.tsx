@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import type { VisitSchedule } from '@/types/database'
 
 interface VisitDetail {
   id: string
@@ -175,7 +176,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
             })
             if (vsRes.ok) {
               const { visitSchedules } = await vsRes.json()
-              const vs = (visitSchedules || []).find((v: any) => v.id === visit.visit_schedule_id)
+              const vs = (visitSchedules as VisitSchedule[] | undefined)?.find(v => v.id === visit.visit_schedule_id)
               if (vs && Array.isArray(vs.procedures)) {
                 const lower = vs.procedures.map((p: string) => p.toLowerCase())
                 setInferredRequirements({
@@ -310,7 +311,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
         .limit(1)
 
       if (existing && existing.length > 0) {
-        const row = existing[0] as any
+        const row = existing[0] as { id: string; dispensing_date?: string | null; assessment_date: string }
         const dispStr = row.dispensing_date || row.assessment_date
         const start = new Date(String(dispStr).split('T')[0])
         const end = new Date(String(visitDay).split('T')[0])
@@ -382,7 +383,8 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
     }
   }
 
-  const handleChange = (field: keyof FormData, value: any) => {
+  type FormDataValue = FormData[keyof FormData]
+  const handleChange = (field: keyof FormData, value: FormDataValue) => {
     setFormData(prev => ({ ...prev, [field]: value }))
   }
 

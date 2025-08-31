@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
+import type { Study } from '@/types/database'
 
 interface InventoryAlert {
   studyId: string
@@ -44,7 +45,8 @@ export default function InventoryAlerts() {
       }
 
       // Get forecasts for all studies
-      const alertPromises = studies.map(async (study: any) => {
+      type ForecastItem = { status: 'critical' | 'warning' | string }
+      const alertPromises = (studies as Study[]).map(async (study) => {
         try {
           const forecastResponse = await fetch(`/api/inventory-forecast?study_id=${study.id}&days=30`, {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -54,8 +56,8 @@ export default function InventoryAlerts() {
 
           const { forecast, summary } = await forecastResponse.json()
           
-          const criticalIssues = forecast?.filter((f: any) => f.status === 'critical').length || 0
-          const warnings = forecast?.filter((f: any) => f.status === 'warning').length || 0
+          const criticalIssues = (forecast as ForecastItem[] | undefined)?.filter((f) => f.status === 'critical').length || 0
+          const warnings = (forecast as ForecastItem[] | undefined)?.filter((f) => f.status === 'warning').length || 0
 
           if (criticalIssues > 0 || warnings > 0) {
             return {

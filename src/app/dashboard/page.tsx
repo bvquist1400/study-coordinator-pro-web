@@ -253,7 +253,7 @@ export default function DashboardPage() {
             <h3 className="text-xl font-bold text-white mb-6">
               Quick Actions
             </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               <button 
                 className="relative overflow-hidden text-white px-6 py-3 rounded-lg font-semibold transition-all duration-300 hover:scale-105 hover:shadow-xl border shadow-lg group"
                 style={{ 
@@ -299,6 +299,16 @@ export default function DashboardPage() {
                 onClick={() => router.push('/compliance')}
               >
                 <span className="relative z-10">Check Compliance</span>
+              </button>
+              <button 
+                className="relative overflow-hidden text-white px-6 py-3 rounded-lg font-semibold transition-all duration-300 hover:scale-105 hover:shadow-xl border shadow-lg group"
+                style={{ 
+                  background: 'linear-gradient(to bottom right, #059669, #10b981)',
+                  borderColor: '#34d399'
+                }}
+                onClick={() => router.push('/analytics')}
+              >
+                <span className="relative z-10">View Analytics</span>
               </button>
             </div>
           </div>

@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import type { SubjectVisit } from '@/types/database'
 
 interface VisitSummaryCardsProps {
   studyId: string
@@ -24,13 +25,7 @@ export default function VisitSummaryCards({ studyId, refreshKey }: VisitSummaryC
   })
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    if (studyId) {
-      loadSummary()
-    }
-  }, [studyId, refreshKey])
-
-  const loadSummary = async () => {
+  const loadSummary = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
@@ -54,9 +49,15 @@ export default function VisitSummaryCards({ studyId, refreshKey }: VisitSummaryC
     } finally {
       setLoading(false)
     }
-  }
+  }, [studyId, refreshKey])
 
-  const calculateSummary = (visits: any[]) => {
+  useEffect(() => {
+    if (studyId) {
+      loadSummary()
+    }
+  }, [studyId, loadSummary])
+
+  const calculateSummary = (visits: SubjectVisit[]) => {
     const now = new Date()
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
     const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
@@ -64,15 +65,15 @@ export default function VisitSummaryCards({ studyId, refreshKey }: VisitSummaryC
     let upcomingThisWeek = 0
     let overdueVisits = 0
     let completedToday = 0
-    let totalVisits = visits.length
+    const totalVisits = visits.length
     let compliantVisits = 0
 
     visits.forEach(visit => {
       // Parse visit_date as local date when the string is date-only
       const vdPart = (visit.visit_date || '').split('T')[0]
       const scheduledDate = /^\d{4}-\d{2}-\d{2}$/.test(vdPart)
-        ? new Date(...vdPart.split('-').map((n: string, i: number) => i === 1 ? (parseInt(n) - 1) : parseInt(n)) as any)
-        : new Date(visit.visit_date)
+        ? (() => { const [y, m, d] = vdPart.split('-').map(Number); return new Date(y, (m || 1) - 1, d || 1) })()
+        : new Date(visit.visit_date || '')
 
       // Upcoming this week (scheduled between now and 7 days from now)
       if (visit.status === 'scheduled' && scheduledDate >= today && scheduledDate <= weekFromNow) {

@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import type { LabKit } from '@/types/database'
 
 interface LabKitSummaryCardsProps {
   studyId: string
@@ -25,13 +26,7 @@ export default function LabKitSummaryCards({ studyId, refreshKey, onFilterExpiri
   })
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    if (studyId) {
-      loadSummary()
-    }
-  }, [studyId, refreshKey])
-
-  const loadSummary = async () => {
+  const loadSummary = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
@@ -60,13 +55,19 @@ export default function LabKitSummaryCards({ studyId, refreshKey, onFilterExpiri
     } finally {
       setLoading(false)
     }
-  }
+  }, [studyId, refreshKey])
 
-  const calculateSummary = (labKits: any[]) => {
+  useEffect(() => {
+    if (studyId) {
+      loadSummary()
+    }
+  }, [studyId, loadSummary])
+
+  const calculateSummary = (labKits: LabKit[]) => {
     const now = new Date()
     const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
     
-    let totalKits = labKits.length
+    const totalKits = labKits.length
     let availableKits = 0
     let expiringSoon = 0
     let inTransit = 0

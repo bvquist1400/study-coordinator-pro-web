@@ -854,7 +854,7 @@ function BulkEditModal({ selectedKits, onClose, onSave }: BulkEditModalProps) {
       if (!token) return
 
       // Only send fields that are marked for update and have values
-      const updateData: any = {}
+      const updateData: Partial<LabKit> = {}
       Object.entries(updateFields).forEach(([field, shouldUpdate]) => {
         if (shouldUpdate && bulkData[field as keyof typeof bulkData]) {
           updateData[field] = bulkData[field as keyof typeof bulkData]

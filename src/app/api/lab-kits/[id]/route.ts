@@ -54,10 +54,9 @@ export async function GET(
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
-    // Clean up the response
-    delete (labKit as any).studies
-
-    return NextResponse.json({ labKit })
+    // Clean up the response (omit joined study object)
+    const { studies: _studies, ...labKitClean } = labKit as Record<string, unknown> & { studies?: unknown }
+    return NextResponse.json({ labKit: labKitClean })
   } catch (error) {
     console.error('API error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

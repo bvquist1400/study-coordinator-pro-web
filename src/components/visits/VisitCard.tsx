@@ -166,7 +166,7 @@ export default function VisitCard({
       if (meaningful.length > 0) {
         const { data: { user } } = await supabase.auth.getUser()
         if (user) {
-          const subjectId = (saved as any)?.subject_id || ''
+          const subjectId = (saved as { subject_id?: string })?.subject_id || ''
           const visitDay = visitData.visit_date || scheduledDate
           const msPerDay = 1000 * 60 * 60 * 24
           // Load dosing frequency for expected taken multiplier

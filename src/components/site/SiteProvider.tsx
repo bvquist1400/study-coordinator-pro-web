@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 
 interface Site {
@@ -21,24 +21,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
   const [sites, setSites] = useState<Site[]>([])
   const [currentSiteId, setCurrentSiteIdState] = useState<string | null>(null)
 
-  useEffect(() => {
-    // Load persisted site
-    const saved = typeof window !== 'undefined' ? localStorage.getItem('scp-current-site') : null
-    if (saved) setCurrentSiteIdState(saved)
-    // Load memberships
-    refreshSites()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const setCurrentSiteId = (id: string | null) => {
-    setCurrentSiteIdState(id)
-    if (typeof window !== 'undefined') {
-      if (id) localStorage.setItem('scp-current-site', id)
-      else localStorage.removeItem('scp-current-site')
-    }
-  }
-
-  const refreshSites = async () => {
+  const refreshSites = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user) return
@@ -47,8 +30,8 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
       try {
         const resp = await fetch('/api/sites', { headers: { Authorization: `Bearer ${session.access_token}` } })
         if (resp.ok) {
-          const { sites } = await resp.json()
-          const list = (sites || []).map((s: any) => ({ id: s.id, name: s.name })) as Site[]
+          const { sites: apiSites } = await resp.json()
+          const list = (apiSites || []).map((s: { id: string; name: string }) => ({ id: s.id, name: s.name })) as Site[]
           setSites(list)
           if (!currentSiteId && list.length > 0) setCurrentSiteId(list[0].id)
           return
@@ -68,7 +51,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
         return
       }
 
-      const siteIds = (memberships || []).map((m: any) => m.site_id).filter(Boolean)
+      const siteIds = (memberships || []).map((m: { site_id: string | null }) => m.site_id).filter(Boolean) as string[]
       if (siteIds.length === 0) {
         setSites([])
         setCurrentSiteId(null)
@@ -92,9 +75,25 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.error('Error loading sites:', e)
     }
+  }, [currentSiteId])
+
+  const setCurrentSiteId = (id: string | null) => {
+    setCurrentSiteIdState(id)
+    if (typeof window !== 'undefined') {
+      if (id) localStorage.setItem('scp-current-site', id)
+      else localStorage.removeItem('scp-current-site')
+    }
   }
 
-  const value = useMemo(() => ({ sites, currentSiteId, setCurrentSiteId, refreshSites }), [sites, currentSiteId])
+  useEffect(() => {
+    // Load persisted site
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('scp-current-site') : null
+    if (saved) setCurrentSiteIdState(saved)
+    // Load memberships
+    refreshSites()
+  }, [refreshSites])
+
+  const value = useMemo(() => ({ sites, currentSiteId, setCurrentSiteId, refreshSites }), [sites, currentSiteId, refreshSites])
 
   return (
     <SiteContext.Provider value={value}>

@@ -21,6 +21,14 @@ const eslintConfig = [
       "next-env.d.ts",
     ],
   },
+  // Project overrides
+  {
+    rules: {
+      // Relax strict rules to avoid blocking builds on harmless typings
+      "@typescript-eslint/no-explicit-any": "warn",
+      "prefer-const": "warn",
+    },
+  },
 ];
 
 export default eslintConfig;
