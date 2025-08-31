@@ -4,7 +4,7 @@ import { createSupabaseAdmin } from '@/lib/api/auth'
 // GET /api/lab-kits/[id] - Get specific lab kit details
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authHeader = request.headers.get('authorization')
@@ -21,7 +21,7 @@ export async function GET(
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
     }
 
-    const kitId = params.id
+    const { id: kitId } = await params
 
     // Get lab kit with study information for access control
     const { data: labKit, error } = await supabase
@@ -66,7 +66,7 @@ export async function GET(
 // PUT /api/lab-kits/[id] - Update specific lab kit
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authHeader = request.headers.get('authorization')
@@ -83,7 +83,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
     }
 
-    const kitId = params.id
+    const { id: kitId } = await params
     const updateData = await request.json()
 
     // First get the lab kit to verify access
@@ -161,7 +161,7 @@ export async function PUT(
 // DELETE /api/lab-kits/[id] - Delete specific lab kit
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const authHeader = request.headers.get('authorization')
@@ -178,7 +178,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
     }
 
-    const kitId = params.id
+    const { id: kitId } = await params
 
     // First get the lab kit to verify access
     const { data: existingKit, error: fetchError } = await supabase
