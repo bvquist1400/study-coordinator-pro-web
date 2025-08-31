@@ -104,7 +104,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Group upcoming visits by visit name
-    const visitGroups = (upcomingVisits || []).reduce((groups, visit) => {
+    type UpcomingVisitRow = { visit_name: string; visit_date: string; subjects: { subject_number: string } }
+    const uVisits = (upcomingVisits || []) as UpcomingVisitRow[]
+    const visitGroups = uVisits.reduce((groups, visit) => {
       const visitName = visit.visit_name
       if (!groups[visitName]) {
         groups[visitName] = []
@@ -117,7 +119,9 @@ export async function GET(request: NextRequest) {
     }, {} as Record<string, Array<{ visit_date: string, subject_number: string }>>)
 
     // Group available kits by visit assignment
-    const kitGroups = (labKits || []).reduce((groups, kit) => {
+    type KitRow = { status: string; expiration_date: string | null; visit_schedules?: { visit_name?: string | null } | null }
+    const kits = (labKits || []) as KitRow[]
+    const kitGroups = kits.reduce((groups, kit) => {
       const visitName = kit.visit_schedules?.visit_name || 'Unassigned'
       if (!groups[visitName]) {
         groups[visitName] = {

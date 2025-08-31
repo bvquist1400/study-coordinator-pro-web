@@ -188,10 +188,8 @@ export default function ScheduleVisitModal({ studyId, onClose, onSchedule }: Sch
       return
     }
 
-    if (labKitRequired && !selectedLabKit) {
-      alert('This visit requires a lab kit assignment')
-      return
-    }
+    // Note: We intentionally do NOT require lab kit selection at scheduling time
+    // The inventory forecasting system will predict lab kit needs automatically
 
     try {
       setScheduling(true)
@@ -417,8 +415,8 @@ export default function ScheduleVisitModal({ studyId, onClose, onSchedule }: Sch
               )}
             </div>
 
-            {/* Lab Kit Assignment */}
-            {(labKitRequired || selectedLabKit) && (
+            {/* Lab Kit Assignment - Hidden: Using predictive inventory system */}
+            {false && (labKitRequired || selectedLabKit) && (
               <div className="relative">
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   Lab Kit Assignment {labKitRequired && '*'}
@@ -504,6 +502,22 @@ export default function ScheduleVisitModal({ studyId, onClose, onSchedule }: Sch
               </div>
             )}
 
+            {/* Predictive Inventory Notice */}
+            <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-4">
+              <div className="flex items-start space-x-2">
+                <svg className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="flex-1">
+                  <h4 className="text-sm font-medium text-blue-400 mb-1">Automatic Lab Kit Management</h4>
+                  <p className="text-sm text-blue-300">
+                    Lab kit assignments are managed automatically using our predictive inventory system. 
+                    The system tracks upcoming visits and ensures adequate kit availability without requiring manual assignment during scheduling.
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {/* Preview */}
             {selectedSubjectId && (selectedVisitScheduleId || customVisitName) && scheduledDate && (
               <div className="bg-gray-700/30 rounded-lg p-4">
@@ -516,9 +530,6 @@ export default function ScheduleVisitModal({ studyId, onClose, onSchedule }: Sch
                       : visitSchedules.find(s => s.id === selectedVisitScheduleId)?.visit_name
                   }</p>
                   <p><span className="text-gray-400">Date:</span> {new Date(scheduledDate).toLocaleDateString()}</p>
-                  {selectedLabKit && (
-                    <p><span className="text-gray-400">Lab Kit:</span> {selectedLabKit.accession_number}</p>
-                  )}
                 </div>
               </div>
             )}
@@ -534,7 +545,7 @@ export default function ScheduleVisitModal({ studyId, onClose, onSchedule }: Sch
               </button>
               <button
                 onClick={handleSchedule}
-                disabled={scheduling || !selectedSubjectId || (!selectedVisitScheduleId && !customVisitName) || !scheduledDate || (labKitRequired && !selectedLabKit)}
+                disabled={scheduling || !selectedSubjectId || (!selectedVisitScheduleId && !customVisitName) || !scheduledDate}
                 className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
               >
                 {scheduling && (
