@@ -74,11 +74,11 @@ export default function ExpiredKitsView({ studyId, refreshKey, onRefresh }: Expi
     } finally {
       setLoading(false)
     }
-  }, [studyId, refreshKey])
+  }, [studyId])
 
   useEffect(() => {
     loadExpiredKits()
-  }, [loadExpiredKits])
+  }, [refreshKey, loadExpiredKits])
 
   const autoExpireKits = async (kits: LabKitWithVisit[], token: string) => {
     const today = new Date()

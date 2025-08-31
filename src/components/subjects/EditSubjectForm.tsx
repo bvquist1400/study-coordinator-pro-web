@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 
 interface EditSubjectFormProps {
@@ -35,11 +35,7 @@ export default function EditSubjectForm({ subjectId, studyId, onClose, onSave }:
   const [initialLoading, setInitialLoading] = useState(true)
 
   // Load existing subject data
-  useEffect(() => {
-    loadSubjectData()
-  }, [subjectId])
-
-  const loadSubjectData = async () => {
+  const loadSubjectData = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
@@ -75,7 +71,11 @@ export default function EditSubjectForm({ subjectId, studyId, onClose, onSave }:
     } finally {
       setInitialLoading(false)
     }
-  }
+  }, [subjectId])
+
+  useEffect(() => {
+    loadSubjectData()
+  }, [loadSubjectData])
 
   const handleChange = (field: keyof SubjectFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))

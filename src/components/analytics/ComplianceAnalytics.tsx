@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts'
 
 interface ComplianceTrend {
@@ -60,11 +60,7 @@ export default function ComplianceAnalytics({ studyId, className }: ComplianceAn
   const [months, setMonths] = useState(12)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    fetchComplianceData()
-  }, [studyId, months])
-
-  const fetchComplianceData = async () => {
+  const fetchComplianceData = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -90,7 +86,11 @@ export default function ComplianceAnalytics({ studyId, className }: ComplianceAn
     } finally {
       setLoading(false)
     }
-  }
+  }, [studyId, months])
+
+  useEffect(() => {
+    fetchComplianceData()
+  }, [fetchComplianceData])
 
   const getScoreColor = (score: number) => {
     if (score >= 90) return '#22c55e'

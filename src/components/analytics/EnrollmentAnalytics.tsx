@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts'
 
 interface EnrollmentTrend {
@@ -44,11 +44,7 @@ export default function EnrollmentAnalytics({ studyId, className }: EnrollmentAn
   const [months, setMonths] = useState(12)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    fetchEnrollmentData()
-  }, [studyId, months])
-
-  const fetchEnrollmentData = async () => {
+  const fetchEnrollmentData = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -73,7 +69,11 @@ export default function EnrollmentAnalytics({ studyId, className }: EnrollmentAn
     } finally {
       setLoading(false)
     }
-  }
+  }, [studyId, months])
+
+  useEffect(() => {
+    fetchEnrollmentData()
+  }, [fetchEnrollmentData])
 
   const getRateColor = (rate: number) => {
     if (rate >= 80) return '#22c55e'

@@ -131,10 +131,7 @@ export default function SubjectList({ studyId, onSubjectClick, refreshKey }: Sub
     return matchesStatus && matchesSearch
   })
 
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return '-'
-    return new Date(dateString).toLocaleDateString()
-  }
+  // Removed unused formatDate to reduce lint warnings
 
 
   if (loading) {

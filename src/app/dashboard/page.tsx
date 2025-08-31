@@ -38,7 +38,7 @@ export default function DashboardPage() {
   const [drugComplianceRate, setDrugComplianceRate] = useState<{ rate: number; window: string }>({ rate: 0, window: '30d' })
 
   // Activity and alerts
-  const [recentActivity, setRecentActivity] = useState<Array<{ id: string; visit_name: string; status: string; updated_at: string }>>([])
+  const [_recentActivity, setRecentActivity] = useState<Array<{ id: string; visit_name: string; status: string; updated_at: string }>>([])
   const [complianceAlerts, setComplianceAlerts] = useState<Array<{ id: string; visit_name: string; updated_at: string }>>([])
   const [calendarStrip, setCalendarStrip] = useState<Array<{ date: string; count: number }>>([])
 

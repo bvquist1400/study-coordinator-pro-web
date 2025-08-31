@@ -55,13 +55,13 @@ export default function LabKitSummaryCards({ studyId, refreshKey, onFilterExpiri
     } finally {
       setLoading(false)
     }
-  }, [studyId, refreshKey])
+  }, [studyId])
 
   useEffect(() => {
     if (studyId) {
       loadSummary()
     }
-  }, [studyId, loadSummary])
+  }, [studyId, refreshKey, loadSummary])
 
   const calculateSummary = (labKits: LabKit[]) => {
     const now = new Date()

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, ComposedChart } from 'recharts'
 
 interface VisitPerformance {
@@ -62,11 +62,7 @@ export default function VisitAnalytics({ studyId, className }: VisitAnalyticsPro
   const [months, setMonths] = useState(12)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    fetchVisitData()
-  }, [studyId, months])
-
-  const fetchVisitData = async () => {
+  const fetchVisitData = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -92,7 +88,11 @@ export default function VisitAnalytics({ studyId, className }: VisitAnalyticsPro
     } finally {
       setLoading(false)
     }
-  }
+  }, [studyId, months])
+
+  useEffect(() => {
+    fetchVisitData()
+  }, [fetchVisitData])
 
   const getPerformanceColor = (rate: number) => {
     if (rate >= 90) return '#22c55e'

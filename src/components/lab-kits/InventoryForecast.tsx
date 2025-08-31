@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 
 interface InventoryForecast {
@@ -34,11 +34,7 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
-  useEffect(() => {
-    loadForecast()
-  }, [studyId, daysAhead])
-
-  const loadForecast = async () => {
+  const loadForecast = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
@@ -61,7 +57,11 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
     } finally {
       setLoading(false)
     }
-  }
+  }, [studyId, daysAhead])
+
+  useEffect(() => {
+    loadForecast()
+  }, [loadForecast])
 
   const getStatusIcon = (status: 'ok' | 'warning' | 'critical') => {
     switch (status) {
