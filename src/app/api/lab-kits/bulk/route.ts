@@ -100,7 +100,8 @@ export async function POST(request: NextRequest) {
         .in('accession_number', accessionNumbers)
 
       if (existingKits && existingKits.length > 0) {
-        const existing = existingKits.map(kit => kit.accession_number)
+        type AccRow = { accession_number: string }
+        const existing = (existingKits as AccRow[]).map(kit => kit.accession_number)
         return NextResponse.json({ 
           error: `These accession numbers already exist in study ${studyId}: ${existing.join(', ')}` 
         }, { status: 409 })
