@@ -78,9 +78,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create site' }, { status: 500 })
     }
 
+    const siteRow = site as { id: string }
     const { error: memberErr } = await supabase
       .from('site_members')
-      .insert({ site_id: site.id, user_id: user.id, role: 'owner' } as unknown as never)
+      .insert({ site_id: siteRow.id, user_id: user.id, role: 'owner' } as unknown as never)
 
     if (memberErr) {
       console.error('Add owner membership error:', memberErr)

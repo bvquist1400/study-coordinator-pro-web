@@ -99,10 +99,10 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
   const [availableLabKits, setAvailableLabKits] = useState<Array<{id: string; accession_number: string; kit_type?: string; expiration_date?: string}>>([])
   const [showAccessionDropdown, setShowAccessionDropdown] = useState(false)
 
-  // Previously dispensed IP IDs for returns dropdown
-  const [previousIpIds, setPreviousIpIds] = useState<string[]>([])
+  // Previously dispensed IP IDs for returns dropdown (unused)
+  // const [previousIpIds, setPreviousIpIds] = useState<string[]>([])
 
-  const [dosingFactor, setDosingFactor] = useState(1)
+  const [_dosingFactor, setDosingFactor] = useState(1)
 
   const [formData, setFormData] = useState<FormData>({
     ip_start_date: '',
