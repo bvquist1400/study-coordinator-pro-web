@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { createSupabaseAdmin } from '@/lib/api/auth'
 
 interface StudyComparison {
   study_id: string
@@ -40,16 +40,28 @@ interface StudyMilestone {
 
 export async function GET(_request: NextRequest) {
   try {
-    const supabase = await createServerSupabaseClient()
-    
-    // Get user from session
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    if (userError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // Use Authorization header like other APIs
+    const authHeader = _request.headers.get('authorization')
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 })
+    }
+    const token = authHeader.split(' ')[1]
+    const supabase = createSupabaseAdmin()
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
     }
 
     // Get all studies with their data
-    const { data: studies, error: studiesError } = await supabase
+    // Resolve memberships and restrict studies
+    const { data: memberships } = await supabase
+      .from('site_members')
+      .select('site_id')
+      .eq('user_id', user.id)
+    const siteIds = (memberships || []).map(m => m.site_id)
+
+    let baseStudiesQuery = supabase
       .from('studies')
       .select(`
         id,
@@ -61,9 +73,19 @@ export async function GET(_request: NextRequest) {
         end_date,
         target_enrollment,
         created_at,
-        updated_at
+        updated_at,
+        site_id,
+        user_id
       `)
       .order('created_at', { ascending: false })
+
+    if (siteIds.length > 0) {
+      baseStudiesQuery = baseStudiesQuery.in('site_id', siteIds)
+    } else {
+      baseStudiesQuery = baseStudiesQuery.eq('user_id', user.id)
+    }
+
+    const { data: studies, error: studiesError } = await baseStudiesQuery
 
     if (studiesError) {
       console.error('Error fetching studies:', studiesError)

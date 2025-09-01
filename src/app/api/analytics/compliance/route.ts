@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { createSupabaseAdmin } from '@/lib/api/auth'
 
 interface ComplianceTrend {
   month: string
@@ -36,12 +36,17 @@ export async function GET(request: NextRequest) {
     const months = parseInt(searchParams.get('months') || '12')
     const studyId = searchParams.get('studyId')
 
-    const supabase = await createServerSupabaseClient()
+    // Bearer token auth
+    const authHeader = request.headers.get('authorization')
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 })
+    }
+    const token = authHeader.split(' ')[1]
+    const supabase = createSupabaseAdmin()
 
-    // Get user from session
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    if (userError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
     }
 
     // Calculate date range
@@ -49,8 +54,36 @@ export async function GET(request: NextRequest) {
     const startDate = new Date()
     startDate.setMonth(startDate.getMonth() - months)
 
+    // Resolve allowed studies
+    const { data: memberships } = await supabase
+      .from('site_members')
+      .select('site_id')
+      .eq('user_id', user.id)
+    const siteIds = (memberships || []).map(m => m.site_id)
+
+    let studiesQuery = supabase
+      .from('studies')
+      .select('id, site_id, user_id')
+    if (studyId) {
+      studiesQuery = studiesQuery.eq('id', studyId)
+    } else if (siteIds.length > 0) {
+      studiesQuery = studiesQuery.in('site_id', siteIds)
+    } else {
+      studiesQuery = studiesQuery.eq('user_id', user.id)
+    }
+
+    const { data: allowedStudies, error: studiesErr } = await studiesQuery
+    if (studiesErr) {
+      console.error('Error fetching studies for compliance analytics:', studiesErr)
+      return NextResponse.json({ error: 'Failed to resolve studies' }, { status: 500 })
+    }
+    const allowedStudyIds = (allowedStudies || []).map(s => s.id)
+    if (allowedStudyIds.length === 0) {
+      return NextResponse.json({ trends: [], studyBreakdown: [], alerts: [], summary: { overallTimingRate: 0, overallDrugRate: 0, totalVisits: 0, totalDrugRecords: 0, activeAlerts: 0 } })
+    }
+
     // Get visit compliance data
-    let visitsQuery = supabase
+    const { data: visits, error: visitsError } = await supabase
       .from('subject_visits')
       .select(`
         id,
@@ -71,22 +104,17 @@ export async function GET(request: NextRequest) {
           )
         )
       `)
+      .in('study_id', allowedStudyIds)
       .eq('status', 'completed')
       .gte('updated_at', startDate.toISOString())
       .lte('updated_at', endDate.toISOString())
-
-    if (studyId) {
-      visitsQuery = visitsQuery.eq('study_id', studyId)
-    }
-
-    const { data: visits, error: visitsError } = await visitsQuery
     if (visitsError) {
       console.error('Error fetching visits:', visitsError)
       return NextResponse.json({ error: 'Failed to fetch visits' }, { status: 500 })
     }
 
     // Get drug compliance data
-    let drugQuery = supabase
+    const { data: drugCompliance, error: drugError } = await supabase
       .from('drug_compliance')
       .select(`
         id,
@@ -113,12 +141,7 @@ export async function GET(request: NextRequest) {
       `)
       .gte('updated_at', startDate.toISOString())
       .lte('updated_at', endDate.toISOString())
-
-    if (studyId) {
-      drugQuery = drugQuery.eq('subject_visits.study_id', studyId)
-    }
-
-    const { data: drugCompliance, error: drugError } = await drugQuery
+      .in('subject_visits.study_id', allowedStudyIds)
     if (drugError) {
       console.error('Error fetching drug compliance:', drugError)
       return NextResponse.json({ error: 'Failed to fetch drug compliance' }, { status: 500 })

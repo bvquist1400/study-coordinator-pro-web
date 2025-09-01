@@ -82,25 +82,40 @@ CREATE TABLE visit_schedules (
     UNIQUE(study_id, visit_number)
 );
 
--- Actual subject visits
+-- Actual subject visits with enhanced IP accountability
 CREATE TABLE subject_visits (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     subject_id UUID REFERENCES subjects(id) ON DELETE CASCADE NOT NULL,
     visit_schedule_id UUID REFERENCES visit_schedules(id) ON DELETE SET NULL,
     user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
     visit_name TEXT NOT NULL,
-    scheduled_date DATE NOT NULL,
-    actual_date DATE,
+    visit_date DATE NOT NULL,  -- Unified date field
     status TEXT DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'completed', 'missed', 'cancelled')),
     is_within_window BOOLEAN,
     days_from_scheduled INTEGER,
     procedures_completed TEXT[],
     notes TEXT,
+    
+    -- Enhanced IP accountability fields
+    study_id UUID REFERENCES studies(id),  -- Direct study reference for better queries
+    lab_kit_required BOOLEAN,
+    accession_number TEXT,  -- Lab kit tracking
+    airway_bill_number TEXT,
+    lab_kit_shipped_date DATE,
+    drug_dispensing_required BOOLEAN,
+    ip_start_date DATE,  -- When first dose was taken  
+    ip_last_dose_date DATE,  -- When last dose was taken
+    ip_dispensed INTEGER,  -- Number of pills/units dispensed at this visit
+    ip_returned INTEGER,  -- Number of pills/units returned at this visit  
+    ip_id TEXT,  -- Bottle/kit number dispensed at this visit
+    local_labs_required BOOLEAN,
+    local_labs_completed BOOLEAN DEFAULT FALSE,
+    
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Drug compliance tracking
+-- Drug compliance tracking with multi-dose support
 CREATE TABLE drug_compliance (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     subject_id UUID REFERENCES subjects(id) ON DELETE CASCADE NOT NULL,
@@ -108,24 +123,30 @@ CREATE TABLE drug_compliance (
     assessment_date DATE NOT NULL DEFAULT CURRENT_DATE,
     dispensed_count INTEGER NOT NULL,
     returned_count INTEGER NOT NULL DEFAULT 0,
-    expected_taken INTEGER NOT NULL,
+    expected_taken NUMERIC,  -- Now supports multi-dose calculations
     actual_taken INTEGER GENERATED ALWAYS AS (dispensed_count - returned_count) STORED,
-    compliance_percentage DECIMAL GENERATED ALWAYS AS (
+    compliance_percentage NUMERIC GENERATED ALWAYS AS (
         CASE 
-            WHEN expected_taken > 0 THEN ROUND(((dispensed_count - returned_count)::DECIMAL / expected_taken) * 100, 1)
+            WHEN expected_taken > 0 THEN ROUND(((dispensed_count - returned_count)::NUMERIC / expected_taken) * 100, 1)
             ELSE 0 
         END
     ) STORED,
     is_compliant BOOLEAN GENERATED ALWAYS AS (
         CASE 
-            WHEN expected_taken > 0 THEN ((dispensed_count - returned_count)::DECIMAL / expected_taken) * 100 >= 80
+            WHEN expected_taken > 0 THEN ((dispensed_count - returned_count)::NUMERIC / expected_taken) * 100 >= 80
             ELSE true
         END
     ) STORED,
     visit_id UUID REFERENCES subject_visits(id) ON DELETE SET NULL,
+    ip_id TEXT,  -- Links to specific bottle/kit for accountability
+    dispensing_date DATE,  -- When the IP was originally dispensed
+    ip_last_dose_date DATE,  -- When the last dose was taken
     notes TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    -- Ensure one compliance record per bottle per subject
+    UNIQUE(subject_id, ip_id)
 );
 
 -- Monitor action items (from CRA visits)
@@ -188,11 +209,17 @@ CREATE INDEX idx_subjects_study_id ON subjects(study_id);
 CREATE INDEX idx_subjects_user_id ON subjects(user_id);
 CREATE INDEX idx_subjects_status ON subjects(status);
 CREATE INDEX idx_subject_visits_subject_id ON subject_visits(subject_id);
-CREATE INDEX idx_subject_visits_scheduled_date ON subject_visits(scheduled_date);
+CREATE INDEX idx_subject_visits_visit_date ON subject_visits(visit_date);
 CREATE INDEX idx_subject_visits_status ON subject_visits(status);
+CREATE INDEX idx_subject_visits_study_id ON subject_visits(study_id);
+CREATE INDEX idx_subject_visits_ip_id ON subject_visits(ip_id);
 CREATE INDEX idx_drug_compliance_subject_id ON drug_compliance(subject_id);
 CREATE INDEX idx_drug_compliance_assessment_date ON drug_compliance(assessment_date);
 CREATE INDEX idx_drug_compliance_is_compliant ON drug_compliance(is_compliant);
+CREATE INDEX idx_drug_compliance_ip_id ON drug_compliance(ip_id);
+CREATE INDEX idx_drug_compliance_subject_ip ON drug_compliance(subject_id, ip_id);
+CREATE INDEX idx_drug_compliance_dispensing_date ON drug_compliance(dispensing_date);
+CREATE INDEX idx_drug_compliance_subject_ip_dates ON drug_compliance(subject_id, ip_id, dispensing_date, ip_last_dose_date);
 CREATE INDEX idx_monitor_actions_study_id ON monitor_actions(study_id);
 CREATE INDEX idx_monitor_actions_user_id ON monitor_actions(user_id);
 CREATE INDEX idx_monitor_actions_status ON monitor_actions(status);

@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase/client'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts'
 
 interface ComplianceTrend {
@@ -68,7 +69,11 @@ export default function ComplianceAnalytics({ studyId, className }: ComplianceAn
       const params = new URLSearchParams({ months: months.toString() })
       if (studyId) params.append('studyId', studyId)
       
-      const response = await fetch(`/api/analytics/compliance?${params}`)
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      const response = await fetch(`/api/analytics/compliance?${params}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined
+      })
       
       if (!response.ok) {
         throw new Error('Failed to fetch compliance data')

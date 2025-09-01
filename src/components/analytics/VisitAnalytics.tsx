@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase/client'
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, ComposedChart, Line } from 'recharts'
 
 interface VisitPerformance {
@@ -70,7 +71,11 @@ export default function VisitAnalytics({ studyId, className }: VisitAnalyticsPro
       const params = new URLSearchParams({ months: months.toString() })
       if (studyId) params.append('studyId', studyId)
       
-      const response = await fetch(`/api/analytics/visits?${params}`)
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      const response = await fetch(`/api/analytics/visits?${params}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined
+      })
       
       if (!response.ok) {
         throw new Error('Failed to fetch visit data')

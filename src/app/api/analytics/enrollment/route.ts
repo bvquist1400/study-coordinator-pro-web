@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { createSupabaseAdmin } from '@/lib/api/auth'
 
 interface EnrollmentTrend {
   month: string
@@ -22,13 +22,18 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const months = parseInt(searchParams.get('months') || '12')
     const studyId = searchParams.get('studyId')
-    
-    const supabase = await createServerSupabaseClient()
-    
-    // Get user from session
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    if (userError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    // Authorization: Bearer token (align with other APIs)
+    const authHeader = request.headers.get('authorization')
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 })
+    }
+    const token = authHeader.split(' ')[1]
+    const supabase = createSupabaseAdmin()
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
     }
 
     // Calculate date range
@@ -36,8 +41,38 @@ export async function GET(request: NextRequest) {
     const startDate = new Date()
     startDate.setMonth(startDate.getMonth() - months)
 
-    // Build base query for subjects
-    let subjectsQuery = supabase
+    // Resolve membership: allowed study IDs (site-based or legacy user-owned)
+    const { data: memberships } = await supabase
+      .from('site_members')
+      .select('site_id')
+      .eq('user_id', user.id)
+    const siteIds = (memberships || []).map(m => m.site_id)
+
+    let studiesQuery = supabase
+      .from('studies')
+      .select('id, protocol_number, study_title, target_enrollment, start_date, site_id, user_id')
+    if (studyId) {
+      studiesQuery = studiesQuery.eq('id', studyId)
+    } else if (siteIds.length > 0) {
+      studiesQuery = studiesQuery.in('site_id', siteIds)
+    } else {
+      studiesQuery = studiesQuery.eq('user_id', user.id)
+    }
+
+    const { data: allowedStudies, error: studiesErr } = await studiesQuery
+    if (studiesErr) {
+      console.error('Error fetching studies for analytics:', studiesErr)
+      return NextResponse.json({ error: 'Failed to resolve studies' }, { status: 500 })
+    }
+    const allowedStudyIds = (allowedStudies || []).map(s => s.id)
+    if (allowedStudyIds.length === 0) {
+      return NextResponse.json({ trends: [], studyBreakdown: [], summary: { totalEnrolled: 0, totalTarget: 0, overallRate: 0, activeStudies: 0 } })
+    }
+
+    const toDateOnly = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+    // Build subjects query within allowed studies and date range
+    const { data: subjects, error: subjectsError } = await supabase
       .from('subjects')
       .select(`
         id,
@@ -53,15 +88,9 @@ export async function GET(request: NextRequest) {
           site_id
         )
       `)
-      .gte('enrollment_date', startDate.toISOString())
-      .lte('enrollment_date', endDate.toISOString())
-
-    // Filter by study if specified
-    if (studyId) {
-      subjectsQuery = subjectsQuery.eq('study_id', studyId)
-    }
-
-    const { data: subjects, error: subjectsError } = await subjectsQuery
+      .in('study_id', allowedStudyIds)
+      .gte('enrollment_date', toDateOnly(startDate))
+      .lte('enrollment_date', toDateOnly(endDate))
 
     if (subjectsError) {
       console.error('Error fetching subjects:', subjectsError)
@@ -103,7 +132,7 @@ export async function GET(request: NextRequest) {
 
     // Calculate per-study enrollment metrics
     const studyEnrollmentMap: { [key: string]: any } = {}
-    
+
     subjects?.forEach(subject => {
       const study = (subject as any).studies
       if (!studyEnrollmentMap[study.id]) {

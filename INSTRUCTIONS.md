@@ -94,11 +94,15 @@ Personal productivity tool for clinical research coordinators - organizes daily 
 
 - **IP Accountability System Overhaul**:
   - **Renamed Fields**: `actual_start_date` → `ip_start_date` for clarity
-  - **Enhanced Tracking**: Added `ip_last_dose_date`, `ip_dispensed`, `ip_returned`, `ip_id` fields
+  - **Enhanced Tracking**: Added `ip_last_dose_date`, `ip_dispensed`, `ip_returned`, `ip_id`, `return_ip_id` fields
   - **Structured Data Entry**:
-    - "Dispense at this visit": First dose date, bottle/kit number, dispensed count
-    - "Returns from previous visit": Last dose date, returned count
+    - "Dispense at this visit": First dose date, bottle/kit number (text input), dispensed count
+    - "Returns from previous visit": Last dose date, bottle/kit number (dropdown selection), returned count
+  - **Separated IP ID Fields**: Resolved field conflict where dispensing and returns sections mirrored each other
+    - `ip_id`: For new dispensing at current visit (text input)
+    - `return_ip_id`: For returns from previous visit (dropdown showing previously dispensed IPs)
   - **Proper Compliance Calculation**: Uses actual dispensing dates for accurate expected doses
+  - **Automatic Lab Kit Status Updates**: Lab kits automatically transition from "available" to "used" when associated with completed visits
 
 ### 🔄 Current Status
 **All major features completed**. System is production-ready with comprehensive functionality for clinical research coordinators.
@@ -225,7 +229,38 @@ ALTER TABLE subject_visits ADD COLUMN ip_id TEXT;
 ALTER TABLE drug_compliance ADD COLUMN ip_id TEXT;
 ALTER TABLE drug_compliance ADD COLUMN dispensing_date DATE;
 ALTER TABLE drug_compliance ADD COLUMN ip_last_dose_date DATE;
+ALTER TABLE drug_compliance ADD COLUMN expected_taken NUMERIC;
 ```
+
+**Multi-Dose Compliance System**:
+The system automatically calculates compliance based on study-specific dosing frequency:
+- **QD (Once Daily)**: 1 dose per day
+- **BID (Twice Daily)**: 2 doses per day  
+- **TID (Three Times Daily)**: 3 doses per day
+- **QID (Four Times Daily)**: 4 doses per day
+- **Weekly**: 1 dose per week (1/7 daily)
+- **Custom**: Defaults to 1 dose per day (can be extended)
+
+**Compliance Calculation Formula**:
+```sql
+expected_taken = (last_dose_date - first_dose_date + 1) × doses_per_day
+actual_taken = dispensed_count - returned_count  
+compliance_percentage = (actual_taken / expected_taken) × 100
+```
+
+**IP Return Linkage System**:
+The system correctly handles drug accountability when subjects return bottles from previous visits:
+- **Returns are linked to previous visits**: When returning a bottle (e.g., "001"), the return is recorded on the original visit where that bottle was dispensed
+- **New dispensing creates separate records**: New bottles dispensed at current visit get their own compliance tracking
+- **Transactional integrity**: All operations happen in a single database transaction to ensure data consistency
+- **Proper audit trail**: Each bottle maintains its complete lifecycle from dispensing to return
+
+**Return Processing Workflow**:
+1. User enters return bottle ID (e.g., "001") and return count
+2. System finds the previous visit where that bottle was originally dispensed  
+3. Updates that previous visit with the return information
+4. Updates the drug compliance record for that specific bottle
+5. If dispensing new bottle at current visit, creates separate compliance record
 
 ### Business Impact
 

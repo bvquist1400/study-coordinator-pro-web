@@ -68,9 +68,6 @@ interface VisitDetailModalProps {
   onUpdate: () => void
 }
 
-type DispenseRow = { ip_id: string; dispensed: number }
-type ReturnRow = { ip_id: string; returned: number }
-
 type DrugComplianceRow = {
   subject_id: string
   user_id: string
@@ -92,15 +89,11 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
 
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
 
-  const [dispenseRows] = useState<DispenseRow[]>([{ ip_id: '', dispensed: 0 }])
-  const [returnRows] = useState<ReturnRow[]>([{ ip_id: '', returned: 0 }])
 
   // Autocomplete for lab kits
   const [availableLabKits, setAvailableLabKits] = useState<Array<{id: string; accession_number: string; kit_type?: string; expiration_date?: string}>>([])
   const [showAccessionDropdown, setShowAccessionDropdown] = useState(false)
 
-  // Previously dispensed IP IDs for returns dropdown (unused)
-  // const [previousIpIds, setPreviousIpIds] = useState<string[]>([])
 
   const [_dosingFactor, setDosingFactor] = useState(1)
 
@@ -196,22 +189,6 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
           console.warn('Failed to load lab kits for autocomplete:', error)
         }
 
-        // Load previous IP IDs for this subject
-        try {
-          const visitsResponse = await fetch(`/api/subject-visits?subjectId=${visit.subject_id}`, {
-            headers: { Authorization: 'Bearer ' + token }
-          })
-          if (visitsResponse.ok) {
-            const visitsData = await visitsResponse.json()
-            const ipIds = visitsData.subjectVisits
-              ?.filter((v: any) => v.ip_id && v.id !== visitId) // Exclude current visit
-              ?.map((v: any) => v.ip_id)
-              ?.filter((value: string, index: number, array: string[]) => array.indexOf(value) === index) // Remove duplicates
-            setPreviousIpIds(ipIds || [])
-          }
-        } catch (error) {
-          console.warn('Failed to load previous IP IDs:', error)
-        }
 
         // infer required flags from visit schedule
         if (
@@ -259,22 +236,40 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
 
   // Removed unused copyComplianceSummary helper to reduce warnings
 
-  const validateBottleRows = (): string[] => {
+  const validateFormData = (): string[] => {
     const warnings: string[] = []
-    dispenseRows.forEach((r, idx) => {
-      if (r.dispensed > 0 && !r.ip_id.trim()) warnings.push(`Dispense row ${idx + 1}: IP ID required`)
-      if (r.dispensed < 0) warnings.push(`Dispense row ${idx + 1}: Values cannot be negative`)
-    })
-    returnRows.forEach((r, idx) => {
-      if (r.returned > 0 && !r.ip_id.trim()) warnings.push(`Return row ${idx + 1}: IP ID required`)
-      if (r.returned < 0) warnings.push(`Return row ${idx + 1}: Values cannot be negative`)
-    })
+    
+    // Validate dispensing fields
+    if (formData.ip_dispensed && parseInt(formData.ip_dispensed) > 0) {
+      if (!formData.ip_id.trim()) {
+        warnings.push('IP ID required when dispensing medication')
+      }
+      if (!formData.ip_start_date) {
+        warnings.push('First dose date required when dispensing medication')
+      }
+    }
+    if (formData.ip_dispensed && parseInt(formData.ip_dispensed) < 0) {
+      warnings.push('Dispensed amount cannot be negative')
+    }
+    
+    // Validate return fields
+    if (formData.ip_returned && parseInt(formData.ip_returned) > 0) {
+      if (!formData.return_ip_id.trim()) {
+        warnings.push('Bottle/Kit number required when returning medication')
+      }
+      if (!formData.ip_last_dose_date) {
+        warnings.push('Last dose date required when returning medication')
+      }
+    }
+    if (formData.ip_returned && parseInt(formData.ip_returned) < 0) {
+      warnings.push('Returned amount cannot be negative')
+    }
+    
     return warnings
   }
 
   const upsertDrugComplianceForIP = async (assessmentDateISO: string) => {
-    // Use the new IP fields from formData instead of dispenseRows/returnRows
-    if (!visit || !formData.ip_id) return
+    if (!visit) return
 
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
@@ -304,8 +299,8 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
       /* ignore */
     }
 
-    // Handle IP dispensing if we have dispensed amount and IP start date
-    if (formData.ip_dispensed && formData.ip_start_date && parseInt(formData.ip_dispensed) > 0) {
+    // Handle NEW IP dispensing if we have dispensed amount and IP start date
+    if (formData.ip_dispensed && formData.ip_start_date && formData.ip_id && parseInt(formData.ip_dispensed) > 0) {
       const payload: DrugComplianceRow = {
         subject_id: subjectId,
         user_id: user.id,
@@ -318,18 +313,19 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
         dispensing_date: formData.ip_start_date
       }
       await supabase.from('drug_compliance').insert(payload)
+      showToast('New IP dispensing recorded', 'success')
     }
 
-    // Handle IP returns if we have return amount and last dose date
+    // Handle IP RETURNS if we have return amount and last dose date
     if (formData.ip_returned && formData.ip_last_dose_date && formData.return_ip_id && parseInt(formData.ip_returned) > 0) {
-      const ipId = formData.return_ip_id.trim()
+      const returnIpId = formData.return_ip_id.trim()
       
-      // Find the most recent compliance record for this IP
+      // Find the most recent compliance record for the RETURNED IP (not the newly dispensed one)
       const { data: existing } = await supabase
         .from('drug_compliance')
         .select('*')
         .eq('subject_id', subjectId)
-        .eq('ip_id', ipId)
+        .eq('ip_id', returnIpId)  // Use the return_ip_id, not the new ip_id
         .order('dispensing_date', { ascending: false })
         .limit(1)
 
@@ -353,17 +349,22 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
               ip_last_dose_date: formData.ip_last_dose_date
             })
             .eq('id', row.id)
+          
+          showToast(`Return recorded for IP ${returnIpId}`, 'success')
+        } else {
+          showToast(`Could not find dispensing date for IP ${returnIpId}`, 'error')
         }
+      } else {
+        showToast(`Could not find compliance record for IP ${returnIpId}`, 'error')
       }
     }
-    showToast('IP compliance updated', 'success')
   }
 
   const handleSave = async () => {
     if (!visit) return
     try {
       setSaving(true)
-      const warnings = validateBottleRows()
+      const warnings = validateFormData()
       if (warnings.length > 0) {
         showToast(warnings[0], 'error')
         setSaving(false)
@@ -375,10 +376,12 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
       if (!token) return
 
       const updateData = {
+        status: formData.status,
+        visit_date: visit.visit_date,
+        procedures_completed: formData.procedures_completed,
+        notes: formData.notes || null,
         ip_start_date: formData.ip_start_date || null,
         ip_last_dose_date: formData.ip_last_dose_date || null,
-        status: formData.status,
-        procedures_completed: formData.procedures_completed,
         accession_number: formData.accession_number || null,
         airway_bill_number: formData.airway_bill_number || null,
         lab_kit_shipped_date: formData.lab_kit_shipped_date || null,
@@ -386,11 +389,11 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
         ip_returned: formData.ip_returned ? parseInt(formData.ip_returned) : null,
         ip_id: formData.ip_id || null,
         return_ip_id: formData.return_ip_id || null,
-        local_labs_completed: formData.local_labs_completed,
-        notes: formData.notes || null
+        local_labs_completed: formData.local_labs_completed
       }
 
-      const response = await fetch('/api/subject-visits/' + visitId, {
+      // Use the new IP accountability endpoint for better data integrity
+      const response = await fetch('/api/subject-visits/' + visitId + '/ip-accountability', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -846,18 +849,13 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
                       <div>
                         <label className="block text-sm font-medium text-gray-300 mb-1">Bottle or Kit Number (for returns)</label>
                         {isEditing ? (
-                          <div className="relative">
-                            <select
-                              value={formData.return_ip_id}
-                              onChange={(e) => handleChange('return_ip_id', e.target.value)}
-                              className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                              <option value="">Select previously dispensed IP...</option>
-                              {previousIpIds.map((ipId) => (
-                                <option key={ipId} value={ipId}>{ipId}</option>
-                              ))}
-                            </select>
-                          </div>
+                          <input
+                            type="text"
+                            value={formData.return_ip_id}
+                            onChange={(e) => handleChange('return_ip_id', e.target.value)}
+                            className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Enter bottle/kit number being returned"
+                          />
                         ) : (
                           <p className="text-gray-100">{visit.return_ip_id || '-'}</p>
                         )}
@@ -964,6 +962,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
                       if (!token) return
                       const body = {
                         status: 'completed' as VisitStatus,
+                        visit_date: visit.visit_date,
                         ip_start_date: formData.ip_start_date || null,
                         ip_last_dose_date: formData.ip_last_dose_date || null,
                         accession_number: formData.accession_number || null,
@@ -975,7 +974,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
                         return_ip_id: formData.return_ip_id || null,
                         local_labs_completed: formData.local_labs_completed
                       }
-                      const resp = await fetch('/api/subject-visits/' + visitId, {
+                      const resp = await fetch('/api/subject-visits/' + visitId + '/ip-accountability', {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
                         body: JSON.stringify(body)

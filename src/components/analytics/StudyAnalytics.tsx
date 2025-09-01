@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase/client'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ScatterChart, Scatter } from 'recharts'
 
 interface StudyComparison {
@@ -68,7 +69,11 @@ export default function StudyAnalytics({ className }: StudyAnalyticsProps) {
       setLoading(true)
       setError(null)
       
-      const response = await fetch('/api/analytics/studies')
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      const response = await fetch('/api/analytics/studies', {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined
+      })
       
       if (!response.ok) {
         throw new Error('Failed to fetch study data')

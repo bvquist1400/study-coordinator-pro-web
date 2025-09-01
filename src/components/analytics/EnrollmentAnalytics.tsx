@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase/client'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts'
 
 interface EnrollmentTrend {
@@ -52,7 +53,12 @@ export default function EnrollmentAnalytics({ studyId, className }: EnrollmentAn
       const params = new URLSearchParams({ months: months.toString() })
       if (studyId) params.append('studyId', studyId)
       
-      const response = await fetch(`/api/analytics/enrollment?${params}`)
+      // Include bearer token to align with API auth
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      const response = await fetch(`/api/analytics/enrollment?${params}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined
+      })
       
       if (!response.ok) {
         throw new Error('Failed to fetch enrollment data')

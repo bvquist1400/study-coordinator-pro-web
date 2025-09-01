@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { createSupabaseAdmin } from '@/lib/api/auth'
 
 interface VisitPerformance {
   month: string
@@ -36,12 +36,16 @@ export async function GET(request: NextRequest) {
     const months = parseInt(searchParams.get('months') || '12')
     const studyId = searchParams.get('studyId')
 
-    const supabase = await createServerSupabaseClient()
-
-    // Get user from session
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    if (userError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // Authorization header (bearer token)
+    const authHeader = request.headers.get('authorization')
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 })
+    }
+    const token = authHeader.split(' ')[1]
+    const supabase = createSupabaseAdmin()
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
     }
 
     // Calculate date range
@@ -49,8 +53,32 @@ export async function GET(request: NextRequest) {
     const startDate = new Date()
     startDate.setMonth(startDate.getMonth() - months)
 
-    // Get visit data
-    let visitsQuery = supabase
+    // Resolve allowed studies
+    const { data: memberships } = await supabase
+      .from('site_members')
+      .select('site_id')
+      .eq('user_id', user.id)
+    const siteIds = (memberships || []).map(m => m.site_id)
+
+    let studiesQuery = supabase
+      .from('studies')
+      .select('id, site_id, user_id')
+    if (studyId) {
+      studiesQuery = studiesQuery.eq('id', studyId)
+    } else if (siteIds.length > 0) {
+      studiesQuery = studiesQuery.in('site_id', siteIds)
+    } else {
+      studiesQuery = studiesQuery.eq('user_id', user.id)
+    }
+    const { data: allowedStudies, error: studiesErr } = await studiesQuery
+    if (studiesErr) {
+      console.error('Error fetching studies for visit analytics:', studiesErr)
+      return NextResponse.json({ error: 'Failed to resolve studies' }, { status: 500 })
+    }
+    const allowedStudyIds = (allowedStudies || []).map(s => s.id)
+
+    // Get visit data within allowed studies
+    const { data: visits, error: visitsError } = await supabase
       .from('subject_visits')
       .select(`
         id,
@@ -71,14 +99,9 @@ export async function GET(request: NextRequest) {
           )
         )
       `)
+      .in('study_id', allowedStudyIds)
       .gte('created_at', startDate.toISOString())
       .lte('created_at', endDate.toISOString())
-
-    if (studyId) {
-      visitsQuery = visitsQuery.eq('study_id', studyId)
-    }
-
-    const { data: visits, error: visitsError } = await visitsQuery
     if (visitsError) {
       console.error('Error fetching visits:', visitsError)
       return NextResponse.json({ error: 'Failed to fetch visits' }, { status: 500 })
