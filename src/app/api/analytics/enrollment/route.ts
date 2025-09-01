@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
       .from('site_members')
       .select('site_id')
       .eq('user_id', user.id)
-    const siteIds = (memberships || []).map(m => m.site_id)
+    const siteIds = ((memberships || []) as Array<{ site_id: string | null }>).map(m => m.site_id)
 
     let studiesQuery = supabase
       .from('studies')
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
       console.error('Error fetching studies for analytics:', studiesErr)
       return NextResponse.json({ error: 'Failed to resolve studies' }, { status: 500 })
     }
-    const allowedStudyIds = (allowedStudies || []).map(s => s.id)
+    const allowedStudyIds = ((allowedStudies || []) as Array<{ id: string }>).map(s => s.id)
     if (allowedStudyIds.length === 0) {
       return NextResponse.json({ trends: [], studyBreakdown: [], summary: { totalEnrolled: 0, totalTarget: 0, overallRate: 0, activeStudies: 0 } })
     }
@@ -110,7 +110,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Count enrollments by month
-    subjects?.forEach(subject => {
+    const subjectsRows = (subjects || []) as any[]
+    subjectsRows.forEach(subject => {
       const enrollmentMonth = subject.enrollment_date.substring(0, 7)
       if (monthlyEnrollment.hasOwnProperty(enrollmentMonth)) {
         monthlyEnrollment[enrollmentMonth]++
@@ -157,7 +158,7 @@ export async function GET(request: NextRequest) {
     }))
 
     // Get total metrics
-    const totalEnrolled = subjects?.length || 0
+    const totalEnrolled = subjectsRows.length || 0
     const totalTarget = studyEnrollment.reduce((sum, study) => sum + (study.target_enrollment || 0), 0)
     const overallRate = totalTarget > 0 ? Math.round((totalEnrolled / totalTarget) * 100) : 0
 

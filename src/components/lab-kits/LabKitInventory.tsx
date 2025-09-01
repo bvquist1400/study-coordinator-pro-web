@@ -884,7 +884,7 @@ function BulkEditModal({ selectedKits, onClose, onSave }: BulkEditModalProps) {
       const updateData: Partial<LabKit> = {}
       Object.entries(updateFields).forEach(([field, shouldUpdate]) => {
         if (shouldUpdate && bulkData[field as keyof typeof bulkData]) {
-          updateData[field] = bulkData[field as keyof typeof bulkData]
+          ;(updateData as Record<string, any>)[field] = bulkData[field as keyof typeof bulkData]
         }
       })
 

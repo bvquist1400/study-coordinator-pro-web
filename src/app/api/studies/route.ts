@@ -1,23 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseAdmin } from '@/lib/api/auth'
+import { authenticateUser, createSupabaseAdmin } from '@/lib/api/auth'
 import type { StudyUpdate } from '@/types/database'
 
 // GET /api/studies - Get all studies for authenticated user
 export async function GET(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 })
-    }
-
-    const token = authHeader.split(' ')[1]
-    
-    // Verify the JWT token
+    const { user, error: authError, status: authStatus } = await authenticateUser(request)
+    if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
     const supabase = createSupabaseAdmin()
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
-    }
 
     // Resolve site memberships for user
     const { data: memberships, error: memberErr } = await supabase
@@ -30,7 +20,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to resolve memberships' }, { status: 500 })
     }
 
-    const siteIds = (memberships || []).map(m => m.site_id)
+    const siteIds = ((memberships || []) as Array<{ site_id: string | null }>).map(m => m.site_id)
 
     // Optional site_id filter
     const { searchParams } = new URL(request.url)
@@ -69,19 +59,9 @@ export async function GET(request: NextRequest) {
 // POST /api/studies - Create new study
 export async function POST(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 })
-    }
-
-    const token = authHeader.split(' ')[1]
-    
-    // Verify the JWT token
+    const { user, error: authError, status: authStatus } = await authenticateUser(request)
+    if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
     const supabase = createSupabaseAdmin()
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
-    }
 
     const studyData = await request.json()
     
@@ -100,7 +80,8 @@ export async function POST(request: NextRequest) {
         .select('site_id')
         .eq('user_id', user.id)
         .limit(1)
-      siteId = memberships && memberships.length > 0 ? memberships[0].site_id : null
+      const m0 = ((memberships || []) as Array<{ site_id: string | null }>)
+      siteId = m0.length > 0 ? m0[0].site_id : null
     }
 
     // Insert study with site and created_by (keep user_id for legacy/audit)
@@ -190,24 +171,25 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Study not found' }, { status: 404 })
     }
 
-    if (targetStudy.site_id) {
+    const t: any = targetStudy
+    if (t.site_id) {
       const { data: member } = await supabase
         .from('site_members')
         .select('user_id')
-        .eq('site_id', targetStudy.site_id)
+        .eq('site_id', t.site_id)
         .eq('user_id', user.id)
         .maybeSingle()
       if (!member) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
-    } else if (targetStudy.user_id !== user.id) {
+    } else if (t.user_id !== user.id) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
     // Update study
     const updateRes = await supabase
       .from('studies')
-      .update(updateObject as unknown as never) // Type assertion for update object
+      .update(updateObject as unknown as never)
       .eq('id', id)
       .select()
       .single()

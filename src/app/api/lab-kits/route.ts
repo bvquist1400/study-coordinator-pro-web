@@ -1,58 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseAdmin } from '@/lib/api/auth'
+import { authenticateUser, verifyStudyMembership, createSupabaseAdmin } from '@/lib/api/auth'
 
 type StudyAccessRow = { id: string; site_id: string | null; user_id: string }
 
 // GET /api/lab-kits?studyId=xxx&status=xxx&summary=true - Get lab kits
 export async function GET(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 })
-    }
-
-    const token = authHeader.split(' ')[1]
-    
-    // Verify the JWT token
+    const { user, error: authError, status: authStatus } = await authenticateUser(request)
+    if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
     const supabase = createSupabaseAdmin()
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
-    }
 
     const { searchParams } = new URL(request.url)
     const studyId = searchParams.get('studyId')
-    const status = searchParams.get('status')
+    const statusParam = searchParams.get('status')
     // 'summary' parameter is accepted but not used in this endpoint
     
     if (!studyId) {
       return NextResponse.json({ error: 'studyId parameter is required' }, { status: 400 })
     }
 
-    // Verify user membership on the study
-    const { data: study, error: studyError } = await supabase
-      .from('studies')
-      .select('id, site_id, user_id')
-      .eq('id', studyId)
-      .single()
-
-    const studyRow = study as StudyAccessRow | null
-    if (studyError || !studyRow) {
-      return NextResponse.json({ error: 'Study not found' }, { status: 404 })
-    }
-    if (studyRow.site_id) {
-      const { data: member } = await supabase
-        .from('site_members')
-        .select('user_id')
-        .eq('site_id', studyRow.site_id)
-        .eq('user_id', user.id)
-        .maybeSingle()
-      if (!member) {
-        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-      }
-    } else if (studyRow.user_id !== user.id) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-    }
+    const membership = await verifyStudyMembership(studyId, user.id)
+    if (!membership.success) return NextResponse.json({ error: membership.error || 'Access denied' }, { status: membership.status || 403 })
 
     // Build query with optional join to visit_schedules
     let query = supabase
@@ -65,8 +33,8 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
 
     // Filter by status if provided
-    if (status) {
-      query = query.eq('status', status)
+    if (statusParam) {
+      query = query.eq('status', statusParam)
     }
 
     const { data: labKits, error } = await query
@@ -86,19 +54,9 @@ export async function GET(request: NextRequest) {
 // POST /api/lab-kits - Create new lab kit
 export async function POST(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 })
-    }
-
-    const token = authHeader.split(' ')[1]
-    
-    // Verify the JWT token
+    const { user, error: authError, status: authStatus } = await authenticateUser(request)
+    if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
     const supabase = createSupabaseAdmin()
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
-    }
 
     const kitData = await request.json()
     
@@ -109,30 +67,8 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Verify user membership on the study
-    const { data: study, error: studyError } = await supabase
-      .from('studies')
-      .select('id, site_id, user_id')
-      .eq('id', kitData.study_id)
-      .single()
-
-    const studyRow2 = study as StudyAccessRow | null
-    if (studyError || !studyRow2) {
-      return NextResponse.json({ error: 'Study not found' }, { status: 404 })
-    }
-    if (studyRow2.site_id) {
-      const { data: member } = await supabase
-        .from('site_members')
-        .select('user_id')
-        .eq('site_id', studyRow2.site_id)
-        .eq('user_id', user.id)
-        .maybeSingle()
-      if (!member) {
-        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-      }
-    } else if (studyRow2.user_id !== user.id) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-    }
+    const membership = await verifyStudyMembership(kitData.study_id, user.id)
+    if (!membership.success) return NextResponse.json({ error: membership.error || 'Access denied' }, { status: membership.status || 403 })
 
     // Check for duplicate accession number within the study
     const { data: existingKit } = await supabase

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseAdmin } from '@/lib/api/auth'
+import { createSupabaseAdmin, authenticateUser, verifyStudyMembership } from '@/lib/api/auth'
+import { calculateComplianceMetrics } from '@/lib/ip-accountability'
 
 // GET /api/subjects?study_id=xxx - Get subjects for a study
 export async function GET(request: NextRequest) {
@@ -40,17 +41,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Study not found' }, { status: 404 })
     }
 
-    if (study.site_id) {
+    if ((study as any).site_id) {
       const { data: member } = await supabase
         .from('site_members')
         .select('user_id')
-        .eq('site_id', study.site_id)
+        .eq('site_id', (study as any).site_id)
         .eq('user_id', user.id)
         .maybeSingle()
       if (!member) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
-    } else if (study.user_id !== user.id) {
+    } else if ((study as any).user_id !== user.id) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
@@ -58,119 +59,179 @@ export async function GET(request: NextRequest) {
     const includeMetrics = searchParams.get('include_metrics') === 'true'
 
     if (includeMetrics) {
-      // Build query for subjects with visit metrics
+      // Load subjects for study (with filters)
       let subjectQuery = supabase
         .from('subjects')
-        .select('*')
+        .select('id, study_id, subject_number, gender, enrollment_date, randomization_date, treatment_arm, status, discontinuation_reason, discontinuation_date, notes, created_at, updated_at')
         .eq('study_id', studyId)
         .order('subject_number')
 
-      // Filter by status if provided
-      if (status) {
-        subjectQuery = subjectQuery.eq('status', status)
-      }
+      if (status) subjectQuery = subjectQuery.eq('status', status)
+      if (search) subjectQuery = subjectQuery.ilike('subject_number', `%${search}%`)
 
-      // Search by subject number if provided
-      if (search) {
-        subjectQuery = subjectQuery.ilike('subject_number', `%${search}%`)
-      }
-
-      const { data: subjects, error } = await subjectQuery
-
-      if (error) {
-        console.error('Database error:', error)
+      const { data: subjects, error: subjectsErr } = await subjectQuery
+      if (subjectsErr) {
+        console.error('Database error:', subjectsErr)
         return NextResponse.json({ error: 'Failed to fetch subjects' }, { status: 500 })
       }
 
-      // Get visit metrics for each subject
-      const subjectsWithMetrics = await Promise.all(subjects.map(async (subject) => {
-        // Get the total planned visits from the Schedule of Events
-        const { data: soaVisits, error: soaError } = await supabase
-          .from('visit_schedules')
-          .select('id, visit_name, visit_day')
-          .eq('study_id', studyId)
-          .order('visit_day', { ascending: true })
+      if (!subjects || subjects.length === 0) {
+        return NextResponse.json({ subjects: [] })
+      }
 
-        if (soaError) {
-          console.error('Error fetching SOE visits for study', studyId, soaError)
-        }
+      // Load Schedule of Events once
+      const { data: soaVisits } = await supabase
+        .from('visit_schedules')
+        .select('id, visit_name, visit_day')
+        .eq('study_id', studyId)
+        .order('visit_day', { ascending: true })
 
-        // Get actual subject visits
-        const { data: visits, error: visitsError } = await supabase
-          .from('subject_visits')
-          .select(`
+      // Load all visits for these subjects in one query with IP accountability data
+      const subjectIds = (subjects as any[]).map(s => (s as any).id as string)
+      const { data: allVisits, error: visitsErr } = await supabase
+        .from('subject_visits')
+        .select(`
+          id,
+          subject_id,
+          visit_date,
+          status,
+          ip_id,
+          ip_dispensed,
+          ip_start_date,
+          ip_returned,
+          ip_last_dose_date,
+          visit_schedules!inner(
             id,
-            visit_date,
-            status,
-            visit_schedules!inner(
-              id,
-              visit_name,
-              visit_day
-            )
-          `)
-          .eq('subject_id', subject.id)
-          .order('visit_date', { ascending: true })
+            visit_name,
+            visit_day
+          )
+        `)
+        .in('subject_id', subjectIds)
+        .order('visit_date', { ascending: true })
 
-        if (visitsError) {
-          console.error('Error fetching visits for subject', subject.id, visitsError)
-          return {
-            ...subject,
-            metrics: {
-              total_visits: soaVisits?.length || 0,
-              completed_visits: 0,
-              upcoming_visits: 0,
-              overdue_visits: 0,
-              last_visit_date: null,
-              last_visit_name: null,
-              next_visit_date: null,
-              next_visit_name: null,
-              visit_compliance_rate: 0,
-              days_since_last_visit: null,
-              days_until_next_visit: null
-            }
-          }
-        }
+      if (visitsErr) {
+        console.error('Error fetching visits for subjects', visitsErr)
+        return NextResponse.json({ error: 'Failed to fetch subject visits' }, { status: 500 })
+      }
 
-        const now = new Date()
-        const completedVisits = visits?.filter(v => v.status === 'completed') || []
-        const upcomingVisits = visits?.filter(v => v.status === 'scheduled' && new Date(v.visit_date) >= now) || []
-        const overdueVisits = visits?.filter(v => v.status === 'scheduled' && new Date(v.visit_date) < now) || []
-        
-        // Calculate compliance rate (percentage of visits completed on time)
+      // Group visits by subject
+      const visitsBySubject = new Map<string, any[]>()
+      for (const v of allVisits || []) {
+        const sid = (v as any).subject_id as string
+        if (!visitsBySubject.has(sid)) visitsBySubject.set(sid, [])
+        visitsBySubject.get(sid)!.push(v)
+      }
+
+      // Build metrics
+      const now = new Date()
+      const subjectsWithMetrics = (subjects as any[]).map((subject: any) => {
+        const visits = visitsBySubject.get(subject.id) || []
+
+        const completedVisits = visits.filter(v => (v as any).status === 'completed')
+        const upcomingVisits = visits.filter(v => {
+          const d = (v as any).visit_date as string | null
+          if (!d) return false
+          const dt = new Date(d + 'T00:00:00Z')
+          return (v as any).status === 'scheduled' && dt >= now
+        })
+        const overdueVisits = visits.filter(v => {
+          const d = (v as any).visit_date as string | null
+          if (!d) return false
+          const dt = new Date(d + 'T00:00:00Z')
+          return (v as any).status === 'scheduled' && dt < now
+        })
+
         const onTimeVisits = completedVisits.filter(v => {
-          // Consider on-time if completed within 3 days of scheduled date
-          const scheduledDate = new Date(v.visit_date)
-          const completedDate = new Date(v.visit_date) // Using visit_date as actual completion
+          const d = (v as any).visit_date as string | null
+          if (!d) return false
+          // Using UTC midnight for stability
+          const scheduledDate = new Date(d + 'T00:00:00Z')
+          const completedDate = new Date(d + 'T00:00:00Z')
           const diffDays = Math.abs(completedDate.getTime() - scheduledDate.getTime()) / (1000 * 60 * 60 * 24)
           return diffDays <= 3
         })
         const complianceRate = completedVisits.length > 0 ? (onTimeVisits.length / completedVisits.length) * 100 : 100
 
-        // Find last and next visits
         const lastVisit = completedVisits.length > 0 ? completedVisits[completedVisits.length - 1] : null
         const nextVisit = upcomingVisits.length > 0 ? upcomingVisits[0] : null
 
-        // Calculate days since/until
-        const daysSinceLastVisit = lastVisit ? Math.floor((now.getTime() - new Date(lastVisit.visit_date).getTime()) / (1000 * 60 * 60 * 24)) : null
-        const daysUntilNextVisit = nextVisit ? Math.floor((new Date(nextVisit.visit_date).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null
+        const daysSinceLastVisit = lastVisit ? Math.floor((now.getTime() - new Date(((lastVisit as any).visit_date as string) + 'T00:00:00Z').getTime()) / (1000 * 60 * 60 * 24)) : null
+        const daysUntilNextVisit = nextVisit ? Math.floor((new Date(((nextVisit as any).visit_date as string) + 'T00:00:00Z').getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null
 
+        // Calculate drug compliance metrics
+        const ipVisits = visits.filter(v => (v as any).ip_dispensed && (v as any).ip_dispensed > 0)
+        let drugCompliance = null
+        let lastDrugDispensing = null
+        let activeDrugBottle = null
+        let expectedReturnDate = null
+
+        if (ipVisits.length > 0) {
+          // Find the most recent IP dispensing
+          const lastIpVisit = ipVisits[ipVisits.length - 1] as any
+          lastDrugDispensing = {
+            visit_date: lastIpVisit.visit_date,
+            ip_id: lastIpVisit.ip_id,
+            ip_dispensed: lastIpVisit.ip_dispensed,
+            ip_start_date: lastIpVisit.ip_start_date || lastIpVisit.visit_date
+          }
+
+          // Look for return data in subsequent visits
+          const returnVisit = visits.find(v => 
+            (v as any).ip_returned !== null && 
+            (v as any).ip_returned !== undefined &&
+            new Date((v as any).visit_date) > new Date(lastIpVisit.visit_date)
+          ) as any
+
+          if (returnVisit) {
+            // Calculate compliance using returned data
+            const compliance = calculateComplianceMetrics(
+              lastIpVisit.ip_dispensed,
+              returnVisit.ip_returned,
+              lastIpVisit.ip_start_date || lastIpVisit.visit_date,
+              returnVisit.ip_last_dose_date || returnVisit.visit_date,
+              1 // Default 1 dose per day - could be made dynamic based on study dosing frequency
+            )
+            drugCompliance = compliance
+          } else {
+            // Active bottle - no return yet
+            activeDrugBottle = {
+              ip_id: lastIpVisit.ip_id,
+              dispensed_count: lastIpVisit.ip_dispensed,
+              start_date: lastIpVisit.ip_start_date || lastIpVisit.visit_date,
+              days_since_dispensing: Math.floor((now.getTime() - new Date((lastIpVisit.ip_start_date || lastIpVisit.visit_date) + 'T00:00:00Z').getTime()) / (1000 * 60 * 60 * 24))
+            }
+
+            // Estimate expected return date (30 days after start, or based on dispensed count)
+            const startDate = new Date((lastIpVisit.ip_start_date || lastIpVisit.visit_date) + 'T00:00:00Z')
+            const estimatedDuration = Math.min(lastIpVisit.ip_dispensed, 30) // Cap at 30 days
+            expectedReturnDate = new Date(startDate)
+            expectedReturnDate.setDate(expectedReturnDate.getDate() + estimatedDuration)
+          }
+        }
+
+        const s: any = subject
         return {
-          ...subject,
+          ...s,
           metrics: {
             total_visits: soaVisits?.length || 0,
             completed_visits: completedVisits.length,
             upcoming_visits: upcomingVisits.length,
             overdue_visits: overdueVisits.length,
-            last_visit_date: lastVisit?.visit_date || null,
-            last_visit_name: lastVisit?.visit_schedules?.visit_name || null,
-            next_visit_date: nextVisit?.visit_date || null,
-            next_visit_name: nextVisit?.visit_schedules?.visit_name || null,
+            last_visit_date: lastVisit ? (lastVisit as any).visit_date : null,
+            last_visit_name: lastVisit ? (lastVisit as any).visit_schedules?.visit_name || null : null,
+            next_visit_date: nextVisit ? (nextVisit as any).visit_date : null,
+            next_visit_name: nextVisit ? (nextVisit as any).visit_schedules?.visit_name || null : null,
             visit_compliance_rate: complianceRate,
             days_since_last_visit: daysSinceLastVisit,
-            days_until_next_visit: daysUntilNextVisit
+            days_until_next_visit: daysUntilNextVisit,
+            // Drug compliance metrics
+            drug_compliance: drugCompliance,
+            last_drug_dispensing: lastDrugDispensing,
+            active_drug_bottle: activeDrugBottle,
+            expected_return_date: expectedReturnDate ? expectedReturnDate.toISOString().split('T')[0] : null
           }
         }
-      }))
+      })
 
       return NextResponse.json({ subjects: subjectsWithMetrics })
     } else {
@@ -243,17 +304,18 @@ export async function POST(request: NextRequest) {
     if (studyError || !study) {
       return NextResponse.json({ error: 'Study not found' }, { status: 404 })
     }
-    if (study.site_id) {
+    const stAny: any = study
+    if (stAny.site_id) {
       const { data: member } = await supabase
         .from('site_members')
         .select('user_id')
-        .eq('site_id', study.site_id)
+        .eq('site_id', stAny.site_id)
         .eq('user_id', user.id)
         .maybeSingle()
       if (!member) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
-    } else if (study.user_id !== user.id) {
+    } else if (stAny.user_id !== user.id) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 

@@ -106,7 +106,7 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
 
       if (existingSchedules && existingSchedules.length > 0) {
         // Load existing data from database
-        visitsToUse = existingSchedules.map((schedule, i) => {
+        visitsToUse = existingSchedules.map((schedule: any, i: number) => {
           const visitDay = schedule.visit_day || 0
           
           // Convert visit_day back to timingValue and timingUnit
@@ -144,7 +144,7 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
         console.log('Converted visits for display:', visitsToUse)
 
         // Create procedures with saved procedure assignments
-        proceduresToUse = defaultProcedures.map((p, i) => {
+        proceduresToUse = defaultProcedures.map((p: any, i: number) => {
           const procedureWithId: Procedure = {
             ...p,
             id: `proc-${i}`,
@@ -152,7 +152,7 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
           }
           
           // Map procedures to visits based on saved data
-          existingSchedules.forEach((schedule, visitIndex) => {
+          existingSchedules.forEach((schedule: any, visitIndex: number) => {
             const visitId = `visit-${visitIndex}`
             if (schedule.procedures.includes(p.name)) {
               procedureWithId.visits[visitId] = true

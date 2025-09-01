@@ -59,7 +59,7 @@ export async function GET(_request: NextRequest) {
       .from('site_members')
       .select('site_id')
       .eq('user_id', user.id)
-    const siteIds = (memberships || []).map(m => m.site_id)
+    const siteIds = ((memberships || []) as Array<{ site_id: string | null }>).map(m => m.site_id)
 
     let baseStudiesQuery = supabase
       .from('studies')
@@ -105,7 +105,8 @@ export async function GET(_request: NextRequest) {
       })
     }
 
-    const studyIds = studies.map(s => s.id)
+    const studyRows = (studies || []) as Array<any>
+    const studyIds = studyRows.map(s => s.id as string)
 
     // Get subjects for each study
     const { data: subjects, error: subjectsError } = await supabase
@@ -154,10 +155,14 @@ export async function GET(_request: NextRequest) {
     const studyComparisons: StudyComparison[] = []
     const studyMilestones: StudyMilestone[] = []
 
-    for (const study of studies) {
-      const studySubjects = subjects?.filter(s => s.study_id === study.id) || []
-      const studyVisits = visits?.filter(v => v.study_id === study.id) || []
-      const studyDrugCompliance = drugCompliance?.filter(dc => 
+    const subjectsRows = (subjects || []) as any[]
+    const visitsRows = (visits || []) as any[]
+    const drugRows = (drugCompliance || []) as any[]
+
+    for (const study of studyRows) {
+      const studySubjects = subjectsRows.filter(s => s.study_id === study.id) || []
+      const studyVisits = visitsRows.filter(v => v.study_id === study.id) || []
+      const studyDrugCompliance = drugRows.filter(dc => 
         (dc as any).subject_visits.study_id === study.id
       ) || []
 

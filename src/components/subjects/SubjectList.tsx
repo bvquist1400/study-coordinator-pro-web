@@ -16,6 +16,25 @@ interface SubjectMetrics {
   visit_compliance_rate: number
   days_since_last_visit: number | null
   days_until_next_visit: number | null
+  // Drug compliance metrics
+  drug_compliance: {
+    actual_taken: number
+    expected_taken: number | null
+    compliance_percentage: number | null
+  } | null
+  last_drug_dispensing: {
+    visit_date: string
+    ip_id: string
+    ip_dispensed: number
+    ip_start_date: string
+  } | null
+  active_drug_bottle: {
+    ip_id: string
+    dispensed_count: number
+    start_date: string
+    days_since_dispensing: number
+  } | null
+  expected_return_date: string | null
 }
 
 interface Subject {
@@ -37,6 +56,7 @@ interface Subject {
 interface SubjectListProps {
   studyId: string
   onSubjectClick: (subjectId: string) => void
+  onScheduleVisit?: (subjectId: string) => void
   refreshKey?: number
 }
 
@@ -56,7 +76,7 @@ const statusLabels = {
   withdrawn: 'Withdrawn'
 }
 
-export default function SubjectList({ studyId, onSubjectClick, refreshKey }: SubjectListProps) {
+export default function SubjectList({ studyId, onSubjectClick, onScheduleVisit, refreshKey }: SubjectListProps) {
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<string>('all')
@@ -211,9 +231,14 @@ export default function SubjectList({ studyId, onSubjectClick, refreshKey }: Sub
                 next_visit_name: null,
                 visit_compliance_rate: 0,
                 days_since_last_visit: null,
-                days_until_next_visit: null
+                days_until_next_visit: null,
+                drug_compliance: null,
+                last_drug_dispensing: null,
+                active_drug_bottle: null,
+                expected_return_date: null
               }}
               onClick={() => onSubjectClick(subject.id)}
+              onScheduleVisit={onScheduleVisit}
             />
           ))}
         </div>

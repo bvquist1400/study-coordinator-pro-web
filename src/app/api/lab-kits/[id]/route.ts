@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseAdmin } from '@/lib/api/auth'
+import { authenticateUser, createSupabaseAdmin } from '@/lib/api/auth'
 
 type StudyAccessRow = { id: string; site_id: string | null; user_id: string }
 type LabKitWithStudy = Record<string, unknown> & { studies: StudyAccessRow }
@@ -10,19 +10,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 })
-    }
-
-    const token = authHeader.split(' ')[1]
+    const { user, error: authError, status: authStatus } = await authenticateUser(request)
+    if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
     
     // Verify the JWT token
     const supabase = createSupabaseAdmin()
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
-    }
 
     const { id: kitId } = await params
 
@@ -75,19 +67,11 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 })
-    }
-
-    const token = authHeader.split(' ')[1]
+    const { user, error: authError, status: authStatus } = await authenticateUser(request)
+    if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
     
     // Verify the JWT token
     const supabase = createSupabaseAdmin()
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
-    }
 
     const { id: kitId } = await params
     const updateData = await request.json()
@@ -170,19 +154,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ') ) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 })
-    }
-
-    const token = authHeader.split(' ')[1]
+    const { user, error: authError, status: authStatus } = await authenticateUser(request)
+    if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
     
     // Verify the JWT token
     const supabase = createSupabaseAdmin()
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
-    }
 
     const { id: kitId } = await params
 

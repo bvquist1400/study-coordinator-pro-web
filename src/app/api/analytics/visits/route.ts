@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
       .from('site_members')
       .select('site_id')
       .eq('user_id', user.id)
-    const siteIds = (memberships || []).map(m => m.site_id)
+    const siteIds = ((memberships || []) as Array<{ site_id: string | null }>).map(m => m.site_id)
 
     let studiesQuery = supabase
       .from('studies')
@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
       console.error('Error fetching studies for visit analytics:', studiesErr)
       return NextResponse.json({ error: 'Failed to resolve studies' }, { status: 500 })
     }
-    const allowedStudyIds = (allowedStudies || []).map(s => s.id)
+    const allowedStudyIds = ((allowedStudies || []) as Array<{ id: string }>).map(s => s.id)
 
     // Get visit data within allowed studies
     const { data: visits, error: visitsError } = await supabase
@@ -119,7 +119,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Process visits by creation month
-    visits?.forEach(visit => {
+    const visitsRows = (visits || []) as any[]
+    visitsRows.forEach(visit => {
       const visitData = visit as any
       const month = visitData.created_at.substring(0, 7)
       if (monthlyData[month]) {
@@ -150,7 +151,7 @@ export async function GET(request: NextRequest) {
     // Calculate per-study visit statistics
     const studyStatsMap: { [key: string]: any } = {}
 
-    visits?.forEach(visit => {
+    visitsRows.forEach(visit => {
       const visitData = visit as any
       const study = visitData.subjects.studies
       

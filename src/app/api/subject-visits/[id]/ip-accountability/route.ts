@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseAdmin } from '@/lib/api/auth'
+import { authenticateUser, verifyStudyMembership, createSupabaseAdmin } from '@/lib/api/auth'
 import { saveVisitWithIP, type VisitIPData } from '@/lib/ip-accountability'
 
 // PUT /api/subject-visits/[id]/ip-accountability - Save visit with IP accountability
@@ -8,20 +8,12 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 })
-    }
-
-    const token = authHeader.split(' ')[1]
+    const { user, error: authError, status: authStatus } = await authenticateUser(request)
+    if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
     const resolvedParams = await params
     
-    // Verify the JWT token
+    // DB client
     const supabase = createSupabaseAdmin()
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
-    }
 
     // Get the visit and verify ownership
     const { data: visit } = await supabase
@@ -38,7 +30,7 @@ export async function PUT(
     const { data: study } = await supabase
       .from('studies')
       .select('site_id, user_id')
-      .eq('id', visit.study_id)
+      .eq('id', (visit as any).study_id)
       .single()
 
     if (!study) {
@@ -46,19 +38,9 @@ export async function PUT(
     }
 
     // Check permissions
-    if (study.site_id) {
-      const { data: member } = await supabase
-        .from('site_members')
-        .select('user_id')
-        .eq('site_id', study.site_id)
-        .eq('user_id', user.id)
-        .maybeSingle()
-      if (!member) {
-        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-      }
-    } else if (study.user_id !== user.id) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-    }
+    const vAny = visit as any
+    const membership = await verifyStudyMembership(vAny.study_id, user.id)
+    if (!membership.success) return NextResponse.json({ error: membership.error || 'Access denied' }, { status: membership.status || 403 })
 
     const requestData = await request.json()
     
@@ -88,7 +70,7 @@ export async function PUT(
     }
 
     // Save with transaction
-    const result = await saveVisitWithIP(visit.subject_id, user.id, visitData)
+    const result = await saveVisitWithIP(vAny.subject_id, user.id, visitData)
     
     if (!result.success) {
       console.error('IP accountability save failed:', result.error)

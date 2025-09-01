@@ -9,6 +9,7 @@ import SubjectList from '@/components/subjects/SubjectList'
 import AddSubjectForm from '@/components/subjects/AddSubjectForm'
 import EditSubjectForm from '@/components/subjects/EditSubjectForm'
 import SubjectDetailModal from '@/components/subjects/SubjectDetailModal'
+import ScheduleVisitModal from '@/components/visits/ScheduleVisitModal'
 
 import type { Study } from '@/types/database'
 
@@ -22,8 +23,10 @@ function SubjectsPageContent() {
   const [showAddForm, setShowAddForm] = useState(false)
   const [showEditForm, setShowEditForm] = useState(false)
   const [showDetailModal, setShowDetailModal] = useState(false)
+  const [showScheduleModal, setShowScheduleModal] = useState(false)
   const [editingSubjectId, setEditingSubjectId] = useState<string>('')
   const [viewingSubjectId, setViewingSubjectId] = useState<string>('')
+  const [schedulingSubjectId, setSchedulingSubjectId] = useState<string>('')
   const [refreshKey, setRefreshKey] = useState(0)
 
   // Get initial values from URL params
@@ -57,8 +60,14 @@ function SubjectsPageContent() {
             const { studies } = await response.json()
             setStudies(studies || [])
             
+            // Auto-select first study if none selected
             if (!selectedStudyId && studies && studies.length > 0) {
-              setSelectedStudyId(studies[0].id)
+              const firstStudyId = studies[0].id
+              setSelectedStudyId(firstStudyId)
+              // Update URL
+              const params = new URLSearchParams()
+              params.set('studyId', firstStudyId)
+              router.push(`/subjects?${params.toString()}`, { scroll: false })
             }
             setLoading(false)
             return
@@ -80,8 +89,14 @@ function SubjectsPageContent() {
         const filtered = currentSiteId ? (studies || []).filter((s: { site_id: string | null }) => s.site_id === currentSiteId) : (studies || [])
         setStudies(filtered)
         
-        if (!selectedStudyId && studies && studies.length > 0) {
-          setSelectedStudyId(studies[0].id)
+        // Auto-select first study if none selected
+        if (!selectedStudyId && filtered && filtered.length > 0) {
+          const firstStudyId = filtered[0].id
+          setSelectedStudyId(firstStudyId)
+          // Update URL
+          const params = new URLSearchParams()
+          params.set('studyId', firstStudyId)
+          router.push(`/subjects?${params.toString()}`, { scroll: false })
         }
       }
 
@@ -116,6 +131,11 @@ function SubjectsPageContent() {
     setShowDetailModal(true)
   }
 
+  const handleScheduleVisit = (subjectId: string) => {
+    setSchedulingSubjectId(subjectId)
+    setShowScheduleModal(true)
+  }
+
   // Removed unused handleSubjectEdit
 
   const handleSubjectUpdated = () => {
@@ -127,6 +147,17 @@ function SubjectsPageContent() {
   const handleDetailModalClose = () => {
     setShowDetailModal(false)
     setViewingSubjectId('')
+  }
+
+  const handleScheduleModalClose = () => {
+    setShowScheduleModal(false)
+    setSchedulingSubjectId('')
+  }
+
+  const handleVisitScheduled = () => {
+    setShowScheduleModal(false)
+    setSchedulingSubjectId('')
+    setRefreshKey(prev => prev + 1)
   }
 
   if (loading) {
@@ -153,37 +184,49 @@ function SubjectsPageContent() {
               <p className="text-gray-300">Enroll and manage study subjects</p>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3">
-              {/* Study Selector */}
-              <div>
-                <label htmlFor="study-select" className="sr-only">Select Study</label>
-                <select
-                  id="study-select"
-                  value={selectedStudyId}
-                  onChange={(e) => handleStudyChange(e.target.value)}
-                  className="block w-full pl-3 pr-10 py-2 text-base bg-gray-700/50 border border-gray-600 text-gray-100 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
-                >
-                  <option value="">Select a study...</option>
-                  {studies.map((study) => (
-                    <option key={study.id} value={study.id}>
-                      {study.protocol_number} - {study.study_title}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
+            <div className="flex items-center gap-3">
               {/* Add Subject Button */}
               {selectedStudyId && (
                 <button
                   onClick={() => setShowAddForm(true)}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium transition-colors"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium transition-colors flex items-center space-x-2"
                 >
-                  Add Subject
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                  </svg>
+                  <span>Add Subject</span>
                 </button>
               )}
             </div>
           </div>
         </div>
+
+        {/* Study Selection Buttons */}
+        {studies.length > 0 && (
+          <div className="border-b border-gray-700 bg-gray-800/30 px-6 py-4">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-gray-400 whitespace-nowrap">Studies:</span>
+              <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-transparent">
+                {studies.map((study) => (
+                  <button
+                    key={study.id}
+                    onClick={() => handleStudyChange(study.id)}
+                    className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-all duration-200 ${
+                      selectedStudyId === study.id
+                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/25'
+                        : 'bg-gray-700/50 text-gray-300 hover:bg-gray-600/50 hover:text-white'
+                    }`}
+                  >
+                    <div className="flex flex-col items-start">
+                      <span className="text-sm font-semibold">{study.protocol_number}</span>
+                      <span className="text-xs opacity-75 truncate max-w-48">{study.study_title}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Main Content */}
         <div className="max-w-7xl mx-auto">
@@ -191,10 +234,11 @@ function SubjectsPageContent() {
             <SubjectList
               studyId={selectedStudyId}
               onSubjectClick={handleSubjectClick}
+              onScheduleVisit={handleScheduleVisit}
               refreshKey={refreshKey}
             />
-          ) : (
-            /* No Study Selected State */
+          ) : studies.length === 0 ? (
+            /* No Studies Available State */
             <div className="p-6">
               <div className="text-center py-12">
                 <div className="mx-auto h-12 w-12 text-gray-500">
@@ -207,18 +251,13 @@ function SubjectsPageContent() {
                     />
                   </svg>
                 </div>
-                <h3 className="mt-2 text-lg font-medium text-white">No study selected</h3>
+                <h3 className="mt-2 text-lg font-medium text-white">No studies available</h3>
                 <p className="mt-1 text-gray-400">
-                  Choose a study from the dropdown above to manage subjects.
+                  Create a study first to start enrolling subjects.
                 </p>
-                {studies.length === 0 && (
-                  <p className="mt-2 text-sm text-gray-500">
-                    No studies found. Create a study first to enroll subjects.
-                  </p>
-                )}
               </div>
             </div>
-          )}
+          ) : null}
         </div>
 
         {/* Add Subject Modal */}
@@ -250,6 +289,16 @@ function SubjectsPageContent() {
             studyId={selectedStudyId}
             isOpen={showDetailModal}
             onClose={handleDetailModalClose}
+          />
+        )}
+
+        {/* Schedule Visit Modal */}
+        {showScheduleModal && selectedStudyId && (
+          <ScheduleVisitModal
+            studyId={selectedStudyId}
+            preSelectedSubjectId={schedulingSubjectId}
+            onClose={handleScheduleModalClose}
+            onSchedule={handleVisitScheduled}
           />
         )}
       </div>

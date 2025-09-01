@@ -22,11 +22,12 @@ interface Study {
 
 interface ScheduleVisitModalProps {
   studyId: string
+  preSelectedSubjectId?: string
   onClose: () => void
   onSchedule: () => void
 }
 
-export default function ScheduleVisitModal({ studyId, onClose, onSchedule }: ScheduleVisitModalProps) {
+export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, onClose, onSchedule }: ScheduleVisitModalProps) {
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [visitSchedules, setVisitSchedules] = useState<VisitSchedule[]>([])
   const [study, setStudy] = useState<Study | null>(null)
@@ -107,6 +108,16 @@ export default function ScheduleVisitModal({ studyId, onClose, onSchedule }: Sch
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  // Auto-select the preselected subject when data loads
+  useEffect(() => {
+    if (preSelectedSubjectId && subjects.length > 0 && !selectedSubjectId) {
+      const preSelectedSubject = subjects.find(s => s.id === preSelectedSubjectId)
+      if (preSelectedSubject) {
+        setSelectedSubjectId(preSelectedSubjectId)
+      }
+    }
+  }, [preSelectedSubjectId, subjects, selectedSubjectId])
 
   const handleSubjectChange = (subjectId: string) => {
     setSelectedSubjectId(subjectId)
@@ -483,12 +494,12 @@ export default function ScheduleVisitModal({ studyId, onClose, onSchedule }: Sch
                       <span className="text-sm text-green-400">Lab Kit Assigned</span>
                     </div>
                     <div className="mt-1 text-sm text-gray-300">
-                      <p><span className="text-gray-400">Accession:</span> {selectedLabKit.accession_number}</p>
-                      {selectedLabKit.kit_type && (
-                        <p><span className="text-gray-400">Type:</span> {selectedLabKit.kit_type}</p>
+                      <p><span className="text-gray-400">Accession:</span> {selectedLabKit?.accession_number}</p>
+                      {selectedLabKit?.kit_type && (
+                        <p><span className="text-gray-400">Type:</span> {selectedLabKit?.kit_type}</p>
                       )}
-                      {selectedLabKit.expiration_date && (
-                        <p><span className="text-gray-400">Expires:</span> {new Date(selectedLabKit.expiration_date).toLocaleDateString()}</p>
+                      {selectedLabKit?.expiration_date && (
+                        <p><span className="text-gray-400">Expires:</span> {new Date(selectedLabKit?.expiration_date as string).toLocaleDateString()}</p>
                       )}
                     </div>
                   </div>

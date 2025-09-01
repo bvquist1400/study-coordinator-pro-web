@@ -64,9 +64,7 @@ export default function ExpiredKitsView({ studyId, refreshKey, onRefresh }: Expi
         await autoExpireKits(kits, token)
         
         // Filter for expired and destroyed kits (excluding destroyed from main view)
-        const expiredKits = kits.filter((kit: LabKitWithVisit) => 
-          kit.status === 'expired' && kit.status !== 'destroyed'
-        )
+        const expiredKits = kits.filter((kit: LabKitWithVisit) => kit.status === 'expired')
         setExpiredKits(expiredKits)
       }
     } catch (error) {

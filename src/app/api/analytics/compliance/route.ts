@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
       .from('site_members')
       .select('site_id')
       .eq('user_id', user.id)
-    const siteIds = (memberships || []).map(m => m.site_id)
+    const siteIds = ((memberships || []) as Array<{ site_id: string | null }>).map(m => m.site_id)
 
     let studiesQuery = supabase
       .from('studies')
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
       console.error('Error fetching studies for compliance analytics:', studiesErr)
       return NextResponse.json({ error: 'Failed to resolve studies' }, { status: 500 })
     }
-    const allowedStudyIds = (allowedStudies || []).map(s => s.id)
+    const allowedStudyIds = ((allowedStudies || []) as Array<{ id: string }>).map(s => s.id)
     if (allowedStudyIds.length === 0) {
       return NextResponse.json({ trends: [], studyBreakdown: [], alerts: [], summary: { overallTimingRate: 0, overallDrugRate: 0, totalVisits: 0, totalDrugRecords: 0, activeAlerts: 0 } })
     }
@@ -159,7 +159,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Process visit timing compliance
-    visits?.forEach(visit => {
+    const visitsRows = (visits || []) as any[]
+    visitsRows.forEach(visit => {
       const month = visit.updated_at.substring(0, 7)
       if (monthlyData[month]) {
         const visitData = visit as any
@@ -168,7 +169,8 @@ export async function GET(request: NextRequest) {
     })
 
     // Process drug compliance
-    drugCompliance?.forEach(record => {
+    const drugRows = (drugCompliance || []) as any[]
+    drugRows.forEach(record => {
       const month = record.updated_at.substring(0, 7)
       if (monthlyData[month]) {
         const drugRecord = record as any
@@ -209,7 +211,7 @@ export async function GET(request: NextRequest) {
     // Calculate per-study compliance
     const studyComplianceMap: { [key: string]: any } = {}
 
-    visits?.forEach(visit => {
+    visitsRows.forEach(visit => {
       const visitData = visit as any
       const study = visitData.subjects.studies
       

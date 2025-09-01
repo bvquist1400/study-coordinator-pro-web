@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseAdmin } from '@/lib/api/auth'
+import { authenticateUser, createSupabaseAdmin } from '@/lib/api/auth'
 import { isWithinVisitWindow, getDaysFromScheduled } from '@/lib/visit-calculator'
 
 // GET /api/subject-visits/[id] - Get specific subject visit
@@ -8,20 +8,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 })
-    }
-
-    const token = authHeader.split(' ')[1]
+    const { user, error: authError, status } = await authenticateUser(request)
+    if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: status || 401 })
     const resolvedParams = await params
     
     // Verify the JWT token
     const supabase = createSupabaseAdmin()
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
-    }
 
     // Get specific subject visit with subject information
     const { data: subjectVisit, error } = await supabase
@@ -42,30 +34,33 @@ export async function GET(
     }
 
     // Verify membership based on study_id if present, else via subject relationship
-    if (subjectVisit.study_id) {
+    const sv: any = subjectVisit
+    if (sv.study_id) {
       const { data: study } = await supabase
         .from('studies')
         .select('site_id, user_id')
-        .eq('id', subjectVisit.study_id)
+        .eq('id', sv.study_id)
         .single()
       if (!study) return NextResponse.json({ error: 'Study not found' }, { status: 404 })
-      if (study.site_id) {
+      const st: any = study
+      if (st.site_id) {
         const { data: member } = await supabase
           .from('site_members')
           .select('user_id')
-          .eq('site_id', study.site_id)
+          .eq('site_id', st.site_id)
           .eq('user_id', user.id)
           .maybeSingle()
         if (!member) return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-      } else if (study.user_id !== user.id) {
+      } else if (st.user_id !== user.id) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
     }
 
-    // Transform the data to include subject_number at the top level
-    const transformedVisit = {
-      ...subjectVisit,
-      subject_number: subjectVisit.subjects.subject_number
+    // Transform the data to include subject_number at the top level (cast for typing)
+    const svRow = subjectVisit as any
+    const transformedVisit: any = {
+      ...svRow,
+      subject_number: svRow.subjects.subject_number
     }
     delete transformedVisit.subjects
 
@@ -82,19 +77,11 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 })
-    }
-
-    const token = authHeader.split(' ')[1]
+    const { user, error: authError, status } = await authenticateUser(request)
+    if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: status || 401 })
     
     // Verify the JWT token
     const supabase = createSupabaseAdmin()
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
-    }
 
     const updateData = await request.json()
     const resolvedParams = await params
@@ -144,18 +131,19 @@ export async function PUT(
       const { data: st } = await supabase
         .from('studies')
         .select('site_id, user_id')
-        .eq('id', existing.study_id)
+        .eq('id', (existing as any).study_id)
         .single()
       if (!st) return NextResponse.json({ error: 'Study not found' }, { status: 404 })
-      if (st.site_id) {
+      const srow: any = st
+      if (srow.site_id) {
         const { data: member } = await supabase
           .from('site_members')
           .select('user_id')
-          .eq('site_id', st.site_id)
+          .eq('site_id', srow.site_id)
           .eq('user_id', user.id)
           .maybeSingle()
         if (!member) return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-      } else if (st.user_id !== user.id) {
+      } else if (srow.user_id !== user.id) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
 
@@ -178,26 +166,30 @@ export async function PUT(
           let windowAfter = 7
 
           // Schedule windows and day offset
-          if (visitInfo.visit_schedule_id) {
+          const vi: any = visitInfo
+          if (vi.visit_schedule_id) {
             const { data: vs } = await supabase
               .from('visit_schedules')
               .select('visit_day, window_before_days, window_after_days')
-              .eq('id', visitInfo.visit_schedule_id)
+              .eq('id', vi.visit_schedule_id)
               .single()
-            if (vs) {
-              windowBefore = vs.window_before_days ?? windowBefore
-              windowAfter = vs.window_after_days ?? windowAfter
+            if (vs as any) {
+              const vsAny: any = vs
+              windowBefore = vsAny.window_before_days ?? windowBefore
+              windowAfter = vsAny.window_after_days ?? windowAfter
 
               // Subject anchor date (use randomization_date as anchor) and study anchor_day (0 or 1)
               const [{ data: subjectRow }, { data: studyRow }] = await Promise.all([
-                supabase.from('subjects').select('randomization_date').eq('id', visitInfo.subject_id).single(),
-                supabase.from('studies').select('anchor_day').eq('id', visitInfo.study_id).single(),
+                supabase.from('subjects').select('randomization_date').eq('id', vi.subject_id).single(),
+                supabase.from('studies').select('anchor_day').eq('id', vi.study_id).single(),
               ])
-              if (subjectRow?.randomization_date) {
-                const anchor = new Date(subjectRow.randomization_date)
-                const anchorOffset = (studyRow?.anchor_day ?? 0) === 1 ? 1 : 0
+              const subj: any = subjectRow
+              const stAny: any = studyRow
+              if (subj?.randomization_date) {
+                const anchor = new Date(subj.randomization_date)
+                const anchorOffset = (stAny?.anchor_day ?? 0) === 1 ? 1 : 0
                 const t = new Date(anchor)
-                t.setDate(t.getDate() + (vs.visit_day ?? 0) + anchorOffset)
+                t.setDate(t.getDate() + (vsAny.visit_day ?? 0) + anchorOffset)
                 targetDate = t
               }
             }
@@ -205,7 +197,7 @@ export async function PUT(
 
           // If target could not be computed, fallback to visit_date
           if (!targetDate) {
-            targetDate = new Date(visitInfo.visit_date)
+            targetDate = new Date(vi.visit_date)
           }
 
           windowCalculation = {
@@ -249,20 +241,12 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 })
-    }
-
-    const token = authHeader.split(' ')[1]
+    const { user, error: authError, status } = await authenticateUser(request)
+    if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: status || 401 })
     const resolvedParams = await params
     
     // Verify the JWT token
     const supabase = createSupabaseAdmin()
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
-    }
 
     // Delete subject visit
     // Verify membership on the record before delete
@@ -277,18 +261,19 @@ export async function DELETE(
     const { data: st } = await supabase
       .from('studies')
       .select('site_id, user_id')
-      .eq('id', existing.study_id)
+      .eq('id', (existing as any).study_id)
       .single()
     if (!st) return NextResponse.json({ error: 'Study not found' }, { status: 404 })
-    if (st.site_id) {
+    const sdel: any = st
+    if (sdel.site_id) {
       const { data: member } = await supabase
         .from('site_members')
         .select('user_id')
-        .eq('site_id', st.site_id)
+        .eq('site_id', sdel.site_id)
         .eq('user_id', user.id)
         .maybeSingle()
       if (!member) return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-    } else if (st.user_id !== user.id) {
+    } else if (sdel.user_id !== user.id) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 

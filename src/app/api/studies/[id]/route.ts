@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseAdmin } from '@/lib/api/auth'
+import { authenticateUser, createSupabaseAdmin } from '@/lib/api/auth'
 
 // GET /api/studies/[id] - Get specific study
 export async function GET(
@@ -7,20 +7,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 })
-    }
-
-    const token = authHeader.split(' ')[1]
+    const { user, error: authError, status: authStatus } = await authenticateUser(request)
+    if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
     const resolvedParams = await params
     
     // Verify the JWT token
     const supabase = createSupabaseAdmin()
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
-    }
 
     // Get specific study
     const { data: study, error } = await supabase
@@ -38,15 +30,16 @@ export async function GET(
     }
 
     // Verify membership or legacy ownership
-    if (study.site_id) {
+    const studyAny = study as any
+    if (studyAny.site_id) {
       const { data: member } = await supabase
         .from('site_members')
         .select('user_id')
-        .eq('site_id', study.site_id)
+        .eq('site_id', studyAny.site_id)
         .eq('user_id', user.id)
         .maybeSingle()
       if (!member) return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-    } else if (study.user_id !== user.id) {
+    } else if (studyAny.user_id !== user.id) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
@@ -63,20 +56,12 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 })
-    }
-
-    const token = authHeader.split(' ')[1]
+    const { user, error: authError, status: authStatus } = await authenticateUser(request)
+    if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
     const resolvedParams = await params
     
     // Verify the JWT token
     const supabase = createSupabaseAdmin()
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
-    }
 
     // Verify membership before delete
     const { data: studyRow, error: studyErr } = await supabase
@@ -87,15 +72,16 @@ export async function DELETE(
     if (studyErr || !studyRow) {
       return NextResponse.json({ error: 'Study not found' }, { status: 404 })
     }
-    if (studyRow.site_id) {
+    const sr: any = studyRow
+    if (sr.site_id) {
       const { data: member } = await supabase
         .from('site_members')
         .select('user_id')
-        .eq('site_id', studyRow.site_id)
+        .eq('site_id', sr.site_id)
         .eq('user_id', user.id)
         .maybeSingle()
       if (!member) return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-    } else if (studyRow.user_id !== user.id) {
+    } else if (sr.user_id !== user.id) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 

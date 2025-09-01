@@ -24,6 +24,8 @@ interface Study {
   compliance_threshold: number
   anchor_day: number
   notes: string | null
+  protocol_version?: string | null
+  updated_at?: string
 }
 
 export default function StudyDetailsModal({ studyId, onClose }: StudyDetailsModalProps) {
@@ -152,8 +154,8 @@ export default function StudyDetailsModal({ studyId, onClose }: StudyDetailsModa
                     </svg>
                   </button>
                 </p>
-                <span className="text-xs text-gray-500" title={new Date(study.updated_at).toLocaleString()}>
-                  Last updated: {timeAgo(study.updated_at)}
+                <span className="text-xs text-gray-500" title={study.updated_at ? new Date(study.updated_at as string).toLocaleString() : ''}>
+                  Last updated: {timeAgo(study.updated_at ?? null)}
                 </span>
               </div>
             </div>

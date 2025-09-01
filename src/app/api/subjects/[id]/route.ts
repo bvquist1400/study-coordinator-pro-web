@@ -42,22 +42,23 @@ export async function GET(
     const { data: studyRow, error: stErr } = await supabase
       .from('studies')
       .select('id, site_id, user_id')
-      .eq('id', subject.study_id)
+      .eq('id', (subject as any).study_id)
       .single()
     if (stErr || !studyRow) {
       return NextResponse.json({ error: 'Study not found' }, { status: 404 })
     }
-    if (studyRow.site_id) {
+    const sr: any = studyRow
+    if (sr.site_id) {
       const { data: member } = await supabase
         .from('site_members')
         .select('user_id')
-        .eq('site_id', studyRow.site_id)
+        .eq('site_id', sr.site_id)
         .eq('user_id', user.id)
         .maybeSingle()
       if (!member) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
-    } else if (studyRow.user_id !== user.id) {
+    } else if (sr.user_id !== user.id) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
@@ -125,22 +126,23 @@ export async function PUT(
     const { data: st } = await supabase
       .from('studies')
       .select('site_id, user_id')
-      .eq('id', subRow.study_id)
+      .eq('id', (subRow as any).study_id)
       .single()
     if (!st) {
       return NextResponse.json({ error: 'Study not found' }, { status: 404 })
     }
-    if (st.site_id) {
+    const srec: any = st
+    if (srec.site_id) {
       const { data: member } = await supabase
         .from('site_members')
         .select('user_id')
-        .eq('site_id', st.site_id)
+        .eq('site_id', srec.site_id)
         .eq('user_id', user.id)
         .maybeSingle()
       if (!member) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
-    } else if (st.user_id !== user.id) {
+    } else if (srec.user_id !== user.id) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
@@ -213,7 +215,40 @@ export async function DELETE(
       }, { status: 409 })
     }
 
-    // Verify membership before delete (reuse study from above check)
+    // Verify membership before delete
+    const { data: subRow, error: subErr } = await supabase
+      .from('subjects')
+      .select('study_id')
+      .eq('id', resolvedParams.id)
+      .single()
+    if (subErr || !subRow) {
+      return NextResponse.json({ error: 'Subject not found' }, { status: 404 })
+    }
+
+    const { data: st } = await supabase
+      .from('studies')
+      .select('site_id, user_id')
+      .eq('id', (subRow as any).study_id)
+      .single()
+    if (!st) {
+      return NextResponse.json({ error: 'Study not found' }, { status: 404 })
+    }
+    const srow: any = st
+    if (srow.site_id) {
+      const { data: member } = await supabase
+        .from('site_members')
+        .select('user_id')
+        .eq('site_id', srow.site_id)
+        .eq('user_id', user.id)
+        .maybeSingle()
+      if (!member) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      }
+    } else if (srow.user_id !== user.id) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    }
+
+    // Perform delete after authorization
     const { data: subject, error } = await supabase
       .from('subjects')
       .delete()

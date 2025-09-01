@@ -46,7 +46,7 @@ export async function saveVisitWithIP(
       p_subject_id: subjectId,
       p_user_id: userId,
       p_visit_data: visitData
-    })
+    } as any)
     
     if (result.error) {
       console.error('Transaction failed:', result.error)
@@ -115,10 +115,11 @@ export async function findPriorIPVisit(
     return null
   }
   
+  const d: any = data
   return {
-    visit_id: data.id,
-    ip_dispensed: data.ip_dispensed,
-    ip_start_date: data.ip_start_date || data.visit_date,
-    visit_date: data.visit_date
+    visit_id: d.id,
+    ip_dispensed: d.ip_dispensed,
+    ip_start_date: d.ip_start_date || d.visit_date,
+    visit_date: d.visit_date
   }
 }

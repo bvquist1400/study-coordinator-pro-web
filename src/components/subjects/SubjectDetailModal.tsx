@@ -80,7 +80,7 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
   const [metrics, setMetrics] = useState<SubjectMetrics | null>(null)
   const [visits, setVisits] = useState<Visit[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'timeline' | 'compliance' | 'notes'>('timeline')
+  const [activeTab, setActiveTab] = useState<'timeline' | 'drug-compliance' | 'notes'>('timeline')
 
   const loadSubjectDetail = useCallback(async () => {
     try {
@@ -108,7 +108,7 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
         
         if (currentSubject) {
           setSubject(currentSubject)
-          setMetrics(currentSubject.metrics)
+          setMetrics(currentSubject.metrics || null)
         }
       }
 
@@ -134,7 +134,7 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
       if (visitError) {
         console.error('Error fetching visits:', visitError)
       } else {
-        setVisits(visitData || [])
+        setVisits((visitData as any) || [])
       }
 
     } catch (error) {
@@ -210,36 +210,68 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-gray-900 rounded-2xl border border-gray-700 w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-gray-900 z-50 flex flex-col">
+      <div className="flex-1 overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="bg-gray-800/50 px-6 py-4 border-b border-gray-700 flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <div>
-              <h2 className="text-2xl font-bold text-white">
-                {subject?.subject_number || 'Loading...'}
-              </h2>
-              {subject && (
-                <div className="flex items-center space-x-3 mt-1">
-                  <span className={`px-3 py-1 text-xs font-medium rounded-full border ${statusColors[subject.status]}`}>
-                    {subject.status.charAt(0).toUpperCase() + subject.status.slice(1)}
-                  </span>
-                  {subject.treatment_arm && (
-                    <span className="text-sm text-gray-400">{subject.treatment_arm}</span>
-                  )}
-                </div>
-              )}
+        <div className="bg-gray-800/50 px-6 py-6 border-b border-gray-700">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-6">
+              <button
+                onClick={onClose}
+                className="p-2 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              
+              <div>
+                <h1 className="text-3xl font-bold text-white">
+                  {subject?.subject_number || 'Loading...'}
+                </h1>
+                {subject && (
+                  <div className="flex items-center space-x-4 mt-2">
+                    <span className={`px-4 py-2 text-sm font-medium rounded-full border ${statusColors[subject.status]}`}>
+                      {subject.status.charAt(0).toUpperCase() + subject.status.slice(1)}
+                    </span>
+                    {subject.treatment_arm && (
+                      <span className="text-gray-400 bg-gray-800/50 px-3 py-1 rounded-full text-sm">
+                        {subject.treatment_arm}
+                      </span>
+                    )}
+                    <span className="text-gray-400 text-sm">
+                      Enrolled {formatDate(subject.enrollment_date)}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
+
+            {metrics && !loading && (
+              <div className="flex space-x-6">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-white">{metrics.completed_visits}</div>
+                  <div className="text-xs text-gray-400">Visits Done</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-blue-400">{metrics.upcoming_visits}</div>
+                  <div className="text-xs text-gray-400">Upcoming</div>
+                </div>
+                {metrics.overdue_visits > 0 && (
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-red-400">{metrics.overdue_visits}</div>
+                    <div className="text-xs text-gray-400">Overdue</div>
+                  </div>
+                )}
+                <div className="text-center">
+                  <div className={`text-2xl font-bold ${getComplianceColor(metrics.visit_compliance_rate)}`}>
+                    {Math.round(metrics.visit_compliance_rate)}%
+                  </div>
+                  <div className="text-xs text-gray-400">On-Time</div>
+                </div>
+              </div>
+            )}
           </div>
-          
-          <button
-            onClick={onClose}
-            className="p-2 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded-lg transition-colors"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
         </div>
 
         {loading ? (
@@ -253,9 +285,9 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
               <div className="flex space-x-4 border-b border-gray-700">
                 {([
                   { id: 'timeline', label: 'Visit Timeline', icon: '📅' },
-                  { id: 'compliance', label: 'Compliance Analytics', icon: '📊' },
+                  { id: 'drug-compliance', label: 'Drug Accountability', icon: '💊' },
                   { id: 'notes', label: 'Notes & History', icon: '📝' }
-                ] as Array<{ id: 'timeline' | 'compliance' | 'notes'; label: string; icon: string }>).map((tab) => (
+                ] as Array<{ id: 'timeline' | 'drug-compliance' | 'notes'; label: string; icon: string }>).map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
@@ -372,7 +404,19 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
                 </div>
               )}
 
-              {activeTab === 'compliance' && (
+              {activeTab === 'drug-compliance' && (
+                <div className="space-y-6">
+                  <div className="text-center py-12">
+                    <svg className="w-24 h-24 mx-auto mb-6 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 01-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 010-2h4a1 1 0 011 1v4a1 1 0 01-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12z" clipRule="evenodd" />
+                    </svg>
+                    <h3 className="text-xl font-semibold text-gray-400 mb-2">Drug Accountability Coming Soon</h3>
+                    <p className="text-gray-500">This section will display comprehensive drug dispensing, return, and compliance data.</p>
+                  </div>
+                </div>
+              )}
+
+              {false && (
                 <div className="space-y-6">
                   <h3 className="text-lg font-semibold text-white">Compliance Analytics</h3>
                   
@@ -385,19 +429,19 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
                           <div className="flex justify-between text-sm">
                             <span className="text-gray-400">Progress</span>
                             <span className="text-white">
-                              {metrics.completed_visits}/{metrics.total_visits} visits
+                              {(metrics?.completed_visits ?? 0)}/{metrics?.total_visits ?? 0} visits
                             </span>
                           </div>
                           <div className="w-full bg-gray-700 rounded-full h-3">
                             <div
                               className="bg-blue-600 h-3 rounded-full transition-all duration-500"
                               style={{ 
-                                width: `${metrics.total_visits > 0 ? (metrics.completed_visits / metrics.total_visits) * 100 : 0}%` 
+                                width: `${((metrics?.total_visits ?? 0) > 0) ? (((metrics?.completed_visits ?? 0) / (metrics?.total_visits ?? 1)) * 100) : 0}%` 
                               }}
                             />
                           </div>
                           <div className="text-2xl font-bold text-white">
-                            {metrics.total_visits > 0 ? Math.round((metrics.completed_visits / metrics.total_visits) * 100) : 0}%
+                            {((metrics?.total_visits ?? 0) > 0) ? Math.round(((metrics?.completed_visits ?? 0) / (metrics?.total_visits ?? 1)) * 100) : 0}%
                           </div>
                         </div>
                       </div>
@@ -408,17 +452,17 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
                         <div className="space-y-3">
                           <div className="flex justify-between text-sm">
                             <span className="text-gray-400">On-Time Rate</span>
-                            <span className={getComplianceColor(metrics.visit_compliance_rate)}>
-                              {Math.round(metrics.visit_compliance_rate)}%
+                            <span className={getComplianceColor(metrics?.visit_compliance_rate ?? 0)}>
+                              {Math.round(metrics?.visit_compliance_rate ?? 0)}%
                             </span>
                           </div>
                           <div className="w-full bg-gray-700 rounded-full h-3">
                             <div
                               className={`h-3 rounded-full transition-all duration-500 ${
-                                metrics.visit_compliance_rate >= 90 ? 'bg-green-600' :
-                                metrics.visit_compliance_rate >= 75 ? 'bg-yellow-600' : 'bg-red-600'
+                                (metrics?.visit_compliance_rate ?? 0) >= 90 ? 'bg-green-600' :
+                                (metrics?.visit_compliance_rate ?? 0) >= 75 ? 'bg-yellow-600' : 'bg-red-600'
                               }`}
-                              style={{ width: `${Math.min(100, metrics.visit_compliance_rate)}%` }}
+                              style={{ width: `${Math.min(100, metrics?.visit_compliance_rate ?? 0)}%` }}
                             />
                           </div>
                           <div className="text-xs text-gray-400">

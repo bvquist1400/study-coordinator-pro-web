@@ -27,12 +27,32 @@ interface SubjectMetrics {
   visit_compliance_rate: number
   days_since_last_visit: number | null
   days_until_next_visit: number | null
+  // Drug compliance metrics
+  drug_compliance: {
+    actual_taken: number
+    expected_taken: number | null
+    compliance_percentage: number | null
+  } | null
+  last_drug_dispensing: {
+    visit_date: string
+    ip_id: string
+    ip_dispensed: number
+    ip_start_date: string
+  } | null
+  active_drug_bottle: {
+    ip_id: string
+    dispensed_count: number
+    start_date: string
+    days_since_dispensing: number
+  } | null
+  expected_return_date: string | null
 }
 
 interface SubjectCardProps {
   subject: Subject
   metrics: SubjectMetrics
   onClick: () => void
+  onScheduleVisit?: (subjectId: string) => void
 }
 
 const statusColors = {
@@ -51,7 +71,7 @@ const statusLabels = {
   withdrawn: 'Withdrawn'
 }
 
-export default function SubjectCard({ subject, metrics, onClick }: SubjectCardProps) {
+export default function SubjectCard({ subject, metrics, onClick, onScheduleVisit }: SubjectCardProps) {
   const getComplianceColor = (rate: number) => {
     if (rate >= 90) return 'text-green-400'
     if (rate >= 75) return 'text-yellow-400'
@@ -140,6 +160,7 @@ export default function SubjectCard({ subject, metrics, onClick }: SubjectCardPr
         </div>
       </div>
 
+
       {/* Metrics Grid */}
       <div className="grid grid-cols-2 gap-4 mb-4">
         {/* Compliance */}
@@ -200,6 +221,7 @@ export default function SubjectCard({ subject, metrics, onClick }: SubjectCardPr
             </div>
           </div>
         )}
+
       </div>
 
       {/* Quick Info */}
@@ -213,9 +235,25 @@ export default function SubjectCard({ subject, metrics, onClick }: SubjectCardPr
           )}
         </div>
         
-        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-        </svg>
+        <div className="flex items-center space-x-2">
+          {onScheduleVisit && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onScheduleVisit(subject.id)
+              }}
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors flex items-center space-x-1"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+              </svg>
+              <span>Schedule</span>
+            </button>
+          )}
+          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
       </div>
     </div>
   )

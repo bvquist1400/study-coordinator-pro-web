@@ -114,7 +114,7 @@ export async function verifyStudyMembership(studyId: string, userId: string): Pr
     }
 
     // If site_id is not set, fall back to legacy user ownership check
-    if (!study.site_id) {
+    if (!(study as any).site_id) {
       return verifyStudyOwnership(studyId, userId)
     }
 
@@ -122,7 +122,7 @@ export async function verifyStudyMembership(studyId: string, userId: string): Pr
     const { data: member, error: memberError } = await supabase
       .from('site_members')
       .select('user_id')
-      .eq('site_id', study.site_id as string)
+      .eq('site_id', (study as any).site_id as string)
       .eq('user_id', userId)
       .single()
 
