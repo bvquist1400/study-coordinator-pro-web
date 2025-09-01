@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
 
     if (siteErr || !site) {
       console.error('Create site error:', siteErr)
-      return NextResponse.json({ error: 'Failed to create site' }, { status: 500 })
+      return NextResponse.json({ error: 'Failed to create site', details: (siteErr as any)?.message || (siteErr as any)?.hint || String(siteErr) }, { status: 500 })
     }
 
     const siteRow = site as { id: string }
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
 
     if (memberErr) {
       console.error('Add owner membership error:', memberErr)
-      return NextResponse.json({ error: 'Site created, but failed to add owner membership' }, { status: 500 })
+      return NextResponse.json({ error: 'Site created, but failed to add owner membership', details: (memberErr as any)?.message || (memberErr as any)?.hint || String(memberErr) }, { status: 500 })
     }
 
     return NextResponse.json({ site }, { status: 201 })
