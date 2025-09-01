@@ -8,7 +8,10 @@ export function createSupabaseAdmin() {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
   
   if (!url || !key) {
-    throw new Error('Missing required Supabase environment variables')
+    const missing: string[] = []
+    if (!url) missing.push('NEXT_PUBLIC_SUPABASE_URL')
+    if (!key) missing.push('SUPABASE_SERVICE_ROLE_KEY')
+    throw new Error(`Missing Supabase environment variable(s): ${missing.join(', ')}`)
   }
   
   return createClient<Database>(url, key, {
@@ -58,7 +61,7 @@ export async function authenticateUser(request: NextRequest): Promise<AuthResult
     console.error('Authentication error:', error)
     return {
       user: null,
-      error: 'Authentication failed',
+      error: error instanceof Error ? `Authentication failed: ${error.message}` : 'Authentication failed',
       status: 500
     }
   }
