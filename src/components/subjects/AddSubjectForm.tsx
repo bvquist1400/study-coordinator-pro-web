@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import { todayLocalISODate } from '@/lib/date-utils'
 
 interface AddSubjectFormProps {
   studyId: string
@@ -23,7 +24,7 @@ export default function AddSubjectForm({ studyId, onClose, onSave }: AddSubjectF
   const [formData, setFormData] = useState<SubjectFormData>({
     subject_number: '',
     gender: '',
-    enrollment_date: new Date().toISOString().split('T')[0],
+    enrollment_date: todayLocalISODate(),
     randomization_date: '',
     treatment_arm: '',
     status: 'screening',
@@ -54,7 +55,9 @@ export default function AddSubjectForm({ studyId, onClose, onSave }: AddSubjectF
 
     // Anchor date should be after enrollment
     if (formData.randomization_date && formData.enrollment_date) {
-      if (new Date(formData.randomization_date) < new Date(formData.enrollment_date)) {
+      const rand = require('@/lib/date-utils').parseDateUTC(formData.randomization_date) || new Date(formData.randomization_date)
+      const enroll = require('@/lib/date-utils').parseDateUTC(formData.enrollment_date) || new Date(formData.enrollment_date)
+      if (rand < enroll) {
         newErrors.randomization_date = 'Anchor date must be after enrollment date'
       }
     }

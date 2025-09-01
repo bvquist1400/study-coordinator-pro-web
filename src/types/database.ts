@@ -320,7 +320,7 @@ export interface Database {
           id: string
           study_id: string
           visit_name: string
-          visit_number: number
+          visit_number: string
           visit_day: number
           window_before_days: number
           window_after_days: number
@@ -335,7 +335,7 @@ export interface Database {
           id?: string
           study_id: string
           visit_name: string
-          visit_number: number
+          visit_number: string
           visit_day: number
           window_before_days?: number
           window_after_days?: number
@@ -350,7 +350,7 @@ export interface Database {
           id?: string
           study_id?: string
           visit_name?: string
-          visit_number?: number
+          visit_number?: string
           visit_day?: number
           window_before_days?: number
           window_after_days?: number

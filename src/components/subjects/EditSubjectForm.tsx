@@ -99,7 +99,9 @@ export default function EditSubjectForm({ subjectId, studyId: _studyId, onClose,
 
     // Anchor date should be after enrollment
     if (formData.randomization_date && formData.enrollment_date) {
-      if (new Date(formData.randomization_date) < new Date(formData.enrollment_date)) {
+      const rand = require('@/lib/date-utils').parseDateUTC(formData.randomization_date) || new Date(formData.randomization_date)
+      const enroll = require('@/lib/date-utils').parseDateUTC(formData.enrollment_date) || new Date(formData.enrollment_date)
+      if (rand < enroll) {
         newErrors.randomization_date = 'Anchor date must be after enrollment date'
       }
     }

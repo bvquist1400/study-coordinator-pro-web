@@ -138,7 +138,7 @@ function SubjectsPageContent() {
 
   // Removed unused handleSubjectEdit
 
-  const handleSubjectUpdated = () => {
+  const handleEditFormSave = () => {
     setShowEditForm(false)
     setEditingSubjectId('')
     setRefreshKey(prev => prev + 1)
@@ -147,6 +147,10 @@ function SubjectsPageContent() {
   const handleDetailModalClose = () => {
     setShowDetailModal(false)
     setViewingSubjectId('')
+  }
+
+  const handleSubjectUpdated = () => {
+    setRefreshKey(prev => prev + 1) // Trigger subject list refresh
   }
 
   const handleScheduleModalClose = () => {
@@ -278,7 +282,7 @@ function SubjectsPageContent() {
               setShowEditForm(false)
               setEditingSubjectId('')
             }}
-            onSave={handleSubjectUpdated}
+            onSave={handleEditFormSave}
           />
         )}
 
@@ -289,6 +293,7 @@ function SubjectsPageContent() {
             studyId={selectedStudyId}
             isOpen={showDetailModal}
             onClose={handleDetailModalClose}
+            onSubjectUpdated={handleSubjectUpdated}
           />
         )}
 

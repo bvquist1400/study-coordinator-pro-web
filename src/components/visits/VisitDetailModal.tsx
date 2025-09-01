@@ -473,21 +473,8 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
 
   const formatDate = (dateString: string) => {
     if (!dateString) return '-'
-    const re = /(\d{4}-\d{2}-\d{2})/
-    const match = String(dateString || '').match(re)
-    const dt = match
-      ? (() => {
-          const [y, m, d] = match[1].split('-').map(Number)
-          return new Date(y, (m || 1) - 1, d || 1)
-        })()
-      : new Date(dateString)
-    if (isNaN(dt.getTime())) return '-'
-    return dt.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    })
+    const { formatDateUTC } = require('@/lib/date-utils')
+    return formatDateUTC(dateString, 'en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
   }
 
   if (loading) {
@@ -722,7 +709,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
                                   </div>
                                   {kit.expiration_date && (
                                     <span className="text-xs text-gray-400">
-                                      Exp: {new Date(kit.expiration_date).toLocaleDateString()}
+                                      Exp: {require('@/lib/date-utils').formatDateUTC(kit.expiration_date)}
                                     </span>
                                   )}
                                 </div>

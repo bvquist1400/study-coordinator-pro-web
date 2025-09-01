@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import { formatDateUTC } from '@/lib/date-utils'
 
 interface InventoryForecast {
   visitName: string
@@ -208,9 +209,7 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
                     {item.upcomingVisits.map((visit, index) => (
                       <div key={index} className="flex justify-between text-sm">
                         <span className="text-gray-300">{visit.subject_number}</span>
-                        <span className="text-gray-400">
-                          {new Date(visit.visit_date).toLocaleDateString()}
-                        </span>
+                        <span className="text-gray-400">{formatDateUTC(visit.visit_date)}</span>
                       </div>
                     ))}
                   </div>

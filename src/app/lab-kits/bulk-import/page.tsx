@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { useSite } from '@/components/site/SiteProvider'
+import { todayLocalISODate } from '@/lib/date-utils'
 
 interface Study {
   id: string
@@ -39,7 +40,7 @@ export default function BulkImportPage() {
   const [expirationDate, setExpirationDate] = useState('')
   const [lotNumber, setLotNumber] = useState('')
   const [kitName, setKitName] = useState('')
-  const [receivedDate, setReceivedDate] = useState(new Date().toISOString().split('T')[0])
+  const [receivedDate, setReceivedDate] = useState(todayLocalISODate())
   
   // Grid state
   const [labKitRows, setLabKitRows] = useState<LabKitRow[]>([

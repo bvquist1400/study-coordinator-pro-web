@@ -166,6 +166,18 @@ export async function GET(request: NextRequest) {
         let lastDrugDispensing = null
         let activeDrugBottle = null
         let expectedReturnDate = null
+        
+        // Build complete IP dispensing history for timeline
+        const ipDispensingHistory = ipVisits.map((visit: any) => ({
+          visit_id: visit.id,
+          visit_date: visit.visit_date,
+          ip_id: visit.ip_id,
+          ip_dispensed: visit.ip_dispensed,
+          ip_start_date: visit.ip_start_date || visit.visit_date,
+          ip_returned: visit.ip_returned,
+          ip_last_dose_date: visit.ip_last_dose_date,
+          visit_name: visit.visit_schedules?.visit_name || 'Visit'
+        }))
 
         if (ipVisits.length > 0) {
           // Find the most recent IP dispensing
@@ -230,7 +242,8 @@ export async function GET(request: NextRequest) {
             drug_compliance: drugCompliance,
             last_drug_dispensing: lastDrugDispensing,
             active_drug_bottle: activeDrugBottle,
-            expected_return_date: expectedReturnDate ? expectedReturnDate.toISOString().split('T')[0] : null
+            expected_return_date: expectedReturnDate ? expectedReturnDate.toISOString().split('T')[0] : null,
+            ip_dispensing_history: ipDispensingHistory
           }
         }
       })

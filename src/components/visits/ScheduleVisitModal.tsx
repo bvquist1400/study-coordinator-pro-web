@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { calculateVisitDate } from '@/lib/visit-calculator'
+import { formatDateUTC, parseDateUTC } from '@/lib/date-utils'
 import type { VisitSchedule as DbVisitSchedule, LabKit } from '@/types/database'
 
 interface Subject {
@@ -311,7 +312,7 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
     if (!subject || !subject.randomization_date || !study) return null
 
     const calc = calculateVisitDate(
-      new Date(subject.randomization_date),
+      (parseDateUTC(subject.randomization_date) || new Date(subject.randomization_date)) as Date,
       schedule.visit_day,
       'days',
       study.anchor_day,
@@ -322,10 +323,7 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
     const windowStart = calc.windowStart
     const windowEnd = calc.windowEnd
 
-    return {
-      start: windowStart.toLocaleDateString(),
-      end: windowEnd.toLocaleDateString()
-    }
+    return { start: formatDateUTC(windowStart), end: formatDateUTC(windowEnd) }
   }
 
   if (loading) {
@@ -532,7 +530,7 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
                           </div>
                           {kit.expiration_date && (
                             <span className="text-xs text-gray-400">
-                              Exp: {new Date(kit.expiration_date).toLocaleDateString()}
+                              Exp: {formatDateUTC(kit.expiration_date)}
                             </span>
                           )}
                         </div>
@@ -555,7 +553,7 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
                         <p><span className="text-gray-400">Type:</span> {selectedLabKit?.kit_type}</p>
                       )}
                       {selectedLabKit?.expiration_date && (
-                        <p><span className="text-gray-400">Expires:</span> {new Date(selectedLabKit?.expiration_date as string).toLocaleDateString()}</p>
+                        <p><span className="text-gray-400">Expires:</span> {formatDateUTC(selectedLabKit?.expiration_date as string)}</p>
                       )}
                     </div>
                   </div>
@@ -596,7 +594,7 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
                       ? customVisitName 
                       : visitSchedules.find(s => s.id === selectedVisitScheduleId)?.visit_name
                   }</p>
-                  <p><span className="text-gray-400">Date:</span> {new Date(scheduledDate).toLocaleDateString()}</p>
+                  <p><span className="text-gray-400">Date:</span> {formatDateUTC(scheduledDate)}</p>
                 </div>
               </div>
             )}

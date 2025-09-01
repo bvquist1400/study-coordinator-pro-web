@@ -71,6 +71,8 @@ const statusLabels = {
   withdrawn: 'Withdrawn'
 }
 
+import { formatDateUTC } from '@/lib/date-utils'
+
 export default function SubjectCard({ subject, metrics, onClick, onScheduleVisit }: SubjectCardProps) {
   const getComplianceColor = (rate: number) => {
     if (rate >= 90) return 'text-green-400'
@@ -86,14 +88,7 @@ export default function SubjectCard({ subject, metrics, onClick, onScheduleVisit
     return 'bg-orange-600'
   }
 
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return null
-    return new Date(dateString).toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric',
-      year: 'numeric'
-    })
-  }
+  const formatDate = (dateString: string | null) => (dateString ? formatDateUTC(dateString, 'en-US') : null)
 
   const getRelativeTime = (days: number | null, isFuture: boolean = false) => {
     if (days === null) return null

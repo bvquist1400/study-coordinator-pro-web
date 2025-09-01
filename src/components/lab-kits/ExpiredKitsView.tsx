@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { LabKit } from '@/types/database'
+import { formatDateUTC, parseDateUTC } from '@/lib/date-utils'
 
 interface ExpiredKitsViewProps {
   studyId: string
@@ -24,26 +25,7 @@ export default function ExpiredKitsView({ studyId, refreshKey, onRefresh }: Expi
   const [destroying, setDestroying] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
 
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return '-'
-    // Handle date-only strings (YYYY-MM-DD) by treating as local timezone
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
-      const [year, month, day] = dateString.split('-').map(Number)
-      const dt = new Date(year, month - 1, day) // month is 0-indexed
-      return dt.toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric', 
-        year: 'numeric' 
-      })
-    }
-    // Handle full datetime strings
-    const dt = new Date(dateString)
-    return dt.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric', 
-      year: 'numeric' 
-    })
-  }
+  const formatDate = (dateString: string | null) => (dateString ? formatDateUTC(dateString, 'en-US') : '-')
 
   const loadExpiredKits = useCallback(async () => {
     try {
@@ -87,14 +69,8 @@ export default function ExpiredKitsView({ studyId, refreshKey, onRefresh }: Expi
         return false
       }
       
-      // Handle date-only strings (YYYY-MM-DD) by treating as local timezone
-      let expDate: Date
-      if (/^\d{4}-\d{2}-\d{2}$/.test(kit.expiration_date)) {
-        const [year, month, day] = kit.expiration_date.split('-').map(Number)
-        expDate = new Date(year, month - 1, day) // month is 0-indexed
-      } else {
-        expDate = new Date(kit.expiration_date)
-      }
+      // Parse expiration date safely (UTC for date-only)
+      const expDate = (parseDateUTC(kit.expiration_date) || new Date(kit.expiration_date)) as Date
       
       return expDate < today // Kit expires before today (is already expired)
     })

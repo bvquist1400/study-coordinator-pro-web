@@ -76,8 +76,9 @@ export function calculateComplianceMetrics(
 ): DrugComplianceMetrics {
   const actualTaken = dispensedCount - (returnedCount || 0)
   
-  const dispenseDate = new Date(dispensingDate)
-  const assessDate = new Date(assessmentDate)
+  const { parseDateUTC } = require('@/lib/date-utils')
+  const dispenseDate = (parseDateUTC(dispensingDate) || new Date(dispensingDate)) as Date
+  const assessDate = (parseDateUTC(assessmentDate) || new Date(assessmentDate)) as Date
   const daysBetween = Math.max(0, Math.floor((assessDate.getTime() - dispenseDate.getTime()) / (1000 * 60 * 60 * 24)))
   
   const expectedTaken = daysBetween * dosePerDay

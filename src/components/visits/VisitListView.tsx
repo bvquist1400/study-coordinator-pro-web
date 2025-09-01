@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import { formatDateUTC, parseDateUTC } from '@/lib/date-utils'
 
 interface Visit {
   id: string
@@ -133,17 +134,7 @@ export default function VisitListView({ studyId, onVisitClick, refreshKey }: Vis
     }
   }
 
-  const formatDate = (dateString: string) => {
-    let dt: Date
-    const datePart = (dateString || '').split('T')[0]
-    if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
-      const [y, m, d] = datePart.split('-').map(Number)
-      dt = new Date(y, (m || 1) - 1, d || 1)
-    } else {
-      dt = new Date(dateString)
-    }
-    return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-  }
+  const formatDate = (dateString: string) => formatDateUTC(dateString, 'en-US')
 
   const getVisitWindow = (visit: Visit) => {
     if (!visit.subjects?.randomization_date || !visit.visit_schedules) {
@@ -157,7 +148,7 @@ export default function VisitListView({ studyId, onVisitClick, refreshKey }: Vis
 
     try {
       // Calculate target date (randomization + visit_day)
-      const randomDate = new Date(visit.subjects.randomization_date)
+      const randomDate = parseDateUTC(visit.subjects.randomization_date) || new Date(visit.subjects.randomization_date)
       const targetDate = new Date(randomDate)
       targetDate.setDate(randomDate.getDate() + visit.visit_schedules.visit_day)
 
@@ -171,8 +162,8 @@ export default function VisitListView({ studyId, onVisitClick, refreshKey }: Vis
       const windowEnd = new Date(targetDate)  
       windowEnd.setDate(targetDate.getDate() + windowAfter)
 
-      const startStr = windowStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-      const endStr = windowEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      const startStr = formatDateUTC(windowStart, 'en-US', { month: 'short', day: 'numeric' })
+      const endStr = formatDateUTC(windowEnd, 'en-US', { month: 'short', day: 'numeric' })
       
       return `${startStr} - ${endStr}`
     } catch {

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { LabKit } from '@/types/database'
+import { formatDateUTC, parseDateUTC } from '@/lib/date-utils'
 
 interface LabKitInventoryProps {
   studyId: string
@@ -79,38 +80,13 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
     }
   }
 
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return '-'
-    // Handle date-only strings (YYYY-MM-DD) by treating as local timezone
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
-      const [year, month, day] = dateString.split('-').map(Number)
-      const dt = new Date(year, month - 1, day) // month is 0-indexed
-      return dt.toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric', 
-        year: 'numeric' 
-      })
-    }
-    // Handle full datetime strings
-    const dt = new Date(dateString)
-    return dt.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric', 
-      year: 'numeric' 
-    })
-  }
+  const formatDate = (dateString: string | null) => (dateString ? formatDateUTC(dateString, 'en-US') : '-')
 
   const isExpiringSoon = (expirationDate: string | null) => {
     if (!expirationDate) return false
     
-    // Handle date-only strings (YYYY-MM-DD) by treating as local timezone
-    let expDate: Date
-    if (/^\d{4}-\d{2}-\d{2}$/.test(expirationDate)) {
-      const [year, month, day] = expirationDate.split('-').map(Number)
-      expDate = new Date(year, month - 1, day) // month is 0-indexed
-    } else {
-      expDate = new Date(expirationDate)
-    }
+    // Parse using UTC for date-only to avoid shifts
+    const expDate = (parseDateUTC(expirationDate) || new Date(expirationDate)) as Date
     
     const today = new Date()
     today.setHours(0, 0, 0, 0) // Start of today
@@ -515,7 +491,7 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
                   <td className="px-6 py-4">
                     <div className="text-sm text-gray-300">
                       {kit.visit_schedules ? 
-                        `${kit.visit_schedules.visit_name} (V${kit.visit_schedules.visit_number})` 
+                        `${kit.visit_schedules.visit_name} (${kit.visit_schedules.visit_number})` 
                         : 'Unassigned'
                       }
                     </div>
@@ -654,7 +630,7 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-300">
                         {kit.visit_schedules ? 
-                          `${kit.visit_schedules.visit_name} (V${kit.visit_schedules.visit_number})` 
+                          `${kit.visit_schedules.visit_name} (${kit.visit_schedules.visit_number})` 
                           : 'Unassigned'
                         }
                       </div>
@@ -773,7 +749,7 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
                     <label className="block text-sm font-medium text-gray-400 mb-1">Visit Assignment</label>
                     <p className="text-gray-100">
                       {selectedKit.visit_schedules ? 
-                        `${selectedKit.visit_schedules.visit_name} (Visit ${selectedKit.visit_schedules.visit_number})` 
+                        `${selectedKit.visit_schedules.visit_name} (${selectedKit.visit_schedules.visit_number})` 
                         : 'Unassigned'
                       }
                     </p>
@@ -860,7 +836,8 @@ function BulkEditModal({ selectedKits, onClose, onSave }: BulkEditModalProps) {
     lot_number: '',
     expiration_date: '',
     status: '',
-    notes: ''
+    notes: '',
+    visit_schedule_id: ''
   })
   const [saving, setSaving] = useState(false)
   const [updateFields, setUpdateFields] = useState({
@@ -868,8 +845,40 @@ function BulkEditModal({ selectedKits, onClose, onSave }: BulkEditModalProps) {
     lot_number: false,
     expiration_date: false,
     status: false,
-    notes: false
+    notes: false,
+    visit_schedule_id: false
   })
+  const [visitSchedules, setVisitSchedules] = useState<Array<{id: string, visit_name: string, visit_number: string}>>([])
+  const [loadingVisits, setLoadingVisits] = useState(true)
+
+  // Load visit schedules for the study
+  useEffect(() => {
+    const loadVisitSchedules = async () => {
+      if (selectedKits.length === 0) return
+      
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
+        
+        if (!token) return
+
+        const response = await fetch(`/api/visit-schedules?study_id=${selectedKits[0].study_id}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          setVisitSchedules(data.visitSchedules || [])
+        }
+      } catch (error) {
+        console.error('Error loading visit schedules:', error)
+      } finally {
+        setLoadingVisits(false)
+      }
+    }
+
+    loadVisitSchedules()
+  }, [selectedKits])
 
   const handleSave = async () => {
     try {
@@ -883,13 +892,20 @@ function BulkEditModal({ selectedKits, onClose, onSave }: BulkEditModalProps) {
       // Only send fields that are marked for update and have values
       const updateData: Partial<LabKit> = {}
       Object.entries(updateFields).forEach(([field, shouldUpdate]) => {
-        if (shouldUpdate && bulkData[field as keyof typeof bulkData]) {
-          ;(updateData as Record<string, any>)[field] = bulkData[field as keyof typeof bulkData]
+        if (shouldUpdate) {
+          const value = bulkData[field as keyof typeof bulkData]
+          if (field === 'visit_schedule_id') {
+            // Handle visit assignment specially - allow null/empty values
+            ;(updateData as Record<string, any>)[field] = value === 'null' || value === '' ? null : value
+          } else if (value) {
+            // For other fields, only include if they have a value
+            ;(updateData as Record<string, any>)[field] = value
+          }
         }
       })
 
       if (Object.keys(updateData).length === 0) {
-        alert('Please select fields to update and provide values')
+        alert('Please select at least one field to update')
         return
       }
 
@@ -1018,6 +1034,35 @@ function BulkEditModal({ selectedKits, onClose, onSave }: BulkEditModalProps) {
                   <option value="expired">Expired</option>
                   <option value="archived">Archived</option>
                 </select>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-4">
+              <input
+                type="checkbox"
+                checked={updateFields.visit_schedule_id}
+                onChange={(e) => setUpdateFields(prev => ({ ...prev, visit_schedule_id: e.target.checked }))}
+                className="w-4 h-4 text-blue-600 border-gray-600 rounded focus:ring-blue-500 bg-gray-700"
+              />
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-300 mb-2">Visit Assignment</label>
+                <select
+                  value={bulkData.visit_schedule_id}
+                  onChange={(e) => setBulkData(prev => ({ ...prev, visit_schedule_id: e.target.value }))}
+                  disabled={!updateFields.visit_schedule_id || loadingVisits}
+                  className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                >
+                  <option value="">Select Visit...</option>
+                  <option value="null">Unassigned</option>
+                  {visitSchedules.map(visit => (
+                    <option key={visit.id} value={visit.id}>
+                      {visit.visit_name} ({visit.visit_number})
+                    </option>
+                  ))}
+                </select>
+                {loadingVisits && (
+                  <p className="text-sm text-gray-400 mt-1">Loading visit schedules...</p>
+                )}
               </div>
             </div>
 

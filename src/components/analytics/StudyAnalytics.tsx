@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ScatterChart, Scatter } from 'recharts'
+import { formatDateUTC } from '@/lib/date-utils'
 
 interface StudyComparison {
   study_id: string
@@ -497,19 +498,19 @@ export default function StudyAnalytics({ className }: StudyAnalyticsProps) {
                     <td className="py-3 px-4 text-white font-medium">{milestone.protocol_number}</td>
                     <td className="py-3 px-4 text-center text-gray-300">
                       {milestone.milestones.first_subject_enrolled 
-                        ? new Date(milestone.milestones.first_subject_enrolled).toLocaleDateString()
+                        ? formatDateUTC(milestone.milestones.first_subject_enrolled)
                         : 'N/A'
                       }
                     </td>
                     <td className="py-3 px-4 text-center text-gray-300">
                       {milestone.milestones.last_subject_enrolled 
-                        ? new Date(milestone.milestones.last_subject_enrolled).toLocaleDateString()
+                        ? formatDateUTC(milestone.milestones.last_subject_enrolled)
                         : 'N/A'
                       }
                     </td>
                     <td className="py-3 px-4 text-center text-gray-300">
                       {milestone.milestones.target_enrollment_date 
-                        ? new Date(milestone.milestones.target_enrollment_date).toLocaleDateString()
+                        ? formatDateUTC(milestone.milestones.target_enrollment_date)
                         : 'N/A'
                       }
                     </td>

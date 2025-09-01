@@ -11,13 +11,14 @@ interface ScheduleOfEventsBuilderProps {
 
 interface Visit {
   id: string
-  visitNumber: string
+  visitNumber: string // This is the display version (e.g., "V1", "OLS")
   visitName: string
   timingValue: number
   timingUnit: 'days' | 'weeks' | 'months'
   visitWindowBefore: number
   visitWindowAfter: number
   isNew?: boolean
+  originalVisitNumber?: string // Preserve original DB visit number text for updates
 }
 
 interface Procedure {
@@ -105,8 +106,15 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
       let proceduresToUse: Procedure[]
 
       if (existingSchedules && existingSchedules.length > 0) {
-        // Load existing data from database
-        visitsToUse = existingSchedules.map((schedule: any, i: number) => {
+        // Load existing data from database and sort by visit_day, then by window_before_days (desc) for same-day visits
+        const sortedSchedules = [...existingSchedules].sort((a, b) => {
+          const dayDiff = (a.visit_day || 0) - (b.visit_day || 0)
+          if (dayDiff !== 0) return dayDiff
+          // For same visit_day, sort by window_before_days descending (larger negative window first)
+          return (b.window_before_days || 0) - (a.window_before_days || 0)
+        })
+        
+        visitsToUse = sortedSchedules.map((schedule: any, i: number) => {
           const visitDay = schedule.visit_day || 0
           
           // Convert visit_day back to timingValue and timingUnit
@@ -132,12 +140,13 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
           
           return {
             id: `visit-${i}`,
-            visitNumber: `V${schedule.visit_number}`,
+            visitNumber: schedule.visit_number, // Use the text visit number directly (OLS, V1, etc.)
             visitName: schedule.visit_name,
             timingValue,
             timingUnit,
             visitWindowBefore: schedule.window_before_days,
-            visitWindowAfter: schedule.window_after_days
+            visitWindowAfter: schedule.window_after_days,
+            originalVisitNumber: schedule.visit_number // Preserve original DB visit number
           }
         })
         
@@ -151,8 +160,8 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
             visits: {}
           }
           
-          // Map procedures to visits based on saved data
-          existingSchedules.forEach((schedule: any, visitIndex: number) => {
+          // Map procedures to visits based on saved data using sorted schedules
+          sortedSchedules.forEach((schedule: any, visitIndex: number) => {
             const visitId = `visit-${visitIndex}`
             if (schedule.procedures.includes(p.name)) {
               procedureWithId.visits[visitId] = true
@@ -228,13 +237,14 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
     const newVisitNumber = visits.length + 1
     const newVisit: Visit = {
       id: `visit-new-${Date.now()}`,
-      visitNumber: `V${newVisitNumber}`,
+      visitNumber: `V${newVisitNumber}`, // This will be editable by the user
       visitName: `Visit ${newVisitNumber}`,
       timingValue: 1,
       timingUnit: 'weeks',
       visitWindowBefore: 7,
       visitWindowAfter: 7,
-      isNew: true
+      isNew: true,
+      originalVisitNumber: undefined // This is a new visit, no original number
     }
     setVisits([...visits, newVisit])
   }
@@ -242,9 +252,17 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
   // Remove unused functions to keep procedures fixed
 
   const updateVisit = (visitId: string, field: keyof Visit, value: string | number) => {
-    setVisits(visits.map(v => 
-      v.id === visitId ? { ...v, [field]: value } : v
-    ))
+    setVisits(visits.map(v => {
+      if (v.id === visitId) {
+        const updatedVisit = { ...v, [field]: value }
+        // If updating visitNumber, also update originalVisitNumber so it saves to database
+        if (field === 'visitNumber') {
+          updatedVisit.originalVisitNumber = value as string
+        }
+        return updatedVisit
+      }
+      return v
+    }))
   }
 
   const updateProcedure = (procedureId: string, field: keyof Procedure, value: string) => {
@@ -271,10 +289,10 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
           .filter(proc => proc.visits[visit.id] === true || proc.visits[visit.id] === 'X')
           .map(proc => proc.name)
 
-        return {
+        const scheduleToSave = {
           study_id: study.id,
           visit_name: visit.visitName,
-          visit_number: index + 1, // Sequential numbering
+          visit_number: visit.originalVisitNumber || visit.visitNumber, // Use original or current visit number (text)
           visit_day: visit.timingUnit === 'days' ? visit.timingValue : visit.timingValue * 7,
           window_before_days: visit.visitWindowBefore,
           window_after_days: visit.visitWindowAfter,
@@ -287,6 +305,15 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
           procedures: requiredProcedures,
           notes: null
         }
+        
+        console.log(`Visit ${index + 1} data:`, {
+          displayVisitNumber: visit.visitNumber,
+          originalVisitNumber: visit.originalVisitNumber,
+          finalVisitNumber: scheduleToSave.visit_number,
+          visitName: visit.visitName
+        })
+        
+        return scheduleToSave
       })
 
       console.log('Saving visit schedules:', JSON.stringify(visitSchedulesToSave, null, 2))

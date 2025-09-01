@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import EditSubjectForm from './EditSubjectForm'
+import { formatDateUTC, formatDateTimeUTC, parseDateUTC } from '@/lib/date-utils'
 
 interface Subject {
   id: string
@@ -30,6 +32,35 @@ interface SubjectMetrics {
   visit_compliance_rate: number
   days_since_last_visit: number | null
   days_until_next_visit: number | null
+  // Drug compliance metrics
+  drug_compliance: {
+    actual_taken: number
+    expected_taken: number | null
+    compliance_percentage: number | null
+  } | null
+  last_drug_dispensing: {
+    visit_date: string
+    ip_id: string
+    ip_dispensed: number
+    ip_start_date: string
+  } | null
+  active_drug_bottle: {
+    ip_id: string
+    dispensed_count: number
+    start_date: string
+    days_since_dispensing: number
+  } | null
+  expected_return_date: string | null
+  ip_dispensing_history: {
+    visit_id: string
+    visit_date: string
+    ip_id: string
+    ip_dispensed: number
+    ip_start_date: string
+    ip_returned: number | null
+    ip_last_dose_date: string | null
+    visit_name: string
+  }[]
 }
 
 interface Visit {
@@ -51,6 +82,7 @@ interface SubjectDetailModalProps {
   studyId: string
   isOpen: boolean
   onClose: () => void
+  onSubjectUpdated?: () => void // Callback to refresh parent data
 }
 
 const statusColors = {
@@ -75,12 +107,13 @@ const visitStatusLabels = {
   cancelled: 'Cancelled'
 }
 
-export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose }: SubjectDetailModalProps) {
+export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose, onSubjectUpdated }: SubjectDetailModalProps) {
   const [subject, setSubject] = useState<Subject | null>(null)
   const [metrics, setMetrics] = useState<SubjectMetrics | null>(null)
   const [visits, setVisits] = useState<Visit[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'timeline' | 'drug-compliance' | 'notes'>('timeline')
+  const [showEditForm, setShowEditForm] = useState(false)
 
   const loadSubjectDetail = useCallback(async () => {
     try {
@@ -150,37 +183,22 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
     }
   }, [isOpen, subjectId, loadSubjectDetail])
 
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return null
-    // Handle date-only strings (YYYY-MM-DD) by treating as local timezone
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
-      const [year, month, day] = dateString.split('-').map(Number)
-      const dt = new Date(year, month - 1, day) // month is 0-indexed
-      return dt.toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric',
-        year: 'numeric'
-      })
+  const handleEditSave = () => {
+    setShowEditForm(false)
+    loadSubjectDetail() // Refresh modal data after edit
+    // Notify parent component to refresh its data
+    if (onSubjectUpdated) {
+      onSubjectUpdated()
     }
-    // Handle full datetime strings
-    return new Date(dateString).toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric',
-      year: 'numeric'
-    })
   }
 
-  const formatDateTime = (dateString: string | null) => {
-    if (!dateString) return null
-    // For datetime strings, use the regular Date constructor
-    return new Date(dateString).toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit'
-    })
+  const handleEditClose = () => {
+    setShowEditForm(false)
   }
+
+  const formatDate = (dateString: string | null) => (dateString ? formatDateUTC(dateString, 'en-US') : null)
+
+  const formatDateTime = (dateString: string | null) => (dateString ? formatDateTimeUTC(dateString, 'en-US') : null)
 
   const getVisitWindow = (visit: Visit) => {
     const windowBefore = visit.visit_schedules.visit_window_before || 0
@@ -188,7 +206,7 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
     
     if (windowBefore === 0 && windowAfter === 0) return null
     
-    const visitDate = new Date(visit.visit_date)
+    const visitDate = parseDateUTC(visit.visit_date) || new Date(visit.visit_date)
     const windowStart = new Date(visitDate)
     windowStart.setDate(windowStart.getDate() - windowBefore)
     const windowEnd = new Date(visitDate)
@@ -247,30 +265,42 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
               </div>
             </div>
 
-            {metrics && !loading && (
-              <div className="flex space-x-6">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-white">{metrics.completed_visits}</div>
-                  <div className="text-xs text-gray-400">Visits Done</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-blue-400">{metrics.upcoming_visits}</div>
-                  <div className="text-xs text-gray-400">Upcoming</div>
-                </div>
-                {metrics.overdue_visits > 0 && (
+            <div className="flex items-center space-x-6">
+              <button
+                onClick={() => setShowEditForm(true)}
+                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                <span>Edit Subject</span>
+              </button>
+              
+              {metrics && !loading && (
+                <div className="flex space-x-6">
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-red-400">{metrics.overdue_visits}</div>
-                    <div className="text-xs text-gray-400">Overdue</div>
+                    <div className="text-2xl font-bold text-white">{metrics.completed_visits}</div>
+                    <div className="text-xs text-gray-400">Visits Done</div>
                   </div>
-                )}
-                <div className="text-center">
-                  <div className={`text-2xl font-bold ${getComplianceColor(metrics.visit_compliance_rate)}`}>
-                    {Math.round(metrics.visit_compliance_rate)}%
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-400">{metrics.upcoming_visits}</div>
+                    <div className="text-xs text-gray-400">Upcoming</div>
                   </div>
-                  <div className="text-xs text-gray-400">On-Time</div>
+                  {metrics.overdue_visits > 0 && (
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-red-400">{metrics.overdue_visits}</div>
+                      <div className="text-xs text-gray-400">Overdue</div>
+                    </div>
+                  )}
+                  <div className="text-center">
+                    <div className={`text-2xl font-bold ${getComplianceColor(metrics.visit_compliance_rate)}`}>
+                      {Math.round(metrics.visit_compliance_rate)}%
+                    </div>
+                    <div className="text-xs text-gray-400">On-Time</div>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
 
@@ -406,13 +436,366 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
 
               {activeTab === 'drug-compliance' && (
                 <div className="space-y-6">
-                  <div className="text-center py-12">
-                    <svg className="w-24 h-24 mx-auto mb-6 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 01-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 010-2h4a1 1 0 011 1v4a1 1 0 01-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12z" clipRule="evenodd" />
-                    </svg>
-                    <h3 className="text-xl font-semibold text-gray-400 mb-2">Drug Accountability Coming Soon</h3>
-                    <p className="text-gray-500">This section will display comprehensive drug dispensing, return, and compliance data.</p>
-                  </div>
+                  <h3 className="text-lg font-semibold text-white">Investigational Product (IP) Accountability</h3>
+                  
+                  {metrics ? (
+                    <>
+                      {/* Current Drug Status Overview */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {/* Current Compliance */}
+                        {metrics.drug_compliance && (
+                          <div className="bg-gray-800/30 rounded-lg p-6">
+                            <h4 className="text-white font-medium mb-4 flex items-center">
+                              <svg className="w-5 h-5 mr-2 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              Current Compliance
+                            </h4>
+                            <div className="space-y-3">
+                              <div className="text-3xl font-bold text-white">
+                                {metrics.drug_compliance.compliance_percentage ? `${metrics.drug_compliance.compliance_percentage}%` : 'N/A'}
+                              </div>
+                              <div className="text-sm text-gray-400">
+                                {metrics.drug_compliance.actual_taken} taken / {metrics.drug_compliance.expected_taken || 'N/A'} expected
+                              </div>
+                              {metrics.drug_compliance.compliance_percentage && (
+                                <div className="w-full bg-gray-700 rounded-full h-2">
+                                  <div
+                                    className={`h-2 rounded-full transition-all duration-500 ${
+                                      metrics.drug_compliance.compliance_percentage >= 90 ? 'bg-green-500' :
+                                      metrics.drug_compliance.compliance_percentage >= 75 ? 'bg-yellow-500' :
+                                      metrics.drug_compliance.compliance_percentage >= 50 ? 'bg-orange-500' : 'bg-red-500'
+                                    }`}
+                                    style={{ width: `${Math.min(100, Math.max(0, metrics.drug_compliance.compliance_percentage))}%` }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Active Drug Bottle */}
+                        {metrics.active_drug_bottle && (
+                          <div className="bg-gray-800/30 rounded-lg p-6">
+                            <h4 className="text-white font-medium mb-4 flex items-center">
+                              <svg className="w-5 h-5 mr-2 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                              </svg>
+                              Active Bottle
+                            </h4>
+                            <div className="space-y-2">
+                              <div className="flex justify-between">
+                                <span className="text-gray-400">Bottle ID:</span>
+                                <span className="text-white font-mono">{metrics.active_drug_bottle.ip_id}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-400">Dispensed:</span>
+                                <span className="text-white">{metrics.active_drug_bottle.dispensed_count} tablets</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-400">Start Date:</span>
+                                <span className="text-white">{formatDateUTC(metrics.active_drug_bottle.start_date)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-400">Days Active:</span>
+                                <span className="text-white">{metrics.active_drug_bottle.days_since_dispensing} days</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Last Dispensing */}
+                        {metrics.last_drug_dispensing && (
+                          <div className="bg-gray-800/30 rounded-lg p-6">
+                            <h4 className="text-white font-medium mb-4 flex items-center">
+                              <svg className="w-5 h-5 mr-2 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              Last Dispensing
+                            </h4>
+                            <div className="space-y-2">
+                              <div className="flex justify-between">
+                                <span className="text-gray-400">Visit Date:</span>
+                                <span className="text-white">{formatDateUTC(metrics.last_drug_dispensing.visit_date)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-400">Bottle ID:</span>
+                                <span className="text-white font-mono">{metrics.last_drug_dispensing.ip_id}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-400">Quantity:</span>
+                                <span className="text-white">{metrics.last_drug_dispensing.ip_dispensed} tablets</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-400">Started:</span>
+                                <span className="text-white">{formatDateUTC(metrics.last_drug_dispensing.ip_start_date)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Expected Return */}
+                        {metrics.expected_return_date && (
+                          <div className="bg-gray-800/30 rounded-lg p-6">
+                            <h4 className="text-white font-medium mb-4 flex items-center">
+                              <svg className="w-5 h-5 mr-2 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              </svg>
+                              Expected Return
+                            </h4>
+                            <div className="space-y-2">
+                              <div className="text-xl font-bold text-white">
+                                {formatDateUTC(metrics.expected_return_date)}
+                              </div>
+                              <div className="text-sm text-gray-400">
+                                {(() => {
+                                  const today = new Date()
+                                  const returnDate = new Date(metrics.expected_return_date)
+                                  const diffDays = Math.ceil((returnDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+                                  
+                                  if (diffDays < 0) {
+                                    return <span className="text-red-400">Overdue by {Math.abs(diffDays)} days</span>
+                                  } else if (diffDays === 0) {
+                                    return <span className="text-yellow-400">Due today</span>
+                                  } else if (diffDays <= 7) {
+                                    return <span className="text-yellow-400">Due in {diffDays} days</span>
+                                  } else {
+                                    return <span className="text-gray-400">Due in {diffDays} days</span>
+                                  }
+                                })()}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Compliance Status Message */}
+                      {!metrics.drug_compliance && !metrics.active_drug_bottle && !metrics.last_drug_dispensing && (
+                        <div className="bg-gray-800/20 border border-gray-700 rounded-lg p-6">
+                          <div className="flex items-center">
+                            <svg className="w-6 h-6 text-gray-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <div>
+                              <h4 className="text-white font-medium">No IP Activity Recorded</h4>
+                              <p className="text-gray-400 text-sm mt-1">
+                                This subject has not been dispensed any investigational product yet.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* IP Dispensing History */}
+                      <div className="bg-gray-800/30 rounded-lg p-6">
+                        <h4 className="text-white font-medium mb-4 flex items-center">
+                          <svg className="w-5 h-5 mr-2 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                          </svg>
+                          IP Activity Timeline
+                        </h4>
+                        
+                        {(metrics.ip_dispensing_history && metrics.ip_dispensing_history.length > 0) ? (
+                          <div className="space-y-4">
+                            {/* Complete IP Dispensing History Timeline */}
+                            {metrics.ip_dispensing_history
+                              .sort((a, b) => new Date(b.visit_date).getTime() - new Date(a.visit_date).getTime()) // Sort by date descending
+                              .map((dispensing, index) => {
+                                const isActive = metrics.active_drug_bottle && metrics.active_drug_bottle.ip_id === dispensing.ip_id
+                                const hasReturn = dispensing.ip_returned !== null && dispensing.ip_returned !== undefined
+                                
+                                return (
+                                  <div key={dispensing.visit_id} className="flex items-start space-x-4 p-4 bg-gray-800/40 rounded-lg">
+                                    <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
+                                      isActive ? 'bg-green-600' : hasReturn ? 'bg-blue-600' : 'bg-gray-600'
+                                    }`}>
+                                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                      </svg>
+                                    </div>
+                                    <div className="flex-grow">
+                                      <div className="flex items-center justify-between">
+                                        <h5 className="text-white font-medium">
+                                          IP Dispensed - {dispensing.visit_name}
+                                        </h5>
+                                        <span className="text-gray-400 text-sm">
+                                          {formatDateUTC(dispensing.visit_date)}
+                                        </span>
+                                      </div>
+                                      <p className="text-gray-400 text-sm mt-1">
+                                        <span className="font-mono font-medium text-white">Bottle {dispensing.ip_id}</span>: {dispensing.ip_dispensed} tablets dispensed
+                                        {dispensing.ip_start_date !== dispensing.visit_date && (
+                                          <span className="block">Started: {formatDateUTC(dispensing.ip_start_date)}</span>
+                                        )}
+                                        {hasReturn && (
+                                          <span className="block text-blue-300">
+                                            Returned: {dispensing.ip_returned} tablets
+                                            {dispensing.ip_last_dose_date && ` (Last dose: ${formatDateUTC(dispensing.ip_last_dose_date)})`}
+                                          </span>
+                                        )}
+                                      </p>
+                                      <div className="mt-2 flex items-center space-x-2">
+                                        {isActive && (
+                                          <div className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-900/50 text-green-300 border border-green-600/50">
+                                            <div className="w-1.5 h-1.5 bg-green-400 rounded-full mr-1.5 animate-pulse"></div>
+                                            Active
+                                          </div>
+                                        )}
+                                        {hasReturn && (
+                                          <div className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-900/50 text-blue-300 border border-blue-600/50">
+                                            Returned
+                                          </div>
+                                        )}
+                                        {!hasReturn && !isActive && (
+                                          <div className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-700 text-gray-300">
+                                            Completed
+                                          </div>
+                                        )}
+                                        {index === 0 && (
+                                          <div className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-900/50 text-purple-300 border border-purple-600/50">
+                                            Most Recent
+                                          </div>
+                                        )}
+                                      </div>
+                                      
+                                      {/* Calculate and show compliance for returned bottles */}
+                                      {hasReturn && (
+                                        <div className="mt-2 p-2 bg-gray-800/60 rounded border-l-2 border-blue-500">
+                                          <div className="text-xs text-gray-300">
+                                            <span className="font-medium">Compliance:</span> {dispensing.ip_dispensed - (dispensing.ip_returned || 0)} tablets taken
+                                            {dispensing.ip_last_dose_date && dispensing.ip_start_date && (() => {
+                                              const startDate = new Date(dispensing.ip_start_date)
+                                              const endDate = new Date(dispensing.ip_last_dose_date)
+                                              const days = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)))
+                                              const actualTaken = dispensing.ip_dispensed - (dispensing.ip_returned || 0)
+                                              const expectedTaken = days * 1 // Assuming 1 dose per day
+                                              const complianceRate = expectedTaken > 0 ? Math.round((actualTaken / expectedTaken) * 100) : 0
+                                              return (
+                                                <span className={`ml-2 font-medium ${
+                                                  complianceRate >= 90 ? 'text-green-400' :
+                                                  complianceRate >= 75 ? 'text-yellow-400' : 'text-red-400'
+                                                }`}>
+                                                  ({complianceRate}%)
+                                                </span>
+                                              )
+                                            })()}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )
+                              })}
+
+                            {metrics.drug_compliance && (
+                              <div className="flex items-start space-x-4 p-4 bg-gray-800/40 rounded-lg">
+                                <div className="flex-shrink-0 w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
+                                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4" />
+                                  </svg>
+                                </div>
+                                <div className="flex-grow">
+                                  <div className="flex items-center justify-between">
+                                    <h5 className="text-white font-medium">Compliance Assessment</h5>
+                                    <span className="text-gray-400 text-sm">Latest</span>
+                                  </div>
+                                  <p className="text-gray-400 text-sm mt-1">
+                                    {metrics.drug_compliance.actual_taken} tablets taken out of {metrics.drug_compliance.expected_taken || 'N/A'} expected
+                                  </p>
+                                  <div className="mt-2 flex items-center space-x-2">
+                                    <div className="flex-shrink-0">
+                                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                        metrics.drug_compliance.compliance_percentage && metrics.drug_compliance.compliance_percentage >= 90
+                                          ? 'bg-green-900/50 text-green-300 border border-green-600/50'
+                                          : metrics.drug_compliance.compliance_percentage && metrics.drug_compliance.compliance_percentage >= 75
+                                          ? 'bg-yellow-900/50 text-yellow-300 border border-yellow-600/50'
+                                          : 'bg-red-900/50 text-red-300 border border-red-600/50'
+                                      }`}>
+                                        {metrics.drug_compliance.compliance_percentage ? `${metrics.drug_compliance.compliance_percentage}%` : 'N/A'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {metrics.expected_return_date && (
+                              <div className="flex items-start space-x-4 p-4 bg-gray-800/40 rounded-lg border-l-4 border-yellow-500">
+                                <div className="flex-shrink-0 w-10 h-10 bg-yellow-600 rounded-full flex items-center justify-center">
+                                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3" />
+                                  </svg>
+                                </div>
+                                <div className="flex-grow">
+                                  <div className="flex items-center justify-between">
+                                    <h5 className="text-white font-medium">Expected Return</h5>
+                                    <span className="text-gray-400 text-sm">{formatDateUTC(metrics.expected_return_date)}</span>
+                                  </div>
+                                  <p className="text-gray-400 text-sm mt-1">
+                                    Return visit due for tablet count and compliance assessment
+                                  </p>
+                                  <div className="mt-2">
+                                    {(() => {
+                                      const today = new Date()
+                                      const returnDate = new Date(metrics.expected_return_date)
+                                      const diffDays = Math.ceil((returnDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+                                      
+                                      if (diffDays < 0) {
+                                        return (
+                                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-900/50 text-red-300 border border-red-600/50">
+                                            Overdue by {Math.abs(diffDays)} days
+                                          </span>
+                                        )
+                                      } else if (diffDays === 0) {
+                                        return (
+                                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-900/50 text-yellow-300 border border-yellow-600/50">
+                                            Due today
+                                          </span>
+                                        )
+                                      } else if (diffDays <= 7) {
+                                        return (
+                                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-900/50 text-yellow-300 border border-yellow-600/50">
+                                            Due in {diffDays} days
+                                          </span>
+                                        )
+                                      } else {
+                                        return (
+                                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-700 text-gray-300">
+                                            Due in {diffDays} days
+                                          </span>
+                                        )
+                                      }
+                                    })()}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="text-center py-8">
+                            <svg className="w-12 h-12 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                            </svg>
+                            <p className="text-gray-400">No IP activity recorded</p>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="bg-gray-800/20 border border-gray-700 rounded-lg p-6">
+                      <div className="flex items-center">
+                        <svg className="w-6 h-6 text-gray-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div>
+                          <h4 className="text-white font-medium">Metrics Not Available</h4>
+                          <p className="text-gray-400 text-sm mt-1">
+                            Drug accountability metrics are not available for this subject.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -523,6 +906,16 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
           </>
         )}
       </div>
+      
+      {/* Edit Subject Form Modal */}
+      {showEditForm && subject && (
+        <EditSubjectForm
+          subjectId={subject.id}
+          studyId={studyId}
+          onClose={handleEditClose}
+          onSave={handleEditSave}
+        />
+      )}
     </div>
   )
 }

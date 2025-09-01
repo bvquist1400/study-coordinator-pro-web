@@ -10,6 +10,7 @@ import {
   VisitComplianceData 
 } from '@/lib/compliance-calculator'
 import ComplianceWidget from '@/components/compliance/ComplianceWidget'
+import { formatDateUTC } from '@/lib/date-utils'
 
 interface VisitCardProps {
   visitId: string
@@ -262,9 +263,7 @@ export default function VisitCard({
           <div className="flex justify-between items-center mb-6">
             <div>
               <h2 className="text-2xl font-bold text-white">{visitName}</h2>
-              <p className="text-gray-300">
-                Scheduled: {new Date(scheduledDate).toLocaleDateString()}
-              </p>
+              <p className="text-gray-300">Scheduled: {formatDateUTC(scheduledDate)}</p>
             </div>
             <button
               onClick={onClose}
