@@ -6,6 +6,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { ThemeToggle } from '@/components/theme/ThemeToggle'
 import { useSite } from '@/components/site/SiteProvider'
 import NoSitesBanner from '@/components/site/NoSitesBanner'
+import DiagnosticsPanel from '@/components/admin/DiagnosticsPanel'
 
 interface DashboardLayoutProps {
   children: React.ReactNode
@@ -180,6 +181,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           <div className="py-6">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
               <NoSitesBanner />
+              <DiagnosticsPanel />
               {children}
             </div>
           </div>
