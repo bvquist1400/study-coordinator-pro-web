@@ -16,6 +16,8 @@ type VisitSchedule = DbVisitSchedule
 
 interface Study {
   id: string
+  protocol_number: string
+  study_title: string
   anchor_day: number
   visit_window_days: number
 }
@@ -59,18 +61,36 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
       
       if (!token) return
 
+      // If allowStudySelection is true, load all studies first
+      if (allowStudySelection) {
+        const studiesRes = await fetch('/api/studies', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        if (studiesRes.ok) {
+          const { studies } = await studiesRes.json()
+          setAvailableStudies(studies || [])
+          // Set first study as default if no studyId provided
+          if (!currentStudyId && studies && studies.length > 0) {
+            setCurrentStudyId(studies[0].id)
+          }
+        }
+      }
+
+      const targetStudyId = allowStudySelection ? currentStudyId : studyId
+      if (!targetStudyId) return
+
       // Load subjects, visit schedules, study data, and available lab kits in parallel
       const [subjectsRes, schedulesRes, studyRes, labKitsRes] = await Promise.all([
-        fetch(`/api/subjects?study_id=${studyId}`, {
+        fetch(`/api/subjects?study_id=${targetStudyId}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         }),
-        fetch(`/api/visit-schedules?study_id=${studyId}`, {
+        fetch(`/api/visit-schedules?study_id=${targetStudyId}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         }),
-        fetch(`/api/studies/${studyId}`, {
+        fetch(`/api/studies/${targetStudyId}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         }),
-        fetch(`/api/lab-kits?studyId=${studyId}&status=available`, {
+        fetch(`/api/lab-kits?studyId=${targetStudyId}&status=available`, {
           headers: { 'Authorization': `Bearer ${token}` }
         })
       ])
@@ -108,7 +128,7 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
     } finally {
       setLoading(false)
     }
-  }, [studyId])
+  }, [studyId, allowStudySelection, currentStudyId])
 
   useEffect(() => {
     loadData()
@@ -123,6 +143,16 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
       }
     }
   }, [preSelectedSubjectId, subjects, selectedSubjectId])
+
+  const handleStudyChange = (newStudyId: string) => {
+    setCurrentStudyId(newStudyId)
+    // Reset dependent selections when study changes
+    setSelectedSubjectId('')
+    setSelectedVisitScheduleId('')
+    setScheduledDate('')
+    setSelectedLabKit(null)
+    setLabKitSearch('')
+  }
 
   const handleSubjectChange = (subjectId: string) => {
     setSelectedSubjectId(subjectId)
@@ -235,7 +265,7 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
       }
 
       const visitData = {
-        study_id: studyId,
+        study_id: allowStudySelection ? currentStudyId : studyId,
         subject_id: selectedSubjectId,
         visit_schedule_id: visitScheduleId,
         visit_name: visitName,
@@ -331,6 +361,27 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
           </div>
 
           <div className="space-y-6">
+            {/* Study Selection - only shown when allowStudySelection is true */}
+            {allowStudySelection && (
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Study *
+                </label>
+                <select
+                  value={currentStudyId}
+                  onChange={(e) => handleStudyChange(e.target.value)}
+                  className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select Study...</option>
+                  {availableStudies.map((study) => (
+                    <option key={study.id} value={study.id}>
+                      {study.protocol_number} - {study.study_title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {/* Subject Selection */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">

@@ -293,10 +293,11 @@ function SubjectsPageContent() {
         )}
 
         {/* Schedule Visit Modal */}
-        {showScheduleModal && selectedStudyId && (
+        {showScheduleModal && (
           <ScheduleVisitModal
             studyId={selectedStudyId}
             preSelectedSubjectId={schedulingSubjectId}
+            allowStudySelection={true}
             onClose={handleScheduleModalClose}
             onSchedule={handleVisitScheduled}
           />
