@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     // Verify user membership on the study's site
     const { data: study, error: studyError } = await supabase
       .from('studies')
-      .select('id, site_id, user_id')
+      .select('id, site_id, user_id, created_by')
       .eq('id', studyId)
       .single()
 
@@ -41,17 +41,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Study not found' }, { status: 404 })
     }
 
-    if ((study as any).site_id) {
+    const stAny: any = study
+    const isOwner = stAny.user_id === user.id || stAny.created_by === user.id
+    if (stAny.site_id) {
       const { data: member } = await supabase
         .from('site_members')
         .select('user_id')
-        .eq('site_id', (study as any).site_id)
+        .eq('site_id', stAny.site_id)
         .eq('user_id', user.id)
         .maybeSingle()
-      if (!member) {
+      if (!member && !isOwner) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
-    } else if ((study as any).user_id !== user.id) {
+    } else if (!isOwner) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
