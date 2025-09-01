@@ -1,4 +1,5 @@
 import { createSupabaseAdmin } from '@/lib/api/auth'
+import { parseDateUTC } from '@/lib/date-utils'
 
 export interface VisitIPData {
   visit_id: string
@@ -76,7 +77,7 @@ export function calculateComplianceMetrics(
 ): DrugComplianceMetrics {
   const actualTaken = dispensedCount - (returnedCount || 0)
   
-  const { parseDateUTC } = require('@/lib/date-utils')
+  // Use imported parseDateUTC function
   const dispenseDate = (parseDateUTC(dispensingDate) || new Date(dispensingDate)) as Date
   const assessDate = (parseDateUTC(assessmentDate) || new Date(assessmentDate)) as Date
   const daysBetween = Math.max(0, Math.floor((assessDate.getTime() - dispenseDate.getTime()) / (1000 * 60 * 60 * 24)))

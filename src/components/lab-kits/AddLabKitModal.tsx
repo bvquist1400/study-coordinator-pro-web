@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
-import { todayLocalISODate } from '@/lib/date-utils'
+import { todayLocalISODate, parseDateUTC } from '@/lib/date-utils'
 
 interface AddLabKitModalProps {
   studyId: string
@@ -106,7 +106,7 @@ export default function AddLabKitModal({ studyId, onClose, onAdd }: AddLabKitMod
 
     // Validate expiration date is in the future
     if (formData.expiration_date) {
-      const expDate = (require('@/lib/date-utils').parseDateUTC(formData.expiration_date) || new Date(formData.expiration_date)) as Date
+      const expDate = (parseDateUTC(formData.expiration_date) || new Date(formData.expiration_date)) as Date
       const today = new Date()
       today.setHours(0, 0, 0, 0)
       if (expDate <= today) {

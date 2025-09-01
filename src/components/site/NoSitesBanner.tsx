@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useSite } from '@/components/site/SiteProvider'
 import { supabase } from '@/lib/supabase/client'
 

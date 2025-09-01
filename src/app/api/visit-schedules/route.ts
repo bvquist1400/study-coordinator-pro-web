@@ -149,19 +149,21 @@ export async function POST(request: NextRequest) {
         visit_number: schedule.visit_number
       })
       
-      const { data: updated, error: updateError } = await supabase
+      const updateData = {
+        visit_name: schedule.visit_name,
+        visit_day: schedule.visit_day,
+        window_before_days: schedule.window_before_days,
+        window_after_days: schedule.window_after_days,
+        is_required: schedule.is_required,
+        visit_type: schedule.visit_type,
+        procedures: schedule.procedures,
+        notes: schedule.notes,
+        updated_at: schedule.updated_at
+      }
+      
+      const { data: updated, error: updateError } = await (supabase as any)
         .from('visit_schedules')
-        .update({
-          visit_name: schedule.visit_name,
-          visit_day: schedule.visit_day,
-          window_before_days: schedule.window_before_days,
-          window_after_days: schedule.window_after_days,
-          is_required: schedule.is_required,
-          visit_type: schedule.visit_type,
-          procedures: schedule.procedures,
-          notes: schedule.notes,
-          updated_at: schedule.updated_at
-        } as any)
+        .update(updateData)
         .eq('id', schedule.id)
         .select()
         .single()

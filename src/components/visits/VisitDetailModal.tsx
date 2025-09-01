@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import type { VisitSchedule } from '@/types/database'
+import { formatDateUTC } from '@/lib/date-utils'
 
 interface VisitDetail {
   id: string
@@ -473,7 +474,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
 
   const formatDate = (dateString: string) => {
     if (!dateString) return '-'
-    const { formatDateUTC } = require('@/lib/date-utils')
+    // Use imported formatDateUTC function
     return formatDateUTC(dateString, 'en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
   }
 
@@ -709,7 +710,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
                                   </div>
                                   {kit.expiration_date && (
                                     <span className="text-xs text-gray-400">
-                                      Exp: {require('@/lib/date-utils').formatDateUTC(kit.expiration_date)}
+                                      Exp: {formatDateUTC(kit.expiration_date)}
                                     </span>
                                   )}
                                 </div>
