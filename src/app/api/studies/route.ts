@@ -27,29 +27,68 @@ export async function GET(request: NextRequest) {
     const filterSiteId = searchParams.get('site_id')
 
     // Fetch studies by membership; also include legacy rows owned by user (no site set)
-    let query = supabase
-      .from('studies')
-      .select('*')
-      .order('created_at', { ascending: false })
-
+    // Behavior:
+    // - If site filter provided: require membership and return only that site's studies
+    // - Else if user has memberships: return studies in those sites + legacy studies owned by user
+    // - Else (no memberships): return only legacy studies owned by user
     if (filterSiteId) {
-      // If filter provided, ensure user is member of that site
       if (!siteIds.includes(filterSiteId)) {
         return NextResponse.json({ error: 'Access denied for requested site' }, { status: 403 })
       }
-      query = query.eq('site_id', filterSiteId)
-    } else if (siteIds.length > 0) {
-      query = query.in('site_id', siteIds)
+      const { data: studies, error } = await supabase
+        .from('studies')
+        .select('*')
+        .eq('site_id', filterSiteId)
+        .order('created_at', { ascending: false })
+      if (error) {
+        console.error('Database error:', error)
+        return NextResponse.json({ error: 'Failed to fetch studies' }, { status: 500 })
+      }
+      return NextResponse.json({ studies: studies || [] })
     }
 
-    const { data: studies, error } = await query
+    if (siteIds.length > 0) {
+      const [withSiteRes, legacyRes] = await Promise.all([
+        supabase
+          .from('studies')
+          .select('*')
+          .in('site_id', siteIds)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('studies')
+          .select('*')
+          .is('site_id', null)
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false }),
+      ])
+      if (withSiteRes.error) {
+        console.error('Database error (withSite):', withSiteRes.error)
+        return NextResponse.json({ error: 'Failed to fetch studies' }, { status: 500 })
+      }
+      if (legacyRes.error) {
+        console.error('Database error (legacy):', legacyRes.error)
+        return NextResponse.json({ error: 'Failed to fetch studies' }, { status: 500 })
+      }
+      const list = [...(withSiteRes.data || []), ...(legacyRes.data || [])]
+      // Deduplicate by id and sort
+      const map = new Map<string, any>()
+      for (const s of list) map.set((s as any).id, s)
+      const merged = Array.from(map.values()).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      return NextResponse.json({ studies: merged })
+    }
 
+    // No memberships: only legacy user-owned studies
+    const { data: legacyOnly, error } = await supabase
+      .from('studies')
+      .select('*')
+      .is('site_id', null)
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
     if (error) {
       console.error('Database error:', error)
       return NextResponse.json({ error: 'Failed to fetch studies' }, { status: 500 })
     }
-
-    return NextResponse.json({ studies })
+    return NextResponse.json({ studies: legacyOnly || [] })
   } catch (error) {
     console.error('API error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
