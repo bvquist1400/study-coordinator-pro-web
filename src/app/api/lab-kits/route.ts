@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser, verifyStudyMembership, createSupabaseAdmin } from '@/lib/api/auth'
 
-type StudyAccessRow = { id: string; site_id: string | null; user_id: string }
-
 // GET /api/lab-kits?studyId=xxx&status=xxx&summary=true - Get lab kits
 export async function GET(request: NextRequest) {
   try {

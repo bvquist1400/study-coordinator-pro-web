@@ -105,7 +105,7 @@ function SubjectsPageContent() {
     } finally {
       setLoading(false)
     }
-  }, [currentSiteId, selectedStudyId])
+  }, [currentSiteId, selectedStudyId, router])
 
   useEffect(() => {
     loadStudies()

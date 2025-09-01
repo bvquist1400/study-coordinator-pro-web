@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import DashboardLayout from '@/components/dashboard/DashboardLayout'
 import { supabase } from '@/lib/supabase/client'
@@ -19,7 +19,7 @@ interface Study {
 
 type ViewMode = 'calendar' | 'list'
 
-export default function VisitsPage() {
+function VisitsContent() {
   const searchParams = useSearchParams()
   const initialDate = searchParams?.get('date') || undefined
   const [studies, setStudies] = useState<Study[]>([])
@@ -273,5 +273,17 @@ export default function VisitsPage() {
         )}
       </div>
     </DashboardLayout>
+  )
+}
+
+export default function VisitsPage() {
+  return (
+    <Suspense fallback={
+      <DashboardLayout>
+        <div className="p-6 text-gray-400">Loading visits…</div>
+      </DashboardLayout>
+    }>
+      <VisitsContent />
+    </Suspense>
   )
 }

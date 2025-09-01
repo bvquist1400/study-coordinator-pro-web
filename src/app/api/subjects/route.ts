@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseAdmin, authenticateUser, verifyStudyMembership } from '@/lib/api/auth'
+import { createSupabaseAdmin } from '@/lib/api/auth'
 import { calculateComplianceMetrics } from '@/lib/ip-accountability'
 
 // GET /api/subjects?study_id=xxx - Get subjects for a study
