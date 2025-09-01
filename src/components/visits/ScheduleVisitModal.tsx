@@ -21,17 +21,22 @@ interface Study {
 }
 
 interface ScheduleVisitModalProps {
-  studyId: string
+  studyId?: string // Optional - if not provided, will show study selector
   preSelectedSubjectId?: string
+  allowStudySelection?: boolean // Default false for backward compatibility
   onClose: () => void
   onSchedule: () => void
 }
 
-export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, onClose, onSchedule }: ScheduleVisitModalProps) {
+export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allowStudySelection = false, onClose, onSchedule }: ScheduleVisitModalProps) {
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [visitSchedules, setVisitSchedules] = useState<VisitSchedule[]>([])
   const [study, setStudy] = useState<Study | null>(null)
   const [loading, setLoading] = useState(true)
+  
+  // Study selection state (only used when allowStudySelection = true)
+  const [availableStudies, setAvailableStudies] = useState<Study[]>([])
+  const [currentStudyId, setCurrentStudyId] = useState<string>(studyId || '')
   const [scheduling, setScheduling] = useState(false)
   
   const [selectedSubjectId, setSelectedSubjectId] = useState('')
