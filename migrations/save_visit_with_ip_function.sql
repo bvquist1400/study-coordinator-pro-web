@@ -90,15 +90,18 @@ BEGIN
       RAISE EXCEPTION 'No prior visit found for bottle ID: %', v_return_bottle_id;
     END IF;
     
-    -- Update the PRIOR visit to record the return
+    -- Store return information on the CURRENT visit (where it's being entered)
+    -- Keep the original dispensing information on the prior visit unchanged
     UPDATE subject_visits 
     SET 
+      return_ip_id = v_return_bottle_id,
       ip_returned = v_returned_count,
       ip_last_dose_date = v_last_dose_date,
       updated_at = NOW()
-    WHERE id = v_prior_visit.id;
+    WHERE id = v_visit_id;
     
-    -- Determine dispensing date (prefer ip_start_date, fallback to visit_date)
+    -- Determine actual start date (prefer ip_start_date, fallback to visit_date)
+    -- This is when the subject actually started taking the medication
     v_dispensing_date := COALESCE(v_prior_visit.ip_start_date, v_prior_visit.visit_date);
     
     -- Upsert drug_compliance for the returned bottle with study-specific dosing
@@ -127,7 +130,7 @@ BEGIN
       v_visit_id,    -- Assessment visit
       CASE 
         WHEN v_dispensing_date IS NOT NULL AND v_last_dose_date IS NOT NULL 
-        THEN GREATEST((v_last_dose_date - v_dispensing_date + 1) * v_dose_per_day, 0)
+        THEN GREATEST(ROUND((v_last_dose_date::date - v_dispensing_date::date + 1) * v_dose_per_day), 0)
         ELSE NULL 
       END,
       NOW(),
@@ -155,7 +158,7 @@ BEGIN
       updated_at = NOW()
     WHERE id = v_visit_id;
     
-    -- Create placeholder drug_compliance for new bottle
+    -- Create placeholder drug_compliance for new bottle (no expected_taken until returned)
     INSERT INTO drug_compliance (
       subject_id,
       user_id,
@@ -165,6 +168,7 @@ BEGIN
       dispensing_date,
       assessment_date,
       visit_id,
+      expected_taken,
       created_at,
       updated_at
     ) VALUES (
@@ -176,6 +180,7 @@ BEGIN
       COALESCE(v_new_start_date, v_visit_date),
       v_visit_date,
       v_visit_id,
+      NULL,  -- No expected_taken calculation until bottle is returned
       NOW(),
       NOW()
     )
