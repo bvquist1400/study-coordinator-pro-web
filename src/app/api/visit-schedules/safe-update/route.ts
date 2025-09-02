@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
       .rpc('replace_study_visit_schedules', {
         p_study_id: study_id,
         p_new_schedules: schedules
-      })
+      } as any)
 
     if (error) {
       console.error('Error updating SOE:', error)
