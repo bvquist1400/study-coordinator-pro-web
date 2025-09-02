@@ -125,8 +125,37 @@ Personal productivity tool for clinical research coordinators - organizes daily 
   - **Proper authentication**: Resolved permission issues by using server-side admin queries through API routes
   - **Cross-component consistency**: Subjects, compliance page, and dashboard now all show the same accurate compliance data
 
+### ✅ Enhanced Visit Timeline System (Phase 7) - COMPLETED
+- **Excel-Style Timeline Interface**:
+  - **Sticky column headers** for easy navigation through long visit lists
+  - **Comprehensive visit data** in table format with expandable rows for detailed information
+  - **Professional spreadsheet feel** optimized for clinical research coordinators
+  
+- **Improved Visit Timeline Structure**:
+  - **Complete Schedule of Events integration** - Shows all planned visits from SOE automatically
+  - **Correct anchor date calculations** - Fixed critical error where timeline used enrollment date instead of randomization date
+  - **Enhanced data columns**: Visit name, study day, target date, actual date, visit window, activities, IP compliance, status, and quick actions
+  - **Activity pills visualization** with color-coded procedure indicators (🧪 Labs, 💊 IP, 🩺 Vitals, etc.)
+
+- **IP Compliance Integration**:
+  - **Moved detailed IP data to expandable sections** - Dispensed/returned counts hidden in expanded view for cleaner main interface
+  - **IP Compliance percentage column** - Shows overall bottle compliance with color coding (Green ≥90%, Yellow 75-89%, Red <75%)
+  - **Complete bottle tracking** - Bottle ID, dispensed count, returned count, and calculated taken amount in detailed view
+  - **Multiple bottle support** - Framework ready for complex multi-bottle scenarios per visit
+
+- **User Experience Improvements**:
+  - **Expandable rows** - Click arrow to see full visit details, notes, and IP accountability information
+  - **Visual status indicators** - Color-coded visit status (Completed, Scheduled, Overdue, etc.)
+  - **Quick action buttons** - Schedule, Complete, Reschedule directly from table rows
+  - **Window compliance visualization** - Clear indicators when visits completed outside acceptable windows
+
+- **Critical Bug Fixes**:
+  - **Fixed anchor date calculations** - All visit dates now properly calculated from randomization_date (anchor) instead of enrollment_date
+  - **Proper API integration** - Uses working API endpoints instead of direct Supabase queries blocked by RLS
+  - **Enhanced warning system** - Shows clear message when using enrollment date as fallback when randomization date not set
+
 ### 🔄 Current Status
-**All major features completed**. System is production-ready with comprehensive functionality for clinical research coordinators. **Recent compliance system fixes ensure accurate data display across all components** with proper database integration and user-friendly time period indicators.
+**All major features completed**. System is production-ready with comprehensive functionality for clinical research coordinators. **Recent compliance system fixes and enhanced visit timeline ensure accurate data display across all components** with proper database integration, correct anchor date calculations, and user-friendly Excel-style interfaces optimized for daily clinical research workflows.
 
 ## Required Conventions (to keep CI green)
 

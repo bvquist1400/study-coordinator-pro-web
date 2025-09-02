@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import EditSubjectForm from './EditSubjectForm'
+import SubjectVisitTimelineTable from './SubjectVisitTimelineTable'
 import { formatDateUTC, formatDateTimeUTC, parseDateUTC } from '@/lib/date-utils'
 
 interface Subject {
@@ -76,13 +77,15 @@ interface Visit {
   visit_date: string
   status: 'scheduled' | 'completed' | 'missed' | 'cancelled'
   notes: string | null
+  visit_name: string
+  visit_schedule_id: string | null
   visit_schedules: {
     id: string
     visit_name: string
     visit_day: number
-    visit_window_before: number | null
-    visit_window_after: number | null
-  }
+    window_before_days: number | null
+    window_after_days: number | null
+  } | null
 }
 
 interface SubjectDetailModalProps {
@@ -161,12 +164,14 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
           visit_date,
           status,
           notes,
-          visit_schedules!inner(
+          visit_name,
+          visit_schedule_id,
+          visit_schedules:visit_schedule_id(
             id,
             visit_name,
             visit_day,
-            visit_window_before,
-            visit_window_after
+            window_before_days,
+            window_after_days
           )
         `)
         .eq('subject_id', subjectId)
@@ -209,8 +214,10 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
   const formatDateTime = (dateString: string | null) => (dateString ? formatDateTimeUTC(dateString, 'en-US') : null)
 
   const getVisitWindow = (visit: Visit) => {
-    const windowBefore = visit.visit_schedules.visit_window_before || 0
-    const windowAfter = visit.visit_schedules.visit_window_after || 0
+    if (!visit.visit_schedules) return null
+    
+    const windowBefore = visit.visit_schedules.window_before_days || 0
+    const windowAfter = visit.visit_schedules.window_after_days || 0
     
     if (windowBefore === 0 && windowAfter === 0) return null
     
@@ -323,7 +330,7 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
               <div className="flex space-x-4 border-b border-gray-700">
                 {([
                   { id: 'timeline', label: 'Visit Timeline', icon: '📅' },
-                  { id: 'drug-compliance', label: 'Drug Accountability', icon: '💊' },
+                  { id: 'drug-compliance', label: 'Drug Compliance Tracking', icon: '💊' },
                   { id: 'notes', label: 'Notes & History', icon: '📝' }
                 ] as Array<{ id: 'timeline' | 'drug-compliance' | 'notes'; label: string; icon: string }>).map((tab) => (
                   <button
@@ -344,102 +351,31 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-6">
-              {activeTab === 'timeline' && (
-                <div className="space-y-6">
-                  {/* Summary Stats */}
-                  {metrics && (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                      <div className="bg-gray-800/30 rounded-lg p-4 text-center">
-                        <div className="text-2xl font-bold text-white">{metrics.completed_visits}</div>
-                        <div className="text-xs text-gray-400">Completed</div>
-                      </div>
-                      <div className="bg-gray-800/30 rounded-lg p-4 text-center">
-                        <div className="text-2xl font-bold text-blue-400">{metrics.upcoming_visits}</div>
-                        <div className="text-xs text-gray-400">Upcoming</div>
-                      </div>
-                      <div className="bg-gray-800/30 rounded-lg p-4 text-center">
-                        <div className="text-2xl font-bold text-red-400">{metrics.overdue_visits}</div>
-                        <div className="text-xs text-gray-400">Overdue</div>
-                      </div>
-                      <div className="bg-gray-800/30 rounded-lg p-4 text-center">
-                        <div className={`text-2xl font-bold ${getComplianceColor(metrics.visit_compliance_rate)}`}>
-                          {Math.round(metrics.visit_compliance_rate)}%
+              {activeTab === 'timeline' && subject && (
+                <>
+                  {!subject.randomization_date && (
+                    <div className="mb-4 p-4 bg-yellow-900/30 border border-yellow-600/50 rounded-lg">
+                      <div className="flex items-center">
+                        <svg className="w-5 h-5 text-yellow-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                        </svg>
+                        <div>
+                          <h4 className="text-yellow-300 font-medium">Using Enrollment Date as Anchor</h4>
+                          <p className="text-yellow-200 text-sm">
+                            Subject has no randomization date. Timeline calculated from enrollment date ({formatDateUTC(subject.enrollment_date)}).
+                            Set randomization date for accurate visit scheduling.
+                          </p>
                         </div>
-                        <div className="text-xs text-gray-400">On-Time Rate</div>
                       </div>
                     </div>
                   )}
-
-                  {/* Visit Timeline */}
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-white mb-4">Visit Timeline</h3>
-                    {visits.length > 0 ? (
-                      <div className="space-y-3">
-                        {visits.map((visit, index) => {
-                          const window = getVisitWindow(visit)
-                          const isOverdue = visit.status === 'scheduled' && new Date(visit.visit_date) < new Date()
-                          
-                          return (
-                            <div
-                              key={visit.id}
-                              className={`bg-gray-800/30 rounded-lg p-4 border-l-4 ${
-                                isOverdue ? 'border-red-500' : `border-${visitStatusColors[visit.status].replace('bg-', '')}`
-                              }`}
-                            >
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <div className="flex items-center space-x-3 mb-2">
-                                    <h4 className="text-lg font-medium text-white">
-                                      {visit.visit_schedules.visit_name}
-                                    </h4>
-                                    <span className={`px-2 py-1 text-xs font-medium rounded-full text-white ${visitStatusColors[visit.status]}`}>
-                                      {visitStatusLabels[visit.status]}
-                                    </span>
-                                    {isOverdue && (
-                                      <span className="px-2 py-1 text-xs font-medium rounded-full bg-red-600 text-white">
-                                        OVERDUE
-                                      </span>
-                                    )}
-                                  </div>
-                                  
-                                  <div className="space-y-1 text-sm text-gray-300">
-                                    <div>
-                                      <span className="text-gray-400">Visit Day:</span> {visit.visit_schedules.visit_day}
-                                    </div>
-                                    <div>
-                                      <span className="text-gray-400">Date:</span> {formatDateTime(visit.visit_date)}
-                                    </div>
-                                    {window && (
-                                      <div>
-                                        <span className="text-gray-400">Window:</span> {window.label}
-                                      </div>
-                                    )}
-                                    {visit.notes && (
-                                      <div className="mt-2">
-                                        <span className="text-gray-400">Notes:</span>
-                                        <div className="mt-1 text-gray-300 bg-gray-800/50 rounded p-2">
-                                          {visit.notes}
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                                
-                                <div className="text-right text-sm text-gray-400">
-                                  #{index + 1}
-                                </div>
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    ) : (
-                      <div className="text-center py-8 text-gray-500">
-                        No visits scheduled for this subject yet.
-                      </div>
-                    )}
-                  </div>
-                </div>
+                  <SubjectVisitTimelineTable 
+                    subjectId={subjectId}
+                    studyId={studyId}
+                    anchorDate={subject.randomization_date || subject.enrollment_date}
+                    metrics={metrics}
+                  />
+                </>
               )}
 
               {activeTab === 'drug-compliance' && (
