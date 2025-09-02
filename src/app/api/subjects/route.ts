@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/api/auth'
-import { calculateComplianceMetrics } from '@/lib/ip-accountability'
 
 // GET /api/subjects?study_id=xxx - Get subjects for a study
 export async function GET(request: NextRequest) {
@@ -96,25 +95,46 @@ export async function GET(request: NextRequest) {
           id,
           subject_id,
           visit_date,
+          visit_name,
           status,
           ip_id,
           ip_dispensed,
           ip_start_date,
           ip_returned,
           ip_last_dose_date,
-          visit_schedules!inner(
-            id,
-            visit_name,
-            visit_day
-          )
+          visit_schedule_id
         `)
         .in('subject_id', subjectIds)
         .order('visit_date', { ascending: true })
+
+      // Load drug compliance data for these subjects
+      const { data: drugComplianceData, error: drugComplianceErr } = await supabase
+        .from('drug_compliance')
+        .select(`
+          id,
+          subject_id,
+          visit_id,
+          ip_id,
+          assessment_date,
+          dispensed_count,
+          returned_count,
+          expected_taken,
+          compliance_percentage,
+          is_compliant
+        `)
+        .in('subject_id', subjectIds)
+        .order('assessment_date', { ascending: true })
 
       if (visitsErr) {
         console.error('Error fetching visits for subjects', visitsErr)
         return NextResponse.json({ error: 'Failed to fetch subject visits' }, { status: 500 })
       }
+
+      if (drugComplianceErr) {
+        console.error('Error fetching drug compliance for subjects', drugComplianceErr)
+        return NextResponse.json({ error: 'Failed to fetch drug compliance data' }, { status: 500 })
+      }
+
 
       // Group visits by subject
       const visitsBySubject = new Map<string, any[]>()
@@ -124,10 +144,20 @@ export async function GET(request: NextRequest) {
         visitsBySubject.get(sid)!.push(v)
       }
 
+      // Group drug compliance data by subject
+      const drugComplianceBySubject = new Map<string, any[]>()
+      for (const dc of drugComplianceData || []) {
+        const sid = (dc as any).subject_id as string
+        if (!drugComplianceBySubject.has(sid)) drugComplianceBySubject.set(sid, [])
+        drugComplianceBySubject.get(sid)!.push(dc)
+      }
+
       // Build metrics
       const now = new Date()
       const subjectsWithMetrics = (subjects as any[]).map((subject: any) => {
         const visits = visitsBySubject.get(subject.id) || []
+        const drugCompliances = drugComplianceBySubject.get(subject.id) || []
+
 
         const completedVisits = visits.filter(v => (v as any).status === 'completed')
         const upcomingVisits = visits.filter(v => {
@@ -160,27 +190,58 @@ export async function GET(request: NextRequest) {
         const daysSinceLastVisit = lastVisit ? Math.floor((now.getTime() - new Date(((lastVisit as any).visit_date as string) + 'T00:00:00Z').getTime()) / (1000 * 60 * 60 * 24)) : null
         const daysUntilNextVisit = nextVisit ? Math.floor((new Date(((nextVisit as any).visit_date as string) + 'T00:00:00Z').getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null
 
-        // Calculate drug compliance metrics
+        // Calculate drug compliance metrics using drug_compliance table
         const ipVisits = visits.filter(v => (v as any).ip_dispensed && (v as any).ip_dispensed > 0)
         let drugCompliance = null
         let lastDrugDispensing = null
         let activeDrugBottle = null
         let expectedReturnDate = null
         
-        // Build complete IP dispensing history for timeline
-        const ipDispensingHistory = ipVisits.map((visit: any) => ({
-          visit_id: visit.id,
-          visit_date: visit.visit_date,
-          ip_id: visit.ip_id,
-          ip_dispensed: visit.ip_dispensed,
-          ip_start_date: visit.ip_start_date || visit.visit_date,
-          ip_returned: visit.ip_returned,
-          ip_last_dose_date: visit.ip_last_dose_date,
-          visit_name: visit.visit_schedules?.visit_name || 'Visit'
-        }))
+        // Build complete IP dispensing history for timeline with compliance data
+        const ipDispensingHistory = ipVisits.map((visit: any) => {
+          // Find drug compliance record where this visit was the return/assessment visit
+          const complianceRecord = drugCompliances.find(dc => 
+            (dc as any).visit_id === visit.id
+          ) as any
 
+          return {
+            visit_id: visit.id,
+            visit_date: visit.visit_date,
+            ip_id: visit.ip_id,
+            ip_dispensed: visit.ip_dispensed,
+            ip_start_date: visit.ip_start_date || visit.visit_date,
+            ip_returned: visit.ip_returned,
+            ip_last_dose_date: visit.ip_last_dose_date,
+            visit_name: visit.visit_name || 'Visit',
+            // Include compliance data if this visit had a compliance assessment
+            compliance_percentage: complianceRecord ? complianceRecord.compliance_percentage : null,
+            is_compliant: complianceRecord ? complianceRecord.is_compliant : null,
+            expected_taken: complianceRecord ? complianceRecord.expected_taken : null,
+            assessment_date: complianceRecord ? complianceRecord.assessment_date : null
+          }
+        })
+
+        // Use drug compliance data from drug_compliance table
+        if (drugCompliances.length > 0) {
+          // Get the most recent drug compliance record
+          const latestCompliance = drugCompliances[drugCompliances.length - 1] as any
+          
+          // Use the calculated compliance_percentage from the database
+          if (latestCompliance.compliance_percentage !== null && latestCompliance.compliance_percentage !== undefined) {
+            drugCompliance = {
+              percentage: Number(latestCompliance.compliance_percentage),
+              is_compliant: latestCompliance.is_compliant,
+              assessment_date: latestCompliance.assessment_date,
+              dispensed_count: latestCompliance.dispensed_count,
+              returned_count: latestCompliance.returned_count,
+              expected_taken: latestCompliance.expected_taken,
+              ip_id: latestCompliance.ip_id
+            }
+          }
+        }
+
+        // Get last drug dispensing info from visits
         if (ipVisits.length > 0) {
-          // Find the most recent IP dispensing
           const lastIpVisit = ipVisits[ipVisits.length - 1] as any
           lastDrugDispensing = {
             visit_date: lastIpVisit.visit_date,
@@ -189,24 +250,13 @@ export async function GET(request: NextRequest) {
             ip_start_date: lastIpVisit.ip_start_date || lastIpVisit.visit_date
           }
 
-          // Look for return data in subsequent visits
-          const returnVisit = visits.find(v => 
-            (v as any).ip_returned !== null && 
-            (v as any).ip_returned !== undefined &&
-            new Date((v as any).visit_date) > new Date(lastIpVisit.visit_date)
-          ) as any
+          // Check if this is still an active bottle (not returned)
+          const hasReturnedData = drugCompliances.some(dc => 
+            (dc as any).ip_id === lastIpVisit.ip_id && 
+            (dc as any).returned_count > 0
+          )
 
-          if (returnVisit) {
-            // Calculate compliance using returned data
-            const compliance = calculateComplianceMetrics(
-              lastIpVisit.ip_dispensed,
-              returnVisit.ip_returned,
-              lastIpVisit.ip_start_date || lastIpVisit.visit_date,
-              returnVisit.ip_last_dose_date || returnVisit.visit_date,
-              1 // Default 1 dose per day - could be made dynamic based on study dosing frequency
-            )
-            drugCompliance = compliance
-          } else {
+          if (!hasReturnedData) {
             // Active bottle - no return yet
             activeDrugBottle = {
               ip_id: lastIpVisit.ip_id,
@@ -227,14 +277,14 @@ export async function GET(request: NextRequest) {
         return {
           ...s,
           metrics: {
-            total_visits: soaVisits?.length || 0,
+            total_visits: visits.length,
             completed_visits: completedVisits.length,
             upcoming_visits: upcomingVisits.length,
             overdue_visits: overdueVisits.length,
             last_visit_date: lastVisit ? (lastVisit as any).visit_date : null,
-            last_visit_name: lastVisit ? (lastVisit as any).visit_schedules?.visit_name || null : null,
+            last_visit_name: lastVisit ? (lastVisit as any).visit_name || 'Visit' : null,
             next_visit_date: nextVisit ? (nextVisit as any).visit_date : null,
-            next_visit_name: nextVisit ? (nextVisit as any).visit_schedules?.visit_name || null : null,
+            next_visit_name: nextVisit ? (nextVisit as any).visit_name || 'Visit' : null,
             visit_compliance_rate: complianceRate,
             days_since_last_visit: daysSinceLastVisit,
             days_until_next_visit: daysUntilNextVisit,

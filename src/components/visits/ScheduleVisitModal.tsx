@@ -415,17 +415,25 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
                 >
                   Protocol Visit
                 </button>
-                <button
-                  onClick={() => setIsCustomVisit(true)}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    isCustomVisit
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                  }`}
-                >
-                  Custom Visit
-                </button>
+                {/* Only show Custom Visit option if no protocol schedules exist or for emergency/unscheduled visits */}
+                {visitSchedules.length === 0 && (
+                  <button
+                    onClick={() => setIsCustomVisit(true)}
+                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                      isCustomVisit
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    Custom Visit
+                  </button>
+                )}
               </div>
+              {visitSchedules.length > 0 && (
+                <p className="text-xs text-gray-400 mt-1">
+                  Use protocol visits to maintain compliance tracking. Contact study coordinator for emergency/unscheduled visits.
+                </p>
+              )}
             </div>
 
             {/* Visit Selection */}
@@ -446,6 +454,11 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
                     </option>
                   ))}
                 </select>
+                {visitSchedules.length === 0 && (
+                  <p className="text-sm text-yellow-400 mt-2">
+                    ⚠️ No visit schedules found for this study. Contact your study coordinator to set up the Schedule of Events (SOE).
+                  </p>
+                )}
               </div>
             ) : (
               <div>

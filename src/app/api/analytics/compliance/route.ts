@@ -124,24 +124,22 @@ export async function GET(request: NextRequest) {
         returned_count,
         expected_taken,
         compliance_percentage,
+        assessment_date,
         updated_at,
-        subject_visits!inner (
+        subjects!inner (
           id,
+          subject_number,
           study_id,
-          subjects!inner (
+          studies!inner (
             id,
-            subject_number,
-            studies!inner (
-              id,
-              protocol_number,
-              study_title
-            )
+            protocol_number,
+            study_title
           )
         )
       `)
-      .gte('updated_at', startDate.toISOString())
-      .lte('updated_at', endDate.toISOString())
-      .in('subject_visits.study_id', allowedStudyIds)
+      .gte('assessment_date', startDate.toISOString().split('T')[0])
+      .lte('assessment_date', endDate.toISOString().split('T')[0])
+      .in('subjects.study_id', allowedStudyIds)
     if (drugError) {
       console.error('Error fetching drug compliance:', drugError)
       return NextResponse.json({ error: 'Failed to fetch drug compliance' }, { status: 500 })
@@ -171,20 +169,16 @@ export async function GET(request: NextRequest) {
     // Process drug compliance
     const drugRows = (drugCompliance || []) as any[]
     drugRows.forEach(record => {
-      const month = record.updated_at.substring(0, 7)
+      const month = record.assessment_date.substring(0, 7)
       if (monthlyData[month]) {
         const drugRecord = record as any
-        let compliance = drugRecord.compliance_percentage
+        const compliance = drugRecord.compliance_percentage
         
-        if (compliance === null || compliance === undefined) {
-          const expected = Number(drugRecord.expected_taken) || 0
-          const dispensed = Number(drugRecord.dispensed_count) || 0
-          const returned = Number(drugRecord.returned_count) || 0
-          const actual = Math.max(0, dispensed - returned)
-          compliance = expected > 0 ? Math.min(100, Math.max(0, (actual / expected) * 100)) : 0
+        // Only include records with valid compliance_percentage
+        // Skip NULL values (unreturned bottles)
+        if (compliance !== null && compliance !== undefined) {
+          monthlyData[month].drugCompliance.push(Number(compliance))
         }
-        
-        monthlyData[month].drugCompliance.push(Number(compliance) || 0)
       }
     })
 
@@ -234,18 +228,16 @@ export async function GET(request: NextRequest) {
 
     drugCompliance?.forEach(record => {
       const drugRecord = record as any
-      const study = drugRecord.subject_visits.subjects.studies
+      const study = drugRecord.subjects.studies
       
       if (studyComplianceMap[study.id]) {
-        let compliance = drugRecord.compliance_percentage
-        if (compliance === null || compliance === undefined) {
-          const expected = Number(drugRecord.expected_taken) || 0
-          const dispensed = Number(drugRecord.dispensed_count) || 0
-          const returned = Number(drugRecord.returned_count) || 0
-          const actual = Math.max(0, dispensed - returned)
-          compliance = expected > 0 ? Math.min(100, Math.max(0, (actual / expected) * 100)) : 0
+        const compliance = drugRecord.compliance_percentage
+        
+        // Only include records with valid compliance_percentage
+        // Skip NULL values (unreturned bottles)
+        if (compliance !== null && compliance !== undefined) {
+          studyComplianceMap[study.id].drug_records.push(Number(compliance))
         }
-        studyComplianceMap[study.id].drug_records.push(Number(compliance) || 0)
       }
     })
 
@@ -300,15 +292,11 @@ export async function GET(request: NextRequest) {
     // Drug compliance alerts (low compliance)
     const lowDrugCompliance = drugCompliance?.filter(record => {
       const drugRecord = record as any
-      let compliance = drugRecord.compliance_percentage
-      if (compliance === null) {
-        const expected = Number(drugRecord.expected_taken) || 0
-        const dispensed = Number(drugRecord.dispensed_count) || 0
-        const returned = Number(drugRecord.returned_count) || 0
-        const actual = Math.max(0, dispensed - returned)
-        compliance = expected > 0 ? (actual / expected) * 100 : 100
-      }
-      return Number(compliance) < 80
+      const compliance = drugRecord.compliance_percentage
+      
+      // Only include records with valid compliance_percentage
+      // Skip NULL values (unreturned bottles)
+      return compliance !== null && compliance !== undefined && Number(compliance) < 80
     }).slice(0, 5) || []
 
     lowDrugCompliance.forEach(record => {
@@ -316,9 +304,9 @@ export async function GET(request: NextRequest) {
       alerts.push({
         id: drugRecord.id,
         type: 'drug',
-        subject_number: drugRecord.subject_visits.subjects.subject_number,
+        subject_number: drugRecord.subjects.subject_number,
         visit_name: 'IP Compliance',
-        protocol_number: drugRecord.subject_visits.subjects.studies.protocol_number,
+        protocol_number: drugRecord.subjects.studies.protocol_number,
         severity: 'high',
         description: 'Low investigational product compliance',
         created_at: drugRecord.updated_at
@@ -330,17 +318,12 @@ export async function GET(request: NextRequest) {
     const withinWindowVisits = visits?.filter(v => (v as any).is_within_window).length || 0
     const overallTimingRate = totalVisits > 0 ? Math.round((withinWindowVisits / totalVisits) * 100) : 0
 
-    const allDrugCompliance = drugCompliance?.map(record => {
+    const allDrugCompliance = drugCompliance?.filter(record => {
       const drugRecord = record as any
-      let compliance = drugRecord.compliance_percentage
-      if (compliance === null) {
-        const expected = Number(drugRecord.expected_taken) || 0
-        const dispensed = Number(drugRecord.dispensed_count) || 0
-        const returned = Number(drugRecord.returned_count) || 0
-        const actual = Math.max(0, dispensed - returned)
-        compliance = expected > 0 ? (actual / expected) * 100 : 100
-      }
-      return Number(compliance) || 0
+      return drugRecord.compliance_percentage !== null && drugRecord.compliance_percentage !== undefined
+    }).map(record => {
+      const drugRecord = record as any
+      return Number(drugRecord.compliance_percentage)
     }) || []
 
     const overallDrugRate = allDrugCompliance.length > 0

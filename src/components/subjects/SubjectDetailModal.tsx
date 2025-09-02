@@ -34,9 +34,13 @@ interface SubjectMetrics {
   days_until_next_visit: number | null
   // Drug compliance metrics
   drug_compliance: {
-    actual_taken: number
+    percentage: number
+    is_compliant: boolean
+    assessment_date: string
+    dispensed_count: number
+    returned_count: number
     expected_taken: number | null
-    compliance_percentage: number | null
+    ip_id: string
   } | null
   last_drug_dispensing: {
     visit_date: string
@@ -60,6 +64,10 @@ interface SubjectMetrics {
     ip_returned: number | null
     ip_last_dose_date: string | null
     visit_name: string
+    compliance_percentage: number | null
+    is_compliant: boolean | null
+    expected_taken: number | null
+    assessment_date: string | null
   }[]
 }
 
@@ -453,20 +461,20 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
                             </h4>
                             <div className="space-y-3">
                               <div className="text-3xl font-bold text-white">
-                                {metrics.drug_compliance.compliance_percentage ? `${metrics.drug_compliance.compliance_percentage}%` : 'N/A'}
+                                {metrics.drug_compliance.percentage ? `${metrics.drug_compliance.percentage}%` : 'N/A'}
                               </div>
                               <div className="text-sm text-gray-400">
-                                {metrics.drug_compliance.actual_taken} taken / {metrics.drug_compliance.expected_taken || 'N/A'} expected
+                                {metrics.drug_compliance.dispensed_count - metrics.drug_compliance.returned_count} taken / {metrics.drug_compliance.expected_taken || 'N/A'} expected
                               </div>
-                              {metrics.drug_compliance.compliance_percentage && (
+                              {metrics.drug_compliance.percentage && (
                                 <div className="w-full bg-gray-700 rounded-full h-2">
                                   <div
                                     className={`h-2 rounded-full transition-all duration-500 ${
-                                      metrics.drug_compliance.compliance_percentage >= 90 ? 'bg-green-500' :
-                                      metrics.drug_compliance.compliance_percentage >= 75 ? 'bg-yellow-500' :
-                                      metrics.drug_compliance.compliance_percentage >= 50 ? 'bg-orange-500' : 'bg-red-500'
+                                      metrics.drug_compliance.percentage >= 90 ? 'bg-green-500' :
+                                      metrics.drug_compliance.percentage >= 75 ? 'bg-yellow-500' :
+                                      metrics.drug_compliance.percentage >= 50 ? 'bg-orange-500' : 'bg-red-500'
                                     }`}
-                                    style={{ width: `${Math.min(100, Math.max(0, metrics.drug_compliance.compliance_percentage))}%` }}
+                                    style={{ width: `${Math.min(100, Math.max(0, metrics.drug_compliance.percentage))}%` }}
                                   />
                                 </div>
                               )}
@@ -658,27 +666,17 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
                                         )}
                                       </div>
                                       
-                                      {/* Calculate and show compliance for returned bottles */}
-                                      {hasReturn && (
+                                      {/* Show compliance info from database for returned bottles */}
+                                      {hasReturn && dispensing.compliance_percentage !== null && (
                                         <div className="mt-2 p-2 bg-gray-800/60 rounded border-l-2 border-blue-500">
                                           <div className="text-xs text-gray-300">
                                             <span className="font-medium">Compliance:</span> {dispensing.ip_dispensed - (dispensing.ip_returned || 0)} tablets taken
-                                            {dispensing.ip_last_dose_date && dispensing.ip_start_date && (() => {
-                                              const startDate = new Date(dispensing.ip_start_date)
-                                              const endDate = new Date(dispensing.ip_last_dose_date)
-                                              const days = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)))
-                                              const actualTaken = dispensing.ip_dispensed - (dispensing.ip_returned || 0)
-                                              const expectedTaken = days * 1 // Assuming 1 dose per day
-                                              const complianceRate = expectedTaken > 0 ? Math.round((actualTaken / expectedTaken) * 100) : 0
-                                              return (
-                                                <span className={`ml-2 font-medium ${
-                                                  complianceRate >= 90 ? 'text-green-400' :
-                                                  complianceRate >= 75 ? 'text-yellow-400' : 'text-red-400'
-                                                }`}>
-                                                  ({complianceRate}%)
-                                                </span>
-                                              )
-                                            })()}
+                                            <span className={`ml-2 font-medium ${
+                                              dispensing.compliance_percentage >= 90 ? 'text-green-400' :
+                                              dispensing.compliance_percentage >= 75 ? 'text-yellow-400' : 'text-red-400'
+                                            }`}>
+                                              ({dispensing.compliance_percentage}%)
+                                            </span>
                                           </div>
                                         </div>
                                       )}
@@ -700,18 +698,18 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
                                     <span className="text-gray-400 text-sm">Latest</span>
                                   </div>
                                   <p className="text-gray-400 text-sm mt-1">
-                                    {metrics.drug_compliance.actual_taken} tablets taken out of {metrics.drug_compliance.expected_taken || 'N/A'} expected
+                                    {metrics.drug_compliance.dispensed_count - metrics.drug_compliance.returned_count} tablets taken out of {metrics.drug_compliance.expected_taken || 'N/A'} expected
                                   </p>
                                   <div className="mt-2 flex items-center space-x-2">
                                     <div className="flex-shrink-0">
                                       <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                                        metrics.drug_compliance.compliance_percentage && metrics.drug_compliance.compliance_percentage >= 90
+                                        metrics.drug_compliance.percentage && metrics.drug_compliance.percentage >= 90
                                           ? 'bg-green-900/50 text-green-300 border border-green-600/50'
-                                          : metrics.drug_compliance.compliance_percentage && metrics.drug_compliance.compliance_percentage >= 75
+                                          : metrics.drug_compliance.percentage && metrics.drug_compliance.percentage >= 75
                                           ? 'bg-yellow-900/50 text-yellow-300 border border-yellow-600/50'
                                           : 'bg-red-900/50 text-red-300 border border-red-600/50'
                                       }`}>
-                                        {metrics.drug_compliance.compliance_percentage ? `${metrics.drug_compliance.compliance_percentage}%` : 'N/A'}
+                                        {metrics.drug_compliance.percentage ? `${metrics.drug_compliance.percentage}%` : 'N/A'}
                                       </span>
                                     </div>
                                   </div>

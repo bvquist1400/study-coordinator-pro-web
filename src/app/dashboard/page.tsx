@@ -189,28 +189,45 @@ export default function DashboardPage() {
           setTimingCompliance({ rate: 0, window: '30d' })
         }
 
-        // Drug compliance snapshot: last 30 days average percentage
-        const { data: dcRows } = await supabase
-          .from('drug_compliance')
-          .select('dispensed_count, returned_count, expected_taken, compliance_percentage, updated_at')
-          .gte('updated_at', thirty.toISOString())
-        if (dcRows && dcRows.length > 0) {
-          let sum = 0
-          let count = 0
-          for (const r of (dcRows as Array<{ dispensed_count: number | null; returned_count: number | null; expected_taken: number | null; compliance_percentage: number | null }>)) {
-            let pct: number | null = r.compliance_percentage
-            if (pct === null || typeof pct === 'undefined') {
-              const expected = Number(r.expected_taken) || 0
-              const disp = Number(r.dispensed_count) || 0
-              const ret = Number(r.returned_count) || 0
-              const actual = Math.max(0, disp - ret)
-              pct = expected > 0 ? Math.min(100, Math.max(0, (actual / expected) * 100)) : null
-            }
-            if (typeof pct === 'number' && !isNaN(pct)) { sum += pct; count += 1 }
+        // Drug compliance snapshot: Use the working analytics API approach
+        try {
+          console.log('🔍 Fetching drug compliance data via API...')
+          
+          // Get auth token like the working compliance page does
+          const { data: { session } } = await supabase.auth.getSession()
+          const token = session?.access_token
+          
+          if (!token) {
+            console.log('❌ No auth token available')
+            setDrugComplianceRate({ rate: 0, window: 'no auth' })
+            return
           }
-          setDrugComplianceRate({ rate: count > 0 ? Math.round((sum / count)) : 0, window: '30d' })
-        } else {
-          setDrugComplianceRate({ rate: 0, window: '30d' })
+          
+          // Use the same API endpoint that works for compliance analytics (60 days = ~2 months)
+          const response = await fetch('/api/analytics/compliance?months=2', {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          })
+          
+          console.log('📊 API response status:', response.status)
+          
+          if (response.ok) {
+            const data = await response.json()
+            console.log('✅ API data received:', { 
+              summary: data.summary,
+              drugRate: data.summary?.overallDrugRate 
+            })
+            
+            const drugRate = data.summary?.overallDrugRate || 0
+            setDrugComplianceRate({ rate: drugRate, window: '60d' })
+          } else {
+            console.log('❌ API request failed:', response.status)
+            setDrugComplianceRate({ rate: 0, window: 'API error' })
+          }
+        } catch (error) {
+          console.error('💥 Error fetching drug compliance via API:', error)
+          setDrugComplianceRate({ rate: 0, window: 'exception' })
         }
       } finally {
         setLoadingCards(false)
@@ -400,7 +417,7 @@ export default function DashboardPage() {
           {/* Compliance Snapshot */}
           <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-2xl p-6">
             <h3 className="text-lg font-semibold text-white mb-2">Compliance Snapshot</h3>
-            <p className="text-xs text-gray-400 mb-4">Last {timingCompliance.window}</p>
+            <p className="text-xs text-gray-400 mb-4">Visit timing: {timingCompliance.window} • Drug compliance: {drugComplianceRate.window}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div className="flex items-center gap-4">
                 <div className="text-4xl sm:text-5xl font-bold text-white">{loadingCards ? '…' : `${timingCompliance.rate}%`}</div>
