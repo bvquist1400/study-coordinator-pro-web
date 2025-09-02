@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase/client'
-import type { VisitSchedule } from '@/types/database'
 import { formatDateUTC } from '@/lib/date-utils'
+import MultiBottleEntry, { type BottleEntry } from './MultiBottleEntry'
 
 interface VisitDetail {
   id: string
@@ -22,11 +22,8 @@ interface VisitDetail {
   airway_bill_number: string | null
   lab_kit_shipped_date: string | null
 
-  // Drug Accountability
+  // Drug Accountability - Legacy fields for backward compatibility
   drug_dispensing_required: boolean | null
-  previous_dispense_date: string | null
-  tablets_dispensed: number | null
-  tablets_returned: number | null
   ip_start_date: string | null
   ip_last_dose_date: string | null
   ip_dispensed: number | null
@@ -48,17 +45,13 @@ interface VisitDetail {
 type VisitStatus = VisitDetail['status']
 
 interface FormData {
-  ip_start_date: string
-  ip_last_dose_date: string
   status: VisitStatus
   procedures_completed: string[]
   accession_number: string
   airway_bill_number: string
   lab_kit_shipped_date: string
-  ip_dispensed: string
-  ip_returned: string
-  ip_id: string // For new dispensing
-  return_ip_id: string // For returns from previous visit
+  dispensed_bottles: BottleEntry[]
+  returned_bottles: BottleEntry[]
   local_labs_completed: boolean
   notes: string
 }
@@ -69,7 +62,7 @@ interface VisitDetailModalProps {
   onUpdate: () => void
 }
 
-type DrugComplianceRow = {
+interface DrugComplianceRow {
   subject_id: string
   user_id: string
   assessment_date: string
@@ -79,37 +72,26 @@ type DrugComplianceRow = {
   visit_id: string
   ip_id: string
   dispensing_date?: string | null
+  ip_last_dose_date?: string | null
 }
 
 export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDetailModalProps) {
   const [visit, setVisit] = useState<VisitDetail | null>(null)
   const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
-
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
-
-
-  // Autocomplete for lab kits
-  const [availableLabKits, setAvailableLabKits] = useState<Array<{id: string; accession_number: string; kit_type?: string; expiration_date?: string}>>([])
+  const [availableLabKits, setAvailableLabKits] = useState<Array<{ id: string; accession_number: string; kit_type: string; expiration_date: string }>>([])
   const [showAccessionDropdown, setShowAccessionDropdown] = useState(false)
-
-
   const [_dosingFactor, setDosingFactor] = useState(1)
 
   const [formData, setFormData] = useState<FormData>({
-    ip_start_date: '',
-    ip_last_dose_date: '',
     status: 'scheduled',
     procedures_completed: [],
     accession_number: '',
     airway_bill_number: '',
     lab_kit_shipped_date: '',
-    ip_dispensed: '',
-    ip_returned: '',
-    ip_id: '',
-    return_ip_id: '',
+    dispensed_bottles: [],
+    returned_bottles: [],
     local_labs_completed: false,
     notes: ''
   })
@@ -121,337 +103,235 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
   })
 
   useEffect(() => {
-    loadVisitDetail()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    loadVisit()
   }, [visitId])
 
-  const loadVisitDetail = async () => {
+  const loadVisit = async () => {
     try {
+      setLoading(true)
       const { data: { session } } = await supabase.auth.getSession()
-      const token = session?.access_token
-      if (!token) return
+      if (!session?.access_token) {
+        console.error('No session token')
+        return
+      }
 
-      const response = await fetch('/api/subject-visits/' + visitId, {
-        headers: { Authorization: 'Bearer ' + token }
+      const response = await fetch(`/api/subject-visits/${visitId}`, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
       })
 
       if (response.ok) {
         const { visit } = await response.json()
         setVisit(visit)
 
+        // Convert single bottle data to multi-bottle format for backward compatibility
+        const dispensedBottles: BottleEntry[] = []
+        const returnedBottles: BottleEntry[] = []
+
+        // If there's existing single bottle data, convert it to multi-bottle format
+        if (visit.ip_dispensed && visit.ip_dispensed > 0 && visit.ip_id) {
+          dispensedBottles.push({
+            id: 'existing-dispensed',
+            ip_id: visit.ip_id,
+            count: visit.ip_dispensed,
+            start_date: visit.ip_start_date?.split('T')[0] || ''
+          })
+        }
+
+        if (visit.ip_returned && visit.ip_returned > 0 && visit.return_ip_id) {
+          returnedBottles.push({
+            id: 'existing-returned',
+            ip_id: visit.return_ip_id,
+            count: visit.ip_returned,
+            last_dose_date: visit.ip_last_dose_date?.split('T')[0] || ''
+          })
+        }
+
         setFormData({
-          ip_start_date: visit.ip_start_date?.split('T')[0] || '',
-          ip_last_dose_date: visit.ip_last_dose_date?.split('T')[0] || '',
           status: visit.status as VisitStatus,
           procedures_completed: visit.procedures_completed || [],
           accession_number: visit.accession_number || '',
           airway_bill_number: visit.airway_bill_number || '',
           lab_kit_shipped_date: visit.lab_kit_shipped_date?.split('T')[0] || '',
-          ip_dispensed: visit.ip_dispensed?.toString() || '',
-          ip_returned: visit.ip_returned?.toString() || '',
-          ip_id: visit.ip_id || '',
-          return_ip_id: visit.return_ip_id || '',
+          dispensed_bottles: dispensedBottles,
+          returned_bottles: returnedBottles,
           local_labs_completed: visit.local_labs_completed || false,
           notes: visit.notes || ''
         })
 
-        // dosing frequency
-        try {
-          const { data: studyRow } = await supabase
-            .from('studies')
-            .select('dosing_frequency')
-            .eq('id', visit.study_id)
-            .single()
-          const df = (studyRow?.dosing_frequency || 'QD') as string
-          let factor = 1
-          switch (df) {
-            case 'QD': factor = 1; break
-            case 'BID': factor = 2; break
-            case 'TID': factor = 3; break
-            case 'QID': factor = 4; break
-            case 'weekly': factor = 1 / 7; break
-            default: factor = 1
-          }
-          setDosingFactor(factor)
-        } catch {
-          /* ignore */
-        }
-
-        // Load available lab kits for autocomplete
-        try {
-          const labKitsResponse = await fetch(`/api/lab-kits?studyId=${visit.study_id}&status=available`, {
-            headers: { Authorization: 'Bearer ' + token }
+        // Infer requirements from visit name
+        if (visit.visit_name) {
+          const visitName = visit.visit_name.toLowerCase()
+          setInferredRequirements({
+            lab_kit_required: visitName.includes('lab') || visitName.includes('sample'),
+            drug_dispensing_required: visitName.includes('dispensing') || visitName.includes('medication'),
+            local_labs_required: visitName.includes('local lab')
           })
-          if (labKitsResponse.ok) {
-            const labKitsData = await labKitsResponse.json()
-            setAvailableLabKits(labKitsData.labKits || [])
-          }
-        } catch (error) {
-          console.warn('Failed to load lab kits for autocomplete:', error)
         }
-
-
-        // infer required flags from visit schedule
-        if (
-          visit.visit_schedule_id &&
-          (visit.lab_kit_required === null || visit.drug_dispensing_required === null || visit.local_labs_required === null)
-        ) {
-          try {
-            const vsRes = await fetch('/api/visit-schedules?study_id=' + visit.study_id, {
-              headers: { Authorization: 'Bearer ' + token }
-            })
-            if (vsRes.ok) {
-              const { visitSchedules } = await vsRes.json()
-              const vs = (visitSchedules as VisitSchedule[] | undefined)?.find(v => v.id === visit.visit_schedule_id)
-              if (vs && Array.isArray(vs.procedures)) {
-                const lower = vs.procedures.map((p: string) => p.toLowerCase())
-                setInferredRequirements({
-                  lab_kit_required: lower.includes('lab kit') || lower.includes('labkit'),
-                  drug_dispensing_required: lower.includes('medication dispensing') || lower.includes('drug dispensing'),
-                  local_labs_required: lower.includes('local labs') || lower.includes('local lab')
-                })
-              }
-            }
-          } catch {
-            /* ignore */
-          }
-        }
-      } else {
-        const err = await response.json().catch(() => ({}))
-        setLoadError(err.error || 'Failed to load visit (' + response.status + ')')
       }
     } catch (error) {
-      console.error('Error loading visit detail:', error)
-      setLoadError('Unexpected error loading visit details')
+      console.error('Error loading visit:', error)
     } finally {
       setLoading(false)
     }
   }
 
-  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
-    setToast({ message, type })
-    setTimeout(() => setToast(null), 2200)
-  }
+  // Load available lab kits for autocomplete
+  useEffect(() => {
+    const loadLabKits = async () => {
+      if (!visit?.study_id) return
 
-  // computeDaysAndExpected removed (no longer used)
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.access_token) return
 
-  // Removed unused copyComplianceSummary helper to reduce warnings
+        const response = await fetch(`/api/lab-kits?studyId=${visit.study_id}&status=available`, {
+          headers: { 'Authorization': `Bearer ${session.access_token}` }
+        })
 
-  const validateFormData = (): string[] => {
+        if (response.ok) {
+          const { labKits } = await response.json()
+          setAvailableLabKits(labKits || [])
+        }
+      } catch (error) {
+        console.error('Error loading lab kits:', error)
+      }
+    }
+
+    loadLabKits()
+  }, [visit?.study_id])
+
+  // Form validation
+  const validateForm = () => {
     const warnings: string[] = []
-    
-    // Validate dispensing fields
-    if (formData.ip_dispensed && parseInt(formData.ip_dispensed) > 0) {
-      if (!formData.ip_id.trim()) {
-        warnings.push('IP ID required when dispensing medication')
+
+    // Validate dispensed bottles
+    formData.dispensed_bottles.forEach((bottle, index) => {
+      if (!bottle.ip_id.trim()) {
+        warnings.push(`Dispensed bottle ${index + 1}: IP ID is required`)
       }
-      if (!formData.ip_start_date) {
-        warnings.push('First dose date required when dispensing medication')
+      if (bottle.count <= 0) {
+        warnings.push(`Dispensed bottle ${index + 1}: Count must be greater than 0`)
       }
-    }
-    if (formData.ip_dispensed && parseInt(formData.ip_dispensed) < 0) {
-      warnings.push('Dispensed amount cannot be negative')
-    }
-    
-    // Validate return fields
-    if (formData.ip_returned && parseInt(formData.ip_returned) > 0) {
-      if (!formData.return_ip_id.trim()) {
-        warnings.push('Bottle/Kit number required when returning medication')
+      if (!bottle.start_date) {
+        warnings.push(`Dispensed bottle ${index + 1}: Start date is required`)
       }
-      if (!formData.ip_last_dose_date) {
-        warnings.push('Last dose date required when returning medication')
+    })
+
+    // Validate returned bottles
+    formData.returned_bottles.forEach((bottle, index) => {
+      if (!bottle.ip_id.trim()) {
+        warnings.push(`Returned bottle ${index + 1}: IP ID is required`)
       }
+      if (bottle.count <= 0) {
+        warnings.push(`Returned bottle ${index + 1}: Count must be greater than 0`)
+      }
+      if (!bottle.last_dose_date) {
+        warnings.push(`Returned bottle ${index + 1}: Last dose date is required`)
+      }
+    })
+
+    // Lab kit validation
+    if (formData.accession_number && !availableLabKits.some(kit => kit.accession_number === formData.accession_number)) {
+      warnings.push('Lab kit with this accession number not found or not available')
     }
-    if (formData.ip_returned && parseInt(formData.ip_returned) < 0) {
-      warnings.push('Returned amount cannot be negative')
-    }
-    
+
     return warnings
   }
 
-  const upsertDrugComplianceForIP = async (assessmentDateISO: string) => {
-    if (!visit) return
-
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
-    const subjectId = visit.subject_id
-    const studyId = visit.study_id
-    const visitDay = assessmentDateISO || (visit.visit_date || '')
-    const msPerDay = 1000 * 60 * 60 * 24
-
-    let factor = 1
-    try {
-      const { data: studyRow } = await supabase
-        .from('studies')
-        .select('dosing_frequency')
-        .eq('id', studyId)
-        .single()
-      const df = (studyRow?.dosing_frequency || 'QD') as string
-      switch (df) {
-        case 'QD': factor = 1; break
-        case 'BID': factor = 2; break
-        case 'TID': factor = 3; break
-        case 'QID': factor = 4; break
-        case 'weekly': factor = 1 / 7; break
-        default: factor = 1
-      }
-    } catch {
-      /* ignore */
+  // Send multi-bottle data to API endpoint instead of direct database insertion
+  const saveMultiBottleCompliance = async (token: string) => {
+    // Send multi-bottle data to the existing IP accountability API
+    const multiBottleData = {
+      dispensed_bottles: formData.dispensed_bottles,
+      returned_bottles: formData.returned_bottles
     }
 
-    // Handle NEW IP dispensing if we have dispensed amount and IP start date
-    if (formData.ip_dispensed && formData.ip_start_date && formData.ip_id && parseInt(formData.ip_dispensed) > 0) {
-      const payload: DrugComplianceRow = {
-        subject_id: subjectId,
-        user_id: user.id,
-        assessment_date: visitDay,
-        dispensed_count: parseInt(formData.ip_dispensed),
-        returned_count: 0,
-        expected_taken: 0,
-        visit_id: visitId,
-        ip_id: formData.ip_id.trim(),
-        dispensing_date: formData.ip_start_date
-      }
-      await supabase.from('drug_compliance').insert(payload)
-      showToast('New IP dispensing recorded', 'success')
-    }
+    const response = await fetch(`/api/subject-visits/${visitId}/ip-accountability`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(multiBottleData)
+    })
 
-    // Handle IP RETURNS if we have return amount and last dose date
-    if (formData.ip_returned && formData.ip_last_dose_date && formData.return_ip_id && parseInt(formData.ip_returned) > 0) {
-      const returnIpId = formData.return_ip_id.trim()
-      
-      // Find the most recent compliance record for the RETURNED IP (not the newly dispensed one)
-      const { data: existing } = await supabase
-        .from('drug_compliance')
-        .select('*')
-        .eq('subject_id', subjectId)
-        .eq('ip_id', returnIpId)  // Use the return_ip_id, not the new ip_id
-        .order('dispensing_date', { ascending: false })
-        .limit(1)
-
-      if (existing && existing.length > 0) {
-        const row = existing[0] as { id: string; dispensing_date?: string | null }
-        const dispensingDate = row.dispensing_date
-        
-        if (dispensingDate) {
-          // Calculate expected taken based on dispensing date to last dose date
-          const start = new Date(String(dispensingDate).split('T')[0])
-          const end = new Date(String(formData.ip_last_dose_date).split('T')[0])
-          const days = Math.max(0, Math.round((end.getTime() - start.getTime()) / msPerDay))
-          const expected = Math.max(0, Math.round(days * factor))
-          
-          await supabase
-            .from('drug_compliance')
-            .update({
-              returned_count: parseInt(formData.ip_returned),
-              assessment_date: visitDay,
-              expected_taken: expected,
-              ip_last_dose_date: formData.ip_last_dose_date
-            })
-            .eq('id', row.id)
-          
-          showToast(`Return recorded for IP ${returnIpId}`, 'success')
-        } else {
-          showToast(`Could not find dispensing date for IP ${returnIpId}`, 'error')
-        }
-      } else {
-        showToast(`Could not find compliance record for IP ${returnIpId}`, 'error')
-      }
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || 'Failed to save IP accountability data')
     }
   }
 
   const handleSave = async () => {
-    if (!visit) return
+    const warnings = validateForm()
+    if (warnings.length > 0) {
+      alert('Please fix the following issues:\n\n' + warnings.join('\n'))
+      return
+    }
+
     try {
       setSaving(true)
-      const warnings = validateFormData()
-      if (warnings.length > 0) {
-        showToast(warnings[0], 'error')
-        setSaving(false)
-        return
+      
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        throw new Error('Not authenticated')
       }
 
-      const { data: { session } } = await supabase.auth.getSession()
-      const token = session?.access_token
-      if (!token) return
+      // Save multi-bottle drug compliance data via API
+      if (formData.dispensed_bottles.length > 0 || formData.returned_bottles.length > 0) {
+        await saveMultiBottleCompliance(session.access_token)
+      }
 
-      const updateData = {
+      // Update lab kit status if accession number is provided
+      if (formData.accession_number && formData.status === 'completed') {
+        await updateLabKitStatus(formData.accession_number, 'used', session.access_token)
+      }
+
+      // Update visit record with multi-bottle summary (for backward compatibility)
+      const updatePayload = {
         status: formData.status,
-        visit_date: visit.visit_date,
         procedures_completed: formData.procedures_completed,
-        notes: formData.notes || null,
-        ip_start_date: formData.ip_start_date || null,
-        ip_last_dose_date: formData.ip_last_dose_date || null,
         accession_number: formData.accession_number || null,
         airway_bill_number: formData.airway_bill_number || null,
         lab_kit_shipped_date: formData.lab_kit_shipped_date || null,
-        ip_dispensed: formData.ip_dispensed ? parseInt(formData.ip_dispensed) : null,
-        ip_returned: formData.ip_returned ? parseInt(formData.ip_returned) : null,
-        ip_id: formData.ip_id || null,
-        return_ip_id: formData.return_ip_id || null,
-        local_labs_completed: formData.local_labs_completed
+        local_labs_completed: formData.local_labs_completed,
+        notes: formData.notes || null,
+        // Legacy fields - use first bottle for backward compatibility
+        ip_dispensed: formData.dispensed_bottles[0]?.count || null,
+        ip_returned: formData.returned_bottles[0]?.count || null,
+        ip_id: formData.dispensed_bottles[0]?.ip_id || null,
+        return_ip_id: formData.returned_bottles[0]?.ip_id || null,
+        ip_start_date: formData.dispensed_bottles[0]?.start_date || null,
+        ip_last_dose_date: formData.returned_bottles[0]?.last_dose_date || null
       }
 
-      // Use the new IP accountability endpoint for better data integrity
-      const response = await fetch('/api/subject-visits/' + visitId + '/ip-accountability', {
+      const response = await fetch(`/api/subject-visits/${visitId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: 'Bearer ' + token
+          'Authorization': `Bearer ${session.access_token}`
         },
-        body: JSON.stringify(updateData)
+        body: JSON.stringify(updatePayload)
       })
 
-      if (response.ok) {
-        // Update lab kit status to 'used' if accession number was provided
-        if (formData.accession_number?.trim()) {
-          try {
-            await updateLabKitStatus(formData.accession_number.trim(), 'used', token)
-          } catch (error) {
-            console.warn('Failed to update lab kit status:', error)
-            // Don't fail the visit save if lab kit update fails
-          }
-        }
-        
-        setIsEditing(false)
-        await loadVisitDetail()
-        onUpdate()
-      } else {
-        const error = await response.json()
-        alert('Error updating visit: ' + error.error)
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to save visit')
       }
+
+      onUpdate()
+      setIsEditing(false)
+      await loadVisit() // Reload to get updated data
+      
     } catch (error) {
-      console.error('Error updating visit:', error)
-      alert('Failed to update visit')
+      console.error('Error saving visit:', error)
+      alert('Failed to save visit: ' + (error instanceof Error ? error.message : 'Unknown error'))
     } finally {
       setSaving(false)
     }
   }
 
-  type FormDataValue = FormData[keyof FormData]
-  const handleChange = (field: keyof FormData, value: FormDataValue) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
-  }
-
-  // Autocomplete functions for accession numbers
-  const filteredLabKits = availableLabKits.filter(kit => 
-    kit.accession_number.toLowerCase().includes((formData.accession_number || '').toLowerCase())
-  )
-
-  const handleAccessionNumberChange = (value: string) => {
-    setFormData(prev => ({ ...prev, accession_number: value }))
-    setShowAccessionDropdown(value.length > 0 && filteredLabKits.length > 0)
-  }
-
-  const handleAccessionSelect = (accessionNumber: string) => {
-    setFormData(prev => ({ ...prev, accession_number: accessionNumber }))
-    setShowAccessionDropdown(false)
-  }
-
   // Helper function to update lab kit status
   const updateLabKitStatus = async (accessionNumber: string, status: string, token: string) => {
-    // Find the lab kit by accession number
     const availableKit = availableLabKits.find(kit => kit.accession_number === accessionNumber)
     if (!availableKit) {
       throw new Error('Lab kit not found')
@@ -467,25 +347,35 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || 'Failed to update lab kit status')
+      throw new Error('Failed to update lab kit status')
     }
   }
 
-  const formatDate = (dateString: string) => {
-    if (!dateString) return '-'
-    // Use imported formatDateUTC function
-    return formatDateUTC(dateString, 'en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+  const handleChange = (field: keyof FormData, value: any) => {
+    setFormData(prev => ({ ...prev, [field]: value }))
+  }
+
+  // Autocomplete functions
+  const filteredLabKits = availableLabKits.filter(kit => 
+    kit.accession_number.toLowerCase().includes((formData.accession_number || '').toLowerCase())
+  )
+
+  const handleAccessionNumberChange = (value: string) => {
+    setFormData(prev => ({ ...prev, accession_number: value }))
+    setShowAccessionDropdown(value.length > 0 && filteredLabKits.length > 0)
+  }
+
+  const handleAccessionSelect = (accessionNumber: string) => {
+    setFormData(prev => ({ ...prev, accession_number: accessionNumber }))
+    setShowAccessionDropdown(false)
   }
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-        <div className="bg-gray-800/95 backdrop-blur-sm border border-gray-700 rounded-2xl p-8">
-          <div className="animate-pulse flex items-center space-x-4">
-            <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-            <span className="text-white">Loading visit details...</span>
-          </div>
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+        <div className="bg-gray-800 p-6 rounded-lg">
+          <div className="animate-spin h-8 w-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
+          <p className="text-gray-300 mt-2">Loading visit details...</p>
         </div>
       </div>
     )
@@ -493,38 +383,12 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
 
   if (!visit) {
     return (
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-        <div className="bg-gray-800/95 backdrop-blur-sm border border-gray-700 rounded-2xl max-w-lg w-full">
-          <div className="p-6 relative">
-            {toast ? (
-              <div
-                className={
-                  'p-3 rounded-md mb-4 ' +
-                  (toast.type === 'success'
-                    ? 'bg-green-900/50 text-green-300 border border-green-600'
-                    : toast.type === 'error'
-                    ? 'bg-red-900/50 text-red-300 border border-red-600'
-                    : 'bg-blue-900/50 text-blue-300 border border-blue-600')
-                }
-              >
-                {toast.message}
-              </div>
-            ) : null}
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold text-white">Visit Details</h2>
-              <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-                </svg>
-              </button>
-            </div>
-            <div className="text-gray-300">{loadError || 'Visit could not be loaded.'}</div>
-            <div className="mt-4 text-right">
-              <button onClick={onClose} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg">
-                Close
-              </button>
-            </div>
-          </div>
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+        <div className="bg-gray-800 p-6 rounded-lg">
+          <p className="text-red-400">Failed to load visit details</p>
+          <button onClick={onClose} className="mt-4 px-4 py-2 bg-gray-600 text-white rounded">
+            Close
+          </button>
         </div>
       </div>
     )
@@ -532,486 +396,223 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-800/95 backdrop-blur-sm border border-gray-700 rounded-2xl max-w-[95vw] w-full max-h-[90vh] overflow-y-auto overflow-x-hidden">
-        <div className="p-6">
-          {/* Header */}
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h2 className="text-2xl font-bold text-white">Visit Details</h2>
-              <p className="text-gray-400 mt-1">
-                {visit.subject_number} - {visit.visit_name}
-              </p>
-            </div>
-            <div className="flex items-center space-x-3">
-              {!isEditing ? (
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
-                >
-                  Edit Visit
-                </button>
-              ) : (
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => setIsEditing(false)}
-                    className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center space-x-2"
-                  >
-                    {saving && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
-                    <span>{saving ? 'Saving...' : 'Save Changes'}</span>
-                  </button>
-                </div>
-              )}
+      <div className="bg-gray-800 rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-gray-700">
+          <div>
+            <h2 className="text-2xl font-bold text-white">{visit.visit_name}</h2>
+            <p className="text-gray-400">Subject {visit.subject_number} • {formatDateUTC(visit.visit_date)}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white transition-colors"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+            </svg>
+          </button>
+        </div>
 
-              {/* Delete Visit */}
-              <button
-                onClick={async () => {
-                  if (!confirm('Delete this visit? This action cannot be undone.')) return
-                  try {
-                    const { data: { session } } = await supabase.auth.getSession()
-                    const token = session?.access_token
-                    if (!token) return
-                    const resp = await fetch('/api/subject-visits/' + visitId, {
-                      method: 'DELETE',
-                      headers: { Authorization: 'Bearer ' + token }
-                    })
-                    if (resp.ok) {
-                      onUpdate()
-                      showToast('Visit deleted', 'success')
-                      onClose()
-                    } else {
-                      const r = await resp.json().catch(() => ({}))
-                      alert('Failed to delete visit: ' + (r.error || resp.status))
-                    }
-                  } catch (e) {
-                    console.error('Delete visit error:', e)
-                    alert('Failed to delete visit')
-                  }
-                }}
-                className="px-4 py-2 bg-red-700 hover:bg-red-800 text-white rounded-lg font-medium transition-colors"
+        <div className="p-6 space-y-6">
+          {/* Visit Status */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Visit Status</label>
+            {isEditing ? (
+              <select
+                value={formData.status}
+                onChange={(e) => handleChange('status', e.target.value as VisitStatus)}
+                className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                Delete Visit
-              </button>
-
-              <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          {/* Visit Information */}
-          <div className="space-y-6">
-            <div className="bg-gray-700/30 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">Visit Information</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Visit Date</label>
-                  <p className="text-gray-100">{formatDate(visit.visit_date)}</p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Status</label>
-                  {isEditing ? (
-                    <select
-                      value={formData.status}
-                      onChange={(e) => handleChange('status', e.target.value as VisitStatus)}
-                      className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="scheduled">Scheduled</option>
-                      <option value="completed">Completed</option>
-                      <option value="missed">Missed</option>
-                      <option value="cancelled">Cancelled</option>
-                    </select>
-                  ) : (
-                    <div className="flex items-center space-x-2">
-                      <span
-                        className={
-                          'px-2 py-1 text-xs font-medium rounded-full ' +
-                          (visit.status === 'completed'
-                            ? visit.is_within_window
-                              ? 'bg-green-900/50 text-green-300 border border-green-600'
-                              : 'bg-yellow-900/50 text-yellow-300 border border-yellow-600'
-                            : visit.status === 'scheduled'
-                            ? 'bg-blue-900/50 text-blue-300 border border-blue-600'
-                            : visit.status === 'missed'
-                            ? 'bg-red-900/50 text-red-300 border border-red-600'
-                            : 'bg-gray-900/50 text-gray-300 border border-gray-600')
-                        }
-                      >
-                        {visit.status.charAt(0).toUpperCase() + visit.status.slice(1)}
-                      </span>
-                      {visit.is_within_window === false && visit.status === 'completed' && (
-                        <span className="text-sm text-yellow-400">(Outside Window)</span>
-                      )}
-                      {visit.days_from_scheduled !== null && (
-                        <span className="text-sm text-gray-400">
-                          ({visit.days_from_scheduled > 0 ? '+' : ''}
-                          {visit.days_from_scheduled} days)
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-              </div>
-            </div>
-          </div>
-
-          {/* GRID: Left + Right columns */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-6">
-            {/* LEFT: Lab Kit Accountability */}
-            {(visit.lab_kit_required || inferredRequirements.lab_kit_required) && (
-              <div className="bg-gray-700/30 rounded-lg p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-white">Lab Kit Accountability</h3>
-                  <span className="text-xs px-2 py-1 rounded border border-blue-600 text-blue-300 bg-blue-900/30">
-                    Required by schedule
-                  </span>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="relative">
-                    <label className="block text-sm font-medium text-gray-300 mb-1">Accession Number</label>
-                    {(isEditing || (visit.lab_kit_required || inferredRequirements.lab_kit_required)) ? (
-                      <div className="relative">
-                        <input
-                          type="text"
-                          value={formData.accession_number}
-                          onChange={(e) => handleAccessionNumberChange(e.target.value)}
-                          onFocus={() => setShowAccessionDropdown(formData.accession_number.length > 0 && filteredLabKits.length > 0)}
-                          onBlur={() => setTimeout(() => setShowAccessionDropdown(false), 200)} // Delay to allow click on dropdown
-                          className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="Type accession number..."
-                        />
-                        
-                        {/* Autocomplete Dropdown */}
-                        {showAccessionDropdown && filteredLabKits.length > 0 && (
-                          <div className="absolute z-10 w-full mt-1 bg-gray-700 border border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                            {filteredLabKits.map((kit) => (
-                              <button
-                                key={kit.id}
-                                onClick={() => handleAccessionSelect(kit.accession_number)}
-                                className="w-full px-3 py-2 text-left text-gray-100 hover:bg-gray-600 focus:bg-gray-600 focus:outline-none first:rounded-t-lg last:rounded-b-lg"
-                              >
-                                <div className="flex justify-between items-center">
-                                  <div>
-                                    <span className="font-medium">{kit.accession_number}</span>
-                                    {kit.kit_type && (
-                                      <span className="ml-2 text-sm text-gray-400">({kit.kit_type})</span>
-                                    )}
-                                  </div>
-                                  {kit.expiration_date && (
-                                    <span className="text-xs text-gray-400">
-                                      Exp: {formatDateUTC(kit.expiration_date)}
-                                    </span>
-                                  )}
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-gray-100">{visit.accession_number || '-'}</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1">Airway Bill Number</label>
-                    {(isEditing || (visit.lab_kit_required || inferredRequirements.lab_kit_required)) ? (
-                      <input
-                        type="text"
-                        value={formData.airway_bill_number}
-                        onChange={(e) => handleChange('airway_bill_number', e.target.value)}
-                        className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    ) : (
-                      <p className="text-gray-100">{visit.airway_bill_number || '-'}</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1">Lab Kit Shipped Date</label>
-                    {(isEditing || (visit.lab_kit_required || inferredRequirements.lab_kit_required)) ? (
-                      <input
-                        type="date"
-                        value={formData.lab_kit_shipped_date}
-                        onChange={(e) => handleChange('lab_kit_shipped_date', e.target.value)}
-                        className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    ) : (
-                      <p className="text-gray-100">
-                        {visit.lab_kit_shipped_date ? formatDate(visit.lab_kit_shipped_date) : '-'}
-                      </p>
-                    )}
-                  </div>
-                </div>
+                <option value="scheduled">Scheduled</option>
+                <option value="completed">Completed</option>
+                <option value="missed">Missed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            ) : (
+              <div className="flex items-center space-x-2">
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                  visit.status === 'completed' ? 'bg-green-900/50 text-green-300 border border-green-600/50' :
+                  visit.status === 'scheduled' ? 'bg-blue-900/50 text-blue-300 border border-blue-600/50' :
+                  visit.status === 'missed' ? 'bg-red-900/50 text-red-300 border border-red-600/50' :
+                  'bg-gray-900/50 text-gray-300 border border-gray-600/50'
+                }`}>
+                  {visit.status}
+                </span>
               </div>
             )}
-
-            {/* RIGHT: IP Accountability + Local Labs + Notes */}
-            <div className="space-y-6">
-              {/* IP Accountability */}
-              <div className="bg-gray-700/30 rounded-lg p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">IP Accountability</h3>
-
-                {/* Dispense at this visit section */}
-                <div className="mb-6">
-                  <h4 className="text-md font-semibold text-gray-100 mb-3">Dispense at this visit</h4>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-1">First Dose of This Assignment</label>
-                      {isEditing ? (
-                        <input
-                          type="date"
-                          value={formData.ip_start_date}
-                          onChange={(e) => handleChange('ip_start_date', e.target.value)}
-                          className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      ) : (
-                        <p className="text-gray-100">{visit.ip_start_date ? formatDate(visit.ip_start_date) : '-'}</p>
-                      )}
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-1">Bottle or Kit Number</label>
-                        {isEditing ? (
-                          <input
-                            type="text"
-                            value={formData.ip_id}
-                            onChange={(e) => handleChange('ip_id', e.target.value)}
-                            className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="Enter bottle/kit number"
-                          />
-                        ) : (
-                          <p className="text-gray-100">{visit.ip_id || '-'}</p>
-                        )}
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-1">Dispensed (# of tablets/pills per bottle/kit)</label>
-                        {isEditing ? (
-                          <input
-                            type="number"
-                            value={formData.ip_dispensed}
-                            onChange={(e) => handleChange('ip_dispensed', e.target.value)}
-                            className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="Number dispensed"
-                          />
-                        ) : (
-                          <p className="text-gray-100">{visit.ip_dispensed || '-'}</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Returns from previous visit section */}
-                <div className="mb-4">
-                  <h4 className="text-md font-semibold text-gray-100 mb-3">Returns from previous visit</h4>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-1">Last Dose from Assignment</label>
-                      {isEditing ? (
-                        <input
-                          type="date"
-                          value={formData.ip_last_dose_date}
-                          onChange={(e) => handleChange('ip_last_dose_date', e.target.value)}
-                          className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      ) : (
-                        <p className="text-gray-100">{visit.ip_last_dose_date ? formatDate(visit.ip_last_dose_date) : '-'}</p>
-                      )}
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-1">Bottle or Kit Number (for returns)</label>
-                        {isEditing ? (
-                          <input
-                            type="text"
-                            value={formData.return_ip_id}
-                            onChange={(e) => handleChange('return_ip_id', e.target.value)}
-                            className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="Enter bottle/kit number being returned"
-                          />
-                        ) : (
-                          <p className="text-gray-100">{visit.return_ip_id || '-'}</p>
-                        )}
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-1">IP Returned</label>
-                        {isEditing ? (
-                          <input
-                            type="number"
-                            value={formData.ip_returned}
-                            onChange={(e) => handleChange('ip_returned', e.target.value)}
-                            className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="Number returned"
-                          />
-                        ) : (
-                          <p className="text-gray-100">{visit.ip_returned || '-'}</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-              </div>
-
-              {/* Local Labs */}
-              <div className="bg-gray-700/30 rounded-lg p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-white">Local Labs</h3>
-                  {(visit.local_labs_required || inferredRequirements.local_labs_required) && (
-                    <span className="text-xs px-2 py-1 rounded border border-blue-600 text-blue-300 bg-blue-900/30">
-                      Required by schedule
-                    </span>
-                  )}
-                </div>
-                <div className="space-y-4">
-                  {(visit.local_labs_required || inferredRequirements.local_labs_required) && (
-                    <div className="flex items-center">
-                      {isEditing ? (
-                        <input
-                          type="checkbox"
-                          checked={formData.local_labs_completed}
-                          onChange={(e) => handleChange('local_labs_completed', e.target.checked)}
-                          className="mr-2 rounded"
-                        />
-                      ) : (
-                        <div
-                          className={
-                            'w-4 h-4 mr-2 rounded border ' +
-                            (visit.local_labs_completed ? 'bg-green-600 border-green-600' : 'border-gray-600')
-                          }
-                        >
-                          {visit.local_labs_completed && (
-                            <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                              <path
-                                fillRule="evenodd"
-                                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                clipRule="evenodd"
-                              />
-                            </svg>
-                          )}
-                        </div>
-                      )}
-                      <span className="text-gray-300">Local labs completed</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Notes */}
-              <div className="bg-gray-700/30 rounded-lg p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">Notes</h3>
-                {isEditing ? (
-                  <textarea
-                    value={formData.notes}
-                    onChange={(e) => handleChange('notes', e.target.value)}
-                    rows={4}
-                    className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-vertical"
-                    placeholder="Add notes about this visit..."
-                  />
-                ) : (
-                  <p className="text-gray-300 whitespace-pre-wrap">{visit.notes || 'No notes recorded'}</p>
-                )}
-              </div>
-            </div>
           </div>
 
-          {/* Footer Actions */}
-          <div className="mt-8 pt-6 border-t border-gray-700">
-            <div className="flex items-center">
-              <div className="flex-1">
-                <button onClick={onClose} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg">
-                  Close
-                </button>
+          {/* Lab Kit Section */}
+          {(inferredRequirements.lab_kit_required || visit.lab_kit_required) && (
+            <div className="bg-gray-700/30 rounded-lg p-4 space-y-4">
+              <h3 className="text-lg font-semibold text-white">Lab Kit Accountability</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="relative">
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Accession Number</label>
+                  {isEditing ? (
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={formData.accession_number}
+                        onChange={(e) => handleAccessionNumberChange(e.target.value)}
+                        onFocus={() => setShowAccessionDropdown(formData.accession_number.length > 0 && filteredLabKits.length > 0)}
+                        onBlur={() => setTimeout(() => setShowAccessionDropdown(false), 200)}
+                        className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Search or enter accession number"
+                      />
+                      {showAccessionDropdown && (
+                        <div className="absolute top-full left-0 right-0 bg-gray-700 border border-gray-600 rounded-lg mt-1 max-h-40 overflow-y-auto z-10">
+                          {filteredLabKits.map(kit => (
+                            <button
+                              key={kit.id}
+                              type="button"
+                              onClick={() => handleAccessionSelect(kit.accession_number)}
+                              className="w-full text-left px-3 py-2 hover:bg-gray-600 text-gray-100 text-sm border-b border-gray-600 last:border-b-0"
+                            >
+                              <div className="font-mono">{kit.accession_number}</div>
+                              <div className="text-xs text-gray-400">{kit.kit_type} • Expires: {formatDateUTC(kit.expiration_date)}</div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-gray-100">{visit.accession_number || '-'}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Airway Bill Number</label>
+                  {isEditing ? (
+                    <input
+                      type="text"
+                      value={formData.airway_bill_number}
+                      onChange={(e) => handleChange('airway_bill_number', e.target.value)}
+                      className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Tracking number"
+                    />
+                  ) : (
+                    <p className="text-gray-100">{visit.airway_bill_number || '-'}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Shipped Date</label>
+                  {isEditing ? (
+                    <input
+                      type="date"
+                      value={formData.lab_kit_shipped_date}
+                      onChange={(e) => handleChange('lab_kit_shipped_date', e.target.value)}
+                      className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  ) : (
+                    <p className="text-gray-100">{visit.lab_kit_shipped_date ? formatDateUTC(visit.lab_kit_shipped_date) : '-'}</p>
+                  )}
+                </div>
               </div>
-              <div className="flex-1 flex justify-center">
+            </div>
+          )}
+
+          {/* Multi-Bottle Drug Accountability Section */}
+          {(inferredRequirements.drug_dispensing_required || visit.drug_dispensing_required) && (
+            <div className="bg-gray-700/30 rounded-lg p-4 space-y-4">
+              <h3 className="text-lg font-semibold text-white">Investigational Product Accountability</h3>
+              
+              {/* Dispensed Bottles */}
+              <div>
+                <MultiBottleEntry
+                  bottles={formData.dispensed_bottles}
+                  onChange={(bottles) => handleChange('dispensed_bottles', bottles)}
+                  type="dispensing"
+                  disabled={!isEditing}
+                />
+              </div>
+
+              {/* Returned Bottles */}
+              <div className="mt-6">
+                <MultiBottleEntry
+                  bottles={formData.returned_bottles}
+                  onChange={(bottles) => handleChange('returned_bottles', bottles)}
+                  type="returns"
+                  disabled={!isEditing}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Local Labs */}
+          {(inferredRequirements.local_labs_required || visit.local_labs_required) && (
+            <div className="bg-gray-700/30 rounded-lg p-4">
+              <h3 className="text-lg font-semibold text-white mb-4">Local Labs</h3>
+              <div className="flex items-center space-x-2">
+                {isEditing ? (
+                  <input
+                    type="checkbox"
+                    checked={formData.local_labs_completed}
+                    onChange={(e) => handleChange('local_labs_completed', e.target.checked)}
+                    className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                  />
+                ) : (
+                  <div className={`w-4 h-4 rounded ${visit.local_labs_completed ? 'bg-green-600' : 'bg-gray-600'}`} />
+                )}
+                <label className="text-gray-300">Local labs completed</label>
+              </div>
+            </div>
+          )}
+
+          {/* Notes */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Notes</label>
+            {isEditing ? (
+              <textarea
+                value={formData.notes}
+                onChange={(e) => handleChange('notes', e.target.value)}
+                className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                rows={3}
+                placeholder="Visit notes..."
+              />
+            ) : (
+              <p className="text-gray-100">{visit.notes || '-'}</p>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between p-6 border-t border-gray-700">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-gray-300 hover:text-white transition-colors"
+          >
+            Close
+          </button>
+          
+          <div className="flex items-center space-x-3">
+            {isEditing ? (
+              <>
                 <button
-                  onClick={async () => {
-                    if (!visit) return
-                    try {
-                      setSaving(true)
-                      const { data: { session } } = await supabase.auth.getSession()
-                      const token = session?.access_token
-                      if (!token) return
-                      const body = {
-                        status: 'completed' as VisitStatus,
-                        visit_date: visit.visit_date,
-                        ip_start_date: formData.ip_start_date || null,
-                        ip_last_dose_date: formData.ip_last_dose_date || null,
-                        accession_number: formData.accession_number || null,
-                        airway_bill_number: formData.airway_bill_number || null,
-                        lab_kit_shipped_date: formData.lab_kit_shipped_date || null,
-                        ip_dispensed: formData.ip_dispensed ? parseInt(formData.ip_dispensed) : null,
-                        ip_returned: formData.ip_returned ? parseInt(formData.ip_returned) : null,
-                        ip_id: formData.ip_id || null,
-                        return_ip_id: formData.return_ip_id || null,
-                        local_labs_completed: formData.local_labs_completed
-                      }
-                      const resp = await fetch('/api/subject-visits/' + visitId + '/ip-accountability', {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-                        body: JSON.stringify(body)
-                      })
-                      if (resp.ok) {
-                        // Update lab kit status to 'used' if accession number was provided
-                        if (formData.accession_number?.trim()) {
-                          try {
-                            await updateLabKitStatus(formData.accession_number.trim(), 'used', token)
-                          } catch (error) {
-                            console.warn('Failed to update lab kit status:', error)
-                          }
-                        }
-                        
-                        try {
-                          await upsertDrugComplianceForIP(visit.visit_date)
-                        } catch (e) {
-                          console.warn('Bottle compliance upsert failed:', e)
-                          showToast('IP compliance update failed', 'error')
-                        }
-                        onUpdate()
-                        showToast('Visit completed', 'success')
-                        onClose()
-                      } else {
-                        const r = await resp.json().catch(() => ({}))
-                        alert('Failed to complete visit: ' + (r.error || resp.status))
-                      }
-                    } catch (e) {
-                      console.error('Complete visit error:', e)
-                      alert('Failed to complete visit')
-                    } finally {
-                      setSaving(false)
-                    }
-                  }}
-                  className="px-6 py-2 bg-green-700 hover:bg-green-800 text-white rounded-lg font-semibold"
+                  onClick={() => setIsEditing(false)}
+                  className="px-4 py-2 text-gray-300 hover:text-white transition-colors"
+                  disabled={saving}
                 >
-                  Complete Visit
+                  Cancel
                 </button>
-              </div>
-              <div className="flex-1 flex justify-end">
                 <button
                   onClick={handleSave}
                   disabled={saving}
-                  className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold disabled:opacity-50"
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
                 >
                   {saving ? 'Saving...' : 'Save Changes'}
                 </button>
-              </div>
-            </div>
+              </>
+            ) : (
+              <button
+                onClick={() => setIsEditing(true)}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Edit Visit
+              </button>
+            )}
           </div>
         </div>
       </div>

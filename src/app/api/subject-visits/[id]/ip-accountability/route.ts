@@ -44,40 +44,170 @@ export async function PUT(
 
     const requestData = await request.json()
     
-    // Map request data to VisitIPData format
-    const visitData: VisitIPData = {
-      visit_id: resolvedParams.id,
-      visit_date: requestData.visit_date || requestData.scheduled_date,
-      status: requestData.status || 'completed',
+    // Handle multi-bottle data if present
+    if (requestData.dispensed_bottles || requestData.returned_bottles) {
+      // Multi-bottle format - save each bottle separately
+      const dispensedBottles = requestData.dispensed_bottles || []
+      const returnedBottles = requestData.returned_bottles || []
       
-      // New dispensing
-      ip_id_new: requestData.ip_id,
-      ip_dispensed_new: requestData.ip_dispensed ? parseInt(requestData.ip_dispensed) : undefined,
-      ip_start_date_new: requestData.ip_start_date,
+      // Save dispensed bottles
+      for (const bottle of dispensedBottles) {
+        if (bottle.ip_id && bottle.count > 0 && bottle.start_date) {
+          const { error } = await supabase
+            .from('drug_compliance')
+            .insert({
+              subject_id: vAny.subject_id,
+              user_id: user.id,
+              assessment_date: bottle.start_date,
+              dispensed_count: bottle.count,
+              returned_count: 0,
+              expected_taken: 0, // Will be calculated by trigger
+              visit_id: resolvedParams.id,
+              ip_id: bottle.ip_id.trim(),
+              dispensing_date: bottle.start_date
+            })
+          
+          if (error) {
+            console.error('Error saving dispensed bottle:', error)
+            return NextResponse.json({ 
+              error: 'Failed to save dispensed bottle data',
+              detail: error.message 
+            }, { status: 500 })
+          }
+        }
+      }
       
-      // Return from previous visit
-      ip_return_bottle_id: requestData.return_ip_id,
-      ip_returned_count: requestData.ip_returned ? parseInt(requestData.ip_returned) : undefined,
-      ip_last_dose_date_current_visit: requestData.ip_last_dose_date,
-      
-      // Other fields
-      procedures_completed: requestData.procedures_completed,
-      notes: requestData.notes,
-      accession_number: requestData.accession_number,
-      airway_bill_number: requestData.airway_bill_number,
-      lab_kit_shipped_date: requestData.lab_kit_shipped_date,
-      local_labs_completed: requestData.local_labs_completed
-    }
+      // Save returned bottles
+      for (const bottle of returnedBottles) {
+        if (bottle.ip_id && bottle.count > 0 && bottle.last_dose_date) {
+          // Find existing compliance record for this bottle
+          const { data: existing } = await supabase
+            .from('drug_compliance')
+            .select('*')
+            .eq('subject_id', vAny.subject_id)
+            .eq('ip_id', bottle.ip_id.trim())
+            .order('dispensing_date', { ascending: false })
+            .limit(1)
 
-    // Save with transaction
-    const result = await saveVisitWithIP(vAny.subject_id, user.id, visitData)
-    
-    if (!result.success) {
-      console.error('IP accountability save failed:', result.error)
-      return NextResponse.json({ 
-        error: 'Failed to save visit with IP accountability',
-        detail: result.error 
-      }, { status: 500 })
+          if (existing && existing.length > 0) {
+            // Update existing record with return data
+            const startDate = new Date(existing[0].dispensing_date || bottle.last_dose_date)
+            const endDate = new Date(bottle.last_dose_date)
+            const daysDifference = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)))
+            const expected = daysDifference * 1 // Default 1 dose per day
+
+            const { error } = await supabase
+              .from('drug_compliance')
+              .update({
+                returned_count: bottle.count,
+                assessment_date: bottle.last_dose_date,
+                expected_taken: expected,
+                ip_last_dose_date: bottle.last_dose_date
+              })
+              .eq('id', existing[0].id)
+              
+            if (error) {
+              console.error('Error updating returned bottle:', error)
+              return NextResponse.json({ 
+                error: 'Failed to update returned bottle data',
+                detail: error.message 
+              }, { status: 500 })
+            }
+          } else {
+            // Create new return-only record if no dispensing record exists
+            const { error } = await supabase
+              .from('drug_compliance')
+              .insert({
+                subject_id: vAny.subject_id,
+                user_id: user.id,
+                assessment_date: bottle.last_dose_date,
+                dispensed_count: 0,
+                returned_count: bottle.count,
+                expected_taken: 0,
+                visit_id: resolvedParams.id,
+                ip_id: bottle.ip_id.trim(),
+                ip_last_dose_date: bottle.last_dose_date
+              })
+              
+            if (error) {
+              console.error('Error saving returned bottle:', error)
+              return NextResponse.json({ 
+                error: 'Failed to save returned bottle data',
+                detail: error.message 
+              }, { status: 500 })
+            }
+          }
+        }
+      }
+      
+      // Update visit record with summary data (using first bottle for backward compatibility)
+      const updateData: any = {
+        status: requestData.status || 'completed'
+      }
+      
+      if (dispensedBottles.length > 0) {
+        const firstDispensed = dispensedBottles[0]
+        updateData.ip_dispensed = firstDispensed.count
+        updateData.ip_id = firstDispensed.ip_id
+        updateData.ip_start_date = firstDispensed.start_date
+      }
+      
+      if (returnedBottles.length > 0) {
+        const firstReturned = returnedBottles[0]
+        updateData.ip_returned = firstReturned.count
+        updateData.return_ip_id = firstReturned.ip_id
+        updateData.ip_last_dose_date = firstReturned.last_dose_date
+      }
+      
+      const { error: visitError } = await supabase
+        .from('subject_visits')
+        .update(updateData)
+        .eq('id', resolvedParams.id)
+        
+      if (visitError) {
+        console.error('Error updating visit:', visitError)
+        return NextResponse.json({ 
+          error: 'Failed to update visit record',
+          detail: visitError.message 
+        }, { status: 500 })
+      }
+      
+    } else {
+      // Legacy single-bottle format - use existing logic
+      const visitData: VisitIPData = {
+        visit_id: resolvedParams.id,
+        visit_date: requestData.visit_date || requestData.scheduled_date,
+        status: requestData.status || 'completed',
+        
+        // New dispensing
+        ip_id_new: requestData.ip_id,
+        ip_dispensed_new: requestData.ip_dispensed ? parseInt(requestData.ip_dispensed) : undefined,
+        ip_start_date_new: requestData.ip_start_date,
+        
+        // Return from previous visit
+        ip_return_bottle_id: requestData.return_ip_id,
+        ip_returned_count: requestData.ip_returned ? parseInt(requestData.ip_returned) : undefined,
+        ip_last_dose_date_current_visit: requestData.ip_last_dose_date,
+        
+        // Other fields
+        procedures_completed: requestData.procedures_completed,
+        notes: requestData.notes,
+        accession_number: requestData.accession_number,
+        airway_bill_number: requestData.airway_bill_number,
+        lab_kit_shipped_date: requestData.lab_kit_shipped_date,
+        local_labs_completed: requestData.local_labs_completed
+      }
+
+      // Save with transaction using existing function
+      const result = await saveVisitWithIP(vAny.subject_id, user.id, visitData)
+      
+      if (!result.success) {
+        console.error('IP accountability save failed:', result.error)
+        return NextResponse.json({ 
+          error: 'Failed to save visit with IP accountability',
+          detail: result.error 
+        }, { status: 500 })
+      }
     }
 
     // Return updated visit data
@@ -89,7 +219,7 @@ export async function PUT(
 
     return NextResponse.json({ 
       visit: updatedVisit,
-      ip_result: result
+      success: true
     })
     
   } catch (error) {
