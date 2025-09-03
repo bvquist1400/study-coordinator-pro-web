@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { formatDateUTC } from '@/lib/date-utils'
 import MultiBottleEntry, { type BottleEntry } from './MultiBottleEntry'
@@ -62,7 +62,7 @@ interface VisitDetailModalProps {
   onUpdate: () => void
 }
 
-interface DrugComplianceRow {
+interface _DrugComplianceRow {
   subject_id: string
   user_id: string
   assessment_date: string
@@ -82,7 +82,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
   const [isEditing, setIsEditing] = useState(false)
   const [availableLabKits, setAvailableLabKits] = useState<Array<{ id: string; accession_number: string; kit_type: string; expiration_date: string }>>([])
   const [showAccessionDropdown, setShowAccessionDropdown] = useState(false)
-  const [_dosingFactor, setDosingFactor] = useState(1)
+  const [_dosingFactor, _setDosingFactor] = useState(1)
 
   const [formData, setFormData] = useState<FormData>({
     status: 'scheduled',
@@ -104,9 +104,9 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
 
   useEffect(() => {
     loadVisit()
-  }, [visitId])
+  }, [loadVisit])
 
-  const loadVisit = async () => {
+  const loadVisit = useCallback(async () => {
     try {
       setLoading(true)
       const { data: { session } } = await supabase.auth.getSession()
@@ -173,7 +173,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
     } finally {
       setLoading(false)
     }
-  }
+  }, [visitId])
 
   // Load available lab kits for autocomplete
   useEffect(() => {

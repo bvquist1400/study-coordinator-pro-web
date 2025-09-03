@@ -2,7 +2,7 @@
 
 import React from 'react'
 
-interface LegendItem {
+interface _LegendItem {
   color: string
   label: string
   description?: string

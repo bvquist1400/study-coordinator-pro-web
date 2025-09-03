@@ -65,7 +65,7 @@ export async function PUT(
               visit_id: resolvedParams.id,
               ip_id: bottle.ip_id.trim(),
               dispensing_date: bottle.start_date
-            })
+            } as any)
           
           if (error) {
             console.error('Error saving dispensed bottle:', error)
@@ -91,7 +91,7 @@ export async function PUT(
 
           if (existing && existing.length > 0) {
             // Update existing record with return data
-            const startDate = new Date(existing[0].dispensing_date || bottle.last_dose_date)
+            const startDate = new Date((existing[0] as any).dispensing_date || bottle.last_dose_date)
             const endDate = new Date(bottle.last_dose_date)
             const daysDifference = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)))
             const expected = daysDifference * 1 // Default 1 dose per day
@@ -103,8 +103,8 @@ export async function PUT(
                 assessment_date: bottle.last_dose_date,
                 expected_taken: expected,
                 ip_last_dose_date: bottle.last_dose_date
-              })
-              .eq('id', existing[0].id)
+              } as any)
+              .eq('id', (existing[0] as any).id)
               
             if (error) {
               console.error('Error updating returned bottle:', error)

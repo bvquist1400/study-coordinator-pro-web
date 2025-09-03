@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { formatDateUTC, parseDateUTC } from '@/lib/date-utils'
 
@@ -104,9 +104,9 @@ export default function SubjectVisitTimeline({
 
   useEffect(() => {
     loadTimelineData()
-  }, [subjectId, studyId, enrollmentDate])
+  }, [loadTimelineData])
 
-  const loadTimelineData = async () => {
+  const loadTimelineData = useCallback(async () => {
     try {
       setLoading(true)
       console.log('🔍 Loading timeline for study:', studyId)
@@ -185,7 +185,7 @@ export default function SubjectVisitTimeline({
       const timeline = buildCompleteTimeline(schedules || [], visits || [], enrollmentDate)
       // If no schedules but we have visits, show them anyway
       if ((!schedules || schedules.length === 0) && visits && visits.length > 0) {
-        const visitTimeline = visits.map((visit, index) => ({
+        const visitTimeline = visits.map((visit, _index) => ({
           id: visit.id,
           visit_name: visit.visit_name,
           visit_number: null,
@@ -211,7 +211,7 @@ export default function SubjectVisitTimeline({
     } finally {
       setLoading(false)
     }
-  }
+  }, [subjectId, studyId, enrollmentDate])
 
   const buildCompleteTimeline = (
     schedules: VisitSchedule[], 
@@ -417,7 +417,7 @@ export default function SubjectVisitTimeline({
             <div className="text-sm text-gray-400 mb-4">
               Showing {timelineVisits.length} visits
             </div>
-            {timelineVisits.map((visit, index) => {
+            {timelineVisits.map((visit, _index) => {
               const isExpanded = expandedVisits.has(visit.id)
               
               return (
@@ -559,7 +559,7 @@ export default function SubjectVisitTimeline({
                 </svg>
                 <h3 className="text-lg font-medium text-white mb-2">No Visit Schedule Available</h3>
                 <p className="text-gray-400 mb-4">
-                  This study doesn't have a Schedule of Events (SOE) configured yet, and no individual visits have been scheduled for this subject.
+                  This study doesn&apos;t have a Schedule of Events (SOE) configured yet, and no individual visits have been scheduled for this subject.
                 </p>
               </div>
               

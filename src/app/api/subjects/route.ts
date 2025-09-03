@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
       }
 
       // Load Schedule of Events once
-      const { data: soaVisits } = await supabase
+      const { data: _soaVisits } = await supabase
         .from('visit_schedules')
         .select('id, visit_name, visit_day')
         .eq('study_id', studyId)

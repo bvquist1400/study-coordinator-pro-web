@@ -104,14 +104,14 @@ const statusColors = {
   withdrawn: 'bg-gray-900/30 text-gray-300 border-gray-600/50'
 }
 
-const visitStatusColors = {
+const _visitStatusColors = {
   completed: 'bg-green-600',
   scheduled: 'bg-blue-600',
   missed: 'bg-red-600',
   cancelled: 'bg-gray-600'
 }
 
-const visitStatusLabels = {
+const _visitStatusLabels = {
   completed: 'Completed',
   scheduled: 'Scheduled',
   missed: 'Missed',
@@ -121,7 +121,7 @@ const visitStatusLabels = {
 export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose, onSubjectUpdated }: SubjectDetailModalProps) {
   const [subject, setSubject] = useState<Subject | null>(null)
   const [metrics, setMetrics] = useState<SubjectMetrics | null>(null)
-  const [visits, setVisits] = useState<Visit[]>([])
+  const [_visits, setVisits] = useState<Visit[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'timeline' | 'drug-compliance' | 'notes'>('timeline')
   const [showEditForm, setShowEditForm] = useState(false)
@@ -213,7 +213,7 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
 
   const formatDateTime = (dateString: string | null) => (dateString ? formatDateTimeUTC(dateString, 'en-US') : null)
 
-  const getVisitWindow = (visit: Visit) => {
+  const _getVisitWindow = (visit: Visit) => {
     if (!visit.visit_schedules) return null
     
     const windowBefore = visit.visit_schedules.window_before_days || 0
