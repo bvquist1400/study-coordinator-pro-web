@@ -289,14 +289,16 @@ export async function GET(request: NextRequest) {
       })
     })
 
-    // Drug compliance alerts (low compliance)
+    // Drug compliance alerts (low compliance or overuse > 100%)
     const lowDrugCompliance = drugCompliance?.filter(record => {
       const drugRecord = record as any
       const compliance = drugRecord.compliance_percentage
       
       // Only include records with valid compliance_percentage
       // Skip NULL values (unreturned bottles)
-      return compliance !== null && compliance !== undefined && Number(compliance) < 80
+      if (compliance === null || compliance === undefined) return false
+      const value = Number(compliance)
+      return value < 80 || value > 100
     }).slice(0, 5) || []
 
     lowDrugCompliance.forEach(record => {
@@ -323,7 +325,9 @@ export async function GET(request: NextRequest) {
       return drugRecord.compliance_percentage !== null && drugRecord.compliance_percentage !== undefined
     }).map(record => {
       const drugRecord = record as any
-      return Number(drugRecord.compliance_percentage)
+      // Cap at 100 for averaging so overuse doesn't inflate averages
+      const value = Number(drugRecord.compliance_percentage)
+      return Math.min(value, 100)
     }) || []
 
     const overallDrugRate = allDrugCompliance.length > 0

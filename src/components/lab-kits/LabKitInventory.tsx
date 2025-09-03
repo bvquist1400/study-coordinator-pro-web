@@ -22,7 +22,8 @@ interface LabKitWithVisit extends LabKit {
 export default function LabKitInventory({ studyId, refreshKey, onRefresh, showExpiringOnly }: LabKitInventoryProps) {
   const [labKits, setLabKits] = useState<LabKitWithVisit[]>([])
   const [loading, setLoading] = useState(true)
-  const [statusFilter, setStatusFilter] = useState<string>('all')
+  // Default to showing Available kits
+  const [statusFilter, setStatusFilter] = useState<string>('available')
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedKit, setSelectedKit] = useState<LabKitWithVisit | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
