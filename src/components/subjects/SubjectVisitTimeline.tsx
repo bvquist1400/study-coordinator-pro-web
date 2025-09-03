@@ -102,10 +102,6 @@ export default function SubjectVisitTimeline({
   const [loading, setLoading] = useState(true)
   const [expandedVisits, setExpandedVisits] = useState<Set<string>>(new Set())
 
-  useEffect(() => {
-    loadTimelineData()
-  }, [loadTimelineData])
-
   const loadTimelineData = useCallback(async () => {
     try {
       setLoading(true)
@@ -212,6 +208,10 @@ export default function SubjectVisitTimeline({
       setLoading(false)
     }
   }, [subjectId, studyId, enrollmentDate])
+
+  useEffect(() => {
+    loadTimelineData()
+  }, [loadTimelineData])
 
   const buildCompleteTimeline = (
     schedules: VisitSchedule[], 
