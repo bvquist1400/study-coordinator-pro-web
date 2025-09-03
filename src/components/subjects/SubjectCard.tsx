@@ -1,5 +1,7 @@
 'use client'
 
+import { formatDateUTC } from '@/lib/date-utils'
+
 interface Subject {
   id: string
   subject_number: string
@@ -70,8 +72,6 @@ const statusLabels = {
   discontinued: 'Discontinued',
   withdrawn: 'Withdrawn'
 }
-
-import { formatDateUTC } from '@/lib/date-utils'
 
 export default function SubjectCard({ subject, metrics, onClick, onScheduleVisit }: SubjectCardProps) {
   const getComplianceColor = (rate: number) => {

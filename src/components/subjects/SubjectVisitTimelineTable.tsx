@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { formatDateUTC, parseDateUTC } from '@/lib/date-utils'
 
@@ -105,13 +105,9 @@ export default function SubjectVisitTimelineTable({
   const [timelineVisits, setTimelineVisits] = useState<TimelineVisit[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
-  const [editingCell, setEditingCell] = useState<{visitId: string, field: string} | null>(null)
+  const [_editingCell, setEditingCell] = useState<{visitId: string, field: string} | null>(null)
 
-  useEffect(() => {
-    loadTimelineData()
-  }, [subjectId, studyId, anchorDate])
-
-  const loadTimelineData = async () => {
+  const loadTimelineData = useCallback(async () => {
     try {
       setLoading(true)
 
@@ -162,7 +158,11 @@ export default function SubjectVisitTimelineTable({
     } finally {
       setLoading(false)
     }
-  }
+  }, [subjectId, studyId, anchorDate])
+
+  useEffect(() => {
+    loadTimelineData()
+  }, [loadTimelineData])
 
   const buildCompleteTimeline = (
     schedules: VisitSchedule[], 
@@ -188,7 +188,7 @@ export default function SubjectVisitTimelineTable({
     })
 
     // Process each scheduled visit
-    schedules.forEach((schedule, index) => {
+    schedules.forEach((schedule, _index) => {
       const scheduledDate = new Date(anchorDateObj)
       scheduledDate.setDate(scheduledDate.getDate() + schedule.visit_day)
       
@@ -294,7 +294,7 @@ export default function SubjectVisitTimelineTable({
     return visit.status.toUpperCase()
   }
 
-  const handleCellEdit = (visitId: string, field: string, value: string | number) => {
+  const _handleCellEdit = (visitId: string, field: string, value: string | number) => {
     // TODO: Implement cell editing logic
     console.log('Edit cell:', visitId, field, value)
     setEditingCell(null)
@@ -369,9 +369,9 @@ export default function SubjectVisitTimelineTable({
               </tr>
             </thead>
             <tbody>
-              {timelineVisits.map((visit, index) => {
+              {timelineVisits.map((visit, _index) => {
                 const isExpanded = expandedRows.has(visit.id)
-                const rowBg = index % 2 === 0 ? 'bg-gray-800/20' : 'bg-gray-800/10'
+                const rowBg = _index % 2 === 0 ? 'bg-gray-800/20' : 'bg-gray-800/10'
                 
                 return (
                   <>
