@@ -17,7 +17,7 @@ interface ComplianceLegendProps {
   className?: string
 }
 
-const LEGEND_CONFIGS = {
+const LEGEND_CONFIGS: Record<'compliance' | 'status' | 'severity' | 'activity', _LegendItem[]> = {
   compliance: [
     { 
       color: 'bg-green-500', 
@@ -78,7 +78,7 @@ export default function ComplianceLegend({
   showDescriptions = false,
   className = ''
 }: ComplianceLegendProps) {
-  const items = LEGEND_CONFIGS[type] || []
+  const items: _LegendItem[] = LEGEND_CONFIGS[type] || []
   
   const sizeConfig = {
     sm: {
@@ -115,7 +115,7 @@ export default function ComplianceLegend({
             <div className="min-w-0">
               <div className={`${config.text} font-medium text-gray-200 flex items-center space-x-2`}>
                 <span>{item.label}</span>
-                {item.percentage && (
+                {'percentage' in item && item.percentage && (
                   <span className="text-gray-400 font-normal">({item.percentage})</span>
                 )}
               </div>
