@@ -66,7 +66,7 @@ export async function PUT(
               visit_id: resolvedParams.id,
               ip_id: bottle.ip_id.trim(),
               dispensing_date: bottle.start_date
-            } satisfies DrugComplianceInsert)
+            } as DrugComplianceInsert)
           
           if (error) {
             console.error('Error saving dispensed bottle:', error)
@@ -104,7 +104,7 @@ export async function PUT(
                 assessment_date: bottle.last_dose_date,
                 expected_taken: expected,
                 ip_last_dose_date: bottle.last_dose_date
-              } satisfies DrugComplianceUpdate)
+              } as DrugComplianceUpdate)
               .eq('id', (existing[0] as any).id)
               
             if (error) {
