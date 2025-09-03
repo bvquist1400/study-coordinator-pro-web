@@ -305,6 +305,30 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
     <div className="bg-gray-800/50 rounded-lg border border-gray-700">
       {/* Filters and Search */}
       <div className="p-6 border-b border-gray-700">
+        {/* Status Tabs */}
+        <div className="mb-4 flex flex-wrap gap-2">
+          {[
+            { key: 'available', label: 'Available' },
+            { key: 'assigned', label: 'Reserved/Assigned' },
+            { key: 'used', label: 'Used' },
+            { key: 'shipped', label: 'Shipped' },
+            { key: 'expired', label: 'Expired' },
+            { key: 'all', label: 'All' }
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setStatusFilter(tab.key)}
+              className={`px-3 py-1.5 rounded-md text-sm border transition-colors ${
+                statusFilter === tab.key
+                  ? 'bg-blue-600 text-white border-blue-500'
+                  : 'bg-gray-700/40 text-gray-300 border-gray-600 hover:bg-gray-700/60'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1">
             <input
@@ -315,20 +339,7 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
               className="w-full px-3 py-2 bg-gray-700/50 border border-gray-600 text-gray-100 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
-          <div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2 bg-gray-700/50 border border-gray-600 text-gray-100 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="all">All Status</option>
-              <option value="available">Available</option>
-              <option value="assigned">Assigned</option>
-              <option value="used">Used</option>
-              <option value="shipped">Shipped</option>
-              <option value="expired">Expired</option>
-            </select>
-          </div>
+          {/* Status select retained for accessibility on smaller screens (tabs above) */}
           <div>
             <button
               onClick={() => setGroupByVisit(!groupByVisit)}

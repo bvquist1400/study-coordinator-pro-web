@@ -181,9 +181,10 @@ export default function DashboardPage() {
           .eq('status', 'completed')
           .gte('updated_at', thirty.toISOString())
         if (recentCompleted && recentCompleted.length > 0) {
-          const total = recentCompleted.length
-          const inWin = recentCompleted.filter((v: { is_within_window: boolean | null }) => v.is_within_window === true).length
-          const rate = Math.round((inWin / total) * 100)
+          const eligible = recentCompleted.filter((v: { is_within_window: boolean | null }) => v.is_within_window !== null)
+          const total = eligible.length
+          const inWin = eligible.filter((v: { is_within_window: boolean | null }) => v.is_within_window === true).length
+          const rate = total > 0 ? Math.round((inWin / total) * 100) : 0
           setTimingCompliance({ rate, window: '30d' })
         } else {
           setTimingCompliance({ rate: 0, window: '30d' })

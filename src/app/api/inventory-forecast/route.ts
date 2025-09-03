@@ -70,7 +70,20 @@ export async function GET(request: NextRequest) {
     const futureDate = new Date()
     futureDate.setDate(today.getDate() + days)
 
-    // Query upcoming visits by visit type
+    // Load visit schedule kit requirements (SOE indicates whether a lab kit is required)
+    const { data: visitSchedules } = await supabase
+      .from('visit_schedules')
+      .select('visit_name, procedures')
+      .eq('study_id', studyId)
+
+    const requiresKitByName = new Set<string>()
+    for (const vs of (visitSchedules || []) as Array<{ visit_name: string; procedures: string[] | null }>) {
+      const names = (vs.procedures || []).map(p => String(p).toLowerCase())
+      const requiresKit = names.includes('lab kit') || names.includes('labkit')
+      if (requiresKit) requiresKitByName.add(vs.visit_name)
+    }
+
+    // Query upcoming visits by visit type (only consider visit types that require kits)
     const { data: upcomingVisits, error: visitsError } = await supabase
       .from('subject_visits')
       .select(`
@@ -105,7 +118,9 @@ export async function GET(request: NextRequest) {
 
     // Group upcoming visits by visit name
     type UpcomingVisitRow = { visit_name: string; visit_date: string; subjects: { subject_number: string } }
-    const uVisits = (upcomingVisits || []) as UpcomingVisitRow[]
+    const uVisits = ((upcomingVisits || []) as UpcomingVisitRow[])
+      // Only track visits that require lab kits per SOE
+      .filter(v => requiresKitByName.has(v.visit_name))
     const visitGroups = uVisits.reduce((groups, visit) => {
       const visitName = visit.visit_name
       if (!groups[visitName]) {
@@ -152,10 +167,12 @@ export async function GET(request: NextRequest) {
     const forecast: InventoryForecast[] = []
 
     // Get all unique visit names from both visits and kits
-    const allVisitNames = new Set([
-      ...Object.keys(visitGroups),
-      ...Object.keys(kitGroups).filter(name => name !== 'Unassigned')
-    ])
+    const allVisitNames = new Set(
+      [
+        ...Object.keys(visitGroups),
+        ...Object.keys(kitGroups).filter(name => name !== 'Unassigned')
+      ].filter(name => requiresKitByName.has(name))
+    )
 
     for (const visitName of allVisitNames) {
       const visitsScheduled = visitGroups[visitName]?.length || 0

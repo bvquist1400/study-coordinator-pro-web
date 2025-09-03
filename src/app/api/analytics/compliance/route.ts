@@ -162,7 +162,12 @@ export async function GET(request: NextRequest) {
       const month = visit.updated_at.substring(0, 7)
       if (monthlyData[month]) {
         const visitData = visit as any
-        monthlyData[month].visitTiming.push(visitData.is_within_window ? 100 : 0)
+        // Only include visits with a computed window result; skip nulls
+        if (visitData.is_within_window === true) {
+          monthlyData[month].visitTiming.push(100)
+        } else if (visitData.is_within_window === false) {
+          monthlyData[month].visitTiming.push(0)
+        }
       }
     })
 
@@ -220,8 +225,11 @@ export async function GET(request: NextRequest) {
         }
       }
       
-      studyComplianceMap[study.id].total_visits += 1
-      if (visitData.is_within_window) {
+      // Only factor visits with a computed window; exclude nulls from denominator
+      if (visitData.is_within_window !== null) {
+        studyComplianceMap[study.id].total_visits += 1
+      }
+      if (visitData.is_within_window === true) {
         studyComplianceMap[study.id].within_window_visits += 1
       }
     })
@@ -272,7 +280,7 @@ export async function GET(request: NextRequest) {
     // Visit timing alerts (recent out-of-window visits)
     const recentBadVisits = visits?.filter(v => {
       const visitData = v as any
-      return !visitData.is_within_window
+      return visitData.is_within_window === false
     }).slice(0, 5) || []
 
     recentBadVisits.forEach(visit => {
@@ -316,8 +324,9 @@ export async function GET(request: NextRequest) {
     })
 
     // Calculate summary metrics
-    const totalVisits = visits?.length || 0
-    const withinWindowVisits = visits?.filter(v => (v as any).is_within_window).length || 0
+    const timingEligibleVisits = visits?.filter(v => (v as any).is_within_window !== null) || []
+    const totalVisits = timingEligibleVisits.length
+    const withinWindowVisits = timingEligibleVisits.filter(v => (v as any).is_within_window === true).length
     const overallTimingRate = totalVisits > 0 ? Math.round((withinWindowVisits / totalVisits) * 100) : 0
 
     const allDrugCompliance = drugCompliance?.filter(record => {

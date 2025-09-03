@@ -125,6 +125,17 @@ export default function SubjectVisitTimeline({
       console.log('🔍 Can access visit_schedules table?', allSchedulesError ? 'NO' : 'YES')
       console.log('🔍 Sample schedules in DB:', allSchedules)
       
+      // Load study anchor day for correct Day 0/Day 1 offsets
+      let anchorDay = 0
+      try {
+        const { data: studyRow } = await supabase
+          .from('studies')
+          .select('anchor_day')
+          .eq('id', studyId)
+          .single()
+        anchorDay = (studyRow as any)?.anchor_day ?? 0
+      } catch {}
+
       // Try API route first (might bypass RLS issues)
       let schedules = null
       try {
@@ -178,7 +189,7 @@ export default function SubjectVisitTimeline({
       }
 
       // Build the complete timeline
-      const timeline = buildCompleteTimeline(schedules || [], visits || [], enrollmentDate)
+      const timeline = buildCompleteTimeline(schedules || [], visits || [], enrollmentDate, anchorDay)
       // If no schedules but we have visits, show them anyway
       if ((!schedules || schedules.length === 0) && visits && visits.length > 0) {
         const visitTimeline = visits.map((visit, _index) => ({
@@ -216,7 +227,8 @@ export default function SubjectVisitTimeline({
   const buildCompleteTimeline = (
     schedules: VisitSchedule[], 
     visits: SubjectVisit[], 
-    anchorDate: string
+    anchorDate: string,
+    anchorDay: number = 0
   ): TimelineVisit[] => {
     const timeline: TimelineVisit[] = []
     const anchorDateObj = parseDateUTC(anchorDate) || new Date(anchorDate)
@@ -234,7 +246,8 @@ export default function SubjectVisitTimeline({
     // Process each scheduled visit
     schedules.forEach(schedule => {
       const scheduledDate = new Date(anchorDateObj)
-      scheduledDate.setDate(scheduledDate.getDate() + schedule.visit_day)
+      const anchorOffset = anchorDay === 1 ? 1 : 0
+      scheduledDate.setDate(scheduledDate.getDate() + schedule.visit_day + anchorOffset)
 
       // Calculate window dates
       const windowStart = schedule.window_before_days ? new Date(scheduledDate) : null

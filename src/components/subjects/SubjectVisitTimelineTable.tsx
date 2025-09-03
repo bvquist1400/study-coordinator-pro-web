@@ -119,6 +119,17 @@ export default function SubjectVisitTimelineTable({
         return
       }
 
+      // Load study anchor day for correct Day 0/Day 1 offsets
+      let anchorDay = 0
+      try {
+        const { data: studyRow } = await supabase
+          .from('studies')
+          .select('anchor_day')
+          .eq('id', studyId)
+          .single()
+        anchorDay = (studyRow as any)?.anchor_day ?? 0
+      } catch {}
+
       // Fetch visit schedules via API
       let schedules = null
       try {
@@ -150,7 +161,7 @@ export default function SubjectVisitTimelineTable({
       }
 
       // Build the complete timeline
-      const timeline = buildCompleteTimeline(schedules || [], visits || [], anchorDate)
+      const timeline = buildCompleteTimeline(schedules || [], visits || [], anchorDate, anchorDay)
       setTimelineVisits(timeline)
 
     } catch (error) {
@@ -167,7 +178,8 @@ export default function SubjectVisitTimelineTable({
   const buildCompleteTimeline = (
     schedules: VisitSchedule[], 
     visits: SubjectVisit[], 
-    anchorDate: string
+    anchorDate: string,
+    anchorDay: number = 0
   ): TimelineVisit[] => {
     const timeline: TimelineVisit[] = []
     const anchorDateObj = parseDateUTC(anchorDate) || new Date(anchorDate)
@@ -190,7 +202,8 @@ export default function SubjectVisitTimelineTable({
     // Process each scheduled visit
     schedules.forEach((schedule, _index) => {
       const scheduledDate = new Date(anchorDateObj)
-      scheduledDate.setDate(scheduledDate.getDate() + schedule.visit_day)
+      const anchorOffset = anchorDay === 1 ? 1 : 0
+      scheduledDate.setDate(scheduledDate.getDate() + schedule.visit_day + anchorOffset)
       
 
       // Calculate window dates
