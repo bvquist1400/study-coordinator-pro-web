@@ -54,8 +54,8 @@ export async function PUT(
       // Save dispensed bottles
       for (const bottle of dispensedBottles) {
         if (bottle.ip_id && bottle.count > 0 && bottle.start_date) {
-          const { error } = await supabase
-            .from('drug_compliance')
+          const { error } = await (supabase
+            .from('drug_compliance') as any)
             .insert({
               subject_id: vAny.subject_id,
               user_id: user.id,
@@ -97,8 +97,8 @@ export async function PUT(
             const daysDifference = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)))
             const expected = daysDifference * 1 // Default 1 dose per day
 
-            const { error } = await supabase
-              .from('drug_compliance')
+            const { error } = await (supabase
+              .from('drug_compliance') as any)
               .update({
                 returned_count: bottle.count,
                 assessment_date: bottle.last_dose_date,
@@ -116,8 +116,8 @@ export async function PUT(
             }
           } else {
             // Create new return-only record if no dispensing record exists
-            const { error } = await supabase
-              .from('drug_compliance')
+            const { error } = await (supabase
+              .from('drug_compliance') as any)
               .insert({
                 subject_id: vAny.subject_id,
                 user_id: user.id,
@@ -128,7 +128,7 @@ export async function PUT(
                 visit_id: resolvedParams.id,
                 ip_id: bottle.ip_id.trim(),
                 ip_last_dose_date: bottle.last_dose_date
-              })
+              } as DrugComplianceInsert)
               
             if (error) {
               console.error('Error saving returned bottle:', error)
