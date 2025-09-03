@@ -102,10 +102,6 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
     local_labs_required: false
   })
 
-  useEffect(() => {
-    loadVisit()
-  }, [loadVisit])
-
   const loadVisit = useCallback(async () => {
     try {
       setLoading(true)
@@ -174,6 +170,10 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
       setLoading(false)
     }
   }, [visitId])
+
+  useEffect(() => {
+    loadVisit()
+  }, [loadVisit])
 
   // Load available lab kits for autocomplete
   useEffect(() => {
