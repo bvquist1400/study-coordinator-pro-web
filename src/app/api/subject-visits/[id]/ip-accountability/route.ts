@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser, verifyStudyMembership, createSupabaseAdmin } from '@/lib/api/auth'
 import { saveVisitWithIP, type VisitIPData } from '@/lib/ip-accountability'
-import type { DrugComplianceUpdate, DrugComplianceInsert } from '@/types/database'
+import type { DrugComplianceUpdate, DrugComplianceInsert, SubjectVisitUpdate } from '@/types/database'
 
 // PUT /api/subject-visits/[id]/ip-accountability - Save visit with IP accountability
 export async function PUT(
@@ -160,9 +160,9 @@ export async function PUT(
         updateData.ip_last_dose_date = firstReturned.last_dose_date
       }
       
-      const { error: visitError } = await supabase
-        .from('subject_visits')
-        .update(updateData)
+      const { error: visitError } = await (supabase
+        .from('subject_visits') as any)
+        .update(updateData as SubjectVisitUpdate)
         .eq('id', resolvedParams.id)
         
       if (visitError) {
