@@ -6,10 +6,15 @@ import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Ba
 
 interface VisitPerformance {
   month: string
+  // legacy fields still returned by API
   scheduled: number
-  completed: number
   missed: number
   completion_rate: number
+  // primary series for charting
+  completed: number
+  completed_in_window?: number
+  completed_out_window?: number
+  in_window_rate?: number
 }
 
 interface StudyVisitStats {
@@ -202,9 +207,34 @@ export default function VisitAnalytics({ studyId, className }: VisitAnalyticsPro
         </div>
       </div>
 
+      {/* Status Key */}
+      <div className="bg-gray-800/40 border border-gray-700 rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <h4 className="text-sm font-semibold text-gray-200">Visit Status Key</h4>
+          <div className="hidden sm:flex items-center gap-4 text-xs text-gray-300">
+            <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-green-500"></span>Completed</span>
+            <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500"></span>Scheduled</span>
+            <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-red-500"></span>Missed</span>
+            <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-orange-500"></span>Overdue</span>
+          </div>
+        </div>
+      </div>
+
       {/* Visit Performance Trends */}
       <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-white mb-4">Visit Performance Trends</h3>
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-white">Visit Performance Trends</h3>
+            <p className="text-xs text-gray-400">Completed visits vs completed within window; line shows in-window rate</p>
+          </div>
+          <div className="hidden sm:block text-xs text-gray-300">
+            <div className="flex items-center gap-4">
+              <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-green-500"></span>Completed</span>
+              <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500"></span>Completed (In Window)</span>
+              <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-purple-500"></span>In-Window Rate</span>
+            </div>
+          </div>
+        </div>
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={performance}>
@@ -224,17 +254,16 @@ export default function VisitAnalytics({ studyId, className }: VisitAnalyticsPro
                   color: '#f3f4f6'
                 }}
               />
-              <Bar yAxisId="left" dataKey="scheduled" fill="#6b7280" name="Scheduled" />
               <Bar yAxisId="left" dataKey="completed" fill="#22c55e" name="Completed" />
-              <Bar yAxisId="left" dataKey="missed" fill="#ef4444" name="Missed" />
+              <Bar yAxisId="left" dataKey="completed_in_window" fill="#3b82f6" name="Completed (In Window)" />
               <Line 
                 yAxisId="right"
                 type="monotone" 
-                dataKey="completion_rate" 
-                stroke="#3b82f6" 
+                dataKey="in_window_rate" 
+                stroke="#8b5cf6" 
                 strokeWidth={3}
-                name="Completion Rate (%)"
-                dot={{ fill: '#3b82f6', strokeWidth: 2, r: 4 }}
+                name="In-Window Rate (%)"
+                dot={{ fill: '#8b5cf6', strokeWidth: 2, r: 4 }}
               />
             </ComposedChart>
           </ResponsiveContainer>
@@ -245,7 +274,10 @@ export default function VisitAnalytics({ studyId, className }: VisitAnalyticsPro
         {/* Visit Status Distribution */}
         {statusData.length > 0 && (
           <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Visit Status Distribution</h3>
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-white">Visit Status Distribution</h3>
+              <p className="text-xs text-gray-400">Share of visits by status across the selected period</p>
+            </div>
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -281,7 +313,10 @@ export default function VisitAnalytics({ studyId, className }: VisitAnalyticsPro
         {/* Visit Type Performance */}
         {visitTypes.length > 0 && (
           <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Visit Type Performance</h3>
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-white">Visit Type Performance</h3>
+              <p className="text-xs text-gray-400">Top visit types with total vs completed counts</p>
+            </div>
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={visitTypes.slice(0, 8)} layout="horizontal">
@@ -318,7 +353,10 @@ export default function VisitAnalytics({ studyId, className }: VisitAnalyticsPro
       {/* Study Performance Comparison */}
       {studyStats.length > 0 && (
         <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">Study Visit Performance</h3>
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold text-white">Study Visit Performance</h3>
+            <p className="text-xs text-gray-400">Study-level totals by status</p>
+          </div>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={studyStats}>

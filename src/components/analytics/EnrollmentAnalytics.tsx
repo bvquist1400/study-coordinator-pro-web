@@ -169,7 +169,18 @@ export default function EnrollmentAnalytics({ studyId, className }: EnrollmentAn
 
       {/* Enrollment Trends Chart */}
       <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-white mb-4">Enrollment Trends</h3>
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-white">Enrollment Trends</h3>
+            <p className="text-xs text-gray-400">Monthly new enrollments vs cumulative enrollment over time</p>
+          </div>
+          <div className="hidden sm:block text-xs text-gray-300">
+            <div className="flex items-center gap-4">
+              <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500"></span>Monthly Enrollment</span>
+              <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-green-500"></span>Cumulative Enrollment</span>
+            </div>
+          </div>
+        </div>
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={trends}>
@@ -214,7 +225,18 @@ export default function EnrollmentAnalytics({ studyId, className }: EnrollmentAn
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Study Enrollment Comparison */}
           <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Enrollment by Study</h3>
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-white">Enrollment by Study</h3>
+                <p className="text-xs text-gray-400">Actual vs target enrollment by protocol</p>
+              </div>
+              <div className="hidden sm:block text-xs text-gray-300">
+                <div className="flex items-center gap-4">
+                  <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-gray-500"></span>Target</span>
+                  <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500"></span>Actual</span>
+                </div>
+              </div>
+            </div>
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={studyBreakdown}>
@@ -249,7 +271,10 @@ export default function EnrollmentAnalytics({ studyId, className }: EnrollmentAn
 
           {/* Enrollment Rate Distribution */}
           <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Enrollment Rate Distribution</h3>
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-white">Enrollment Rate Distribution</h3>
+              <p className="text-xs text-gray-400">Share of enrolled subjects by study (labels show rate)</p>
+            </div>
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>

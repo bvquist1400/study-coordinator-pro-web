@@ -207,7 +207,18 @@ export default function StudyAnalytics({ className }: StudyAnalyticsProps) {
       {/* Performance Comparison Chart */}
       {comparisons.length > 0 && (
         <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">Overall Performance Comparison</h3>
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-white">Overall Performance Comparison</h3>
+              <p className="text-xs text-gray-400">Benchmark key performance metrics across studies</p>
+            </div>
+            <div className="hidden sm:flex items-center gap-4 text-xs text-gray-300">
+              <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500"></span>Enrollment Rate</span>
+              <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-green-500"></span>Visit Completion</span>
+              <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-yellow-500"></span>Timing Compliance</span>
+              <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-purple-500"></span>Overall Score</span>
+            </div>
+          </div>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={comparisons.slice(0, 10)}>
@@ -244,7 +255,17 @@ export default function StudyAnalytics({ className }: StudyAnalyticsProps) {
         {/* Multi-dimensional Performance Radar */}
         {radarData.length > 0 && (
           <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Multi-dimensional Performance</h3>
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-white">Multi-dimensional Performance</h3>
+                <p className="text-xs text-gray-400">Radar comparison of enrollment, visit completion, and overall</p>
+              </div>
+              <div className="hidden sm:flex items-center gap-4 text-xs text-gray-300">
+                <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500"></span>Enrollment Rate</span>
+                <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-green-500"></span>Visit Completion</span>
+                <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-purple-500"></span>Overall Score</span>
+              </div>
+            </div>
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <RadarChart data={radarData}>
@@ -297,7 +318,10 @@ export default function StudyAnalytics({ className }: StudyAnalyticsProps) {
         {/* Enrollment Velocity vs Size */}
         {scatterData.length > 0 && (
           <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Enrollment Velocity Analysis</h3>
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-white">Enrollment Velocity Analysis</h3>
+              <p className="text-xs text-gray-400">Relationship between total enrollment and monthly velocity</p>
+            </div>
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <ScatterChart data={scatterData}>
@@ -346,7 +370,17 @@ export default function StudyAnalytics({ className }: StudyAnalyticsProps) {
       {/* Study Progress Timeline */}
       {milestones.length > 0 && (
         <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">Study Progress Overview</h3>
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-white">Study Progress Overview</h3>
+              <p className="text-xs text-gray-400">Percent progress by enrollment, visits, and overall</p>
+            </div>
+            <div className="hidden sm:flex items-center gap-4 text-xs text-gray-300">
+              <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500"></span>Enrollment</span>
+              <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-green-500"></span>Visits</span>
+              <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-purple-500"></span>Overall</span>
+            </div>
+          </div>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={milestones}>

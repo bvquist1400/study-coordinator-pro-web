@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts'
+import ComplianceLegend, { CompactLegend } from './ComplianceLegend'
 
 interface ComplianceTrend {
   month: string
@@ -213,9 +214,31 @@ export default function ComplianceAnalytics({ studyId, className }: ComplianceAn
         </div>
       </div>
 
+      {/* Score Threshold Key */}
+      <div className="bg-gray-800/40 border border-gray-700 rounded-lg p-4">
+        <div className="flex items-start justify-between">
+          <div>
+            <h4 className="text-sm font-semibold text-gray-200">Compliance Score Key</h4>
+            <p className="text-xs text-gray-400">Color thresholds for percentages across charts and tables</p>
+          </div>
+          <ComplianceLegend type="compliance" size="sm" className="hidden sm:block" />
+        </div>
+      </div>
+
       {/* Compliance Trends Chart */}
       <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-white mb-4">Compliance Trends</h3>
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-white">Compliance Trends</h3>
+            <p className="text-xs text-gray-400">Visit timing and drug compliance over time</p>
+          </div>
+          <div className="hidden sm:block text-xs text-gray-300">
+            <div className="flex items-center gap-4">
+              <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500"></span>Visit Timing</span>
+              <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-green-500"></span>Drug Compliance</span>
+            </div>
+          </div>
+        </div>
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={trends}>
@@ -259,7 +282,20 @@ export default function ComplianceAnalytics({ studyId, className }: ComplianceAn
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Study Compliance Comparison */}
         <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">Study Compliance Scores</h3>
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-white">Study Compliance Scores</h3>
+              <p className="text-xs text-gray-400">Timing, drug, and overall compliance by protocol</p>
+            </div>
+            <CompactLegend 
+              className="hidden sm:flex"
+              items={[
+                { color: 'bg-blue-500', label: 'Visit Timing' },
+                { color: 'bg-green-500', label: 'Drug Compliance' },
+                { color: 'bg-purple-500', label: 'Overall Score' }
+              ]}
+            />
+          </div>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={studyBreakdown}>
@@ -293,7 +329,19 @@ export default function ComplianceAnalytics({ studyId, className }: ComplianceAn
         {/* Compliance Radar Chart */}
         {radarData.length > 0 && (
           <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Multi-Study Comparison</h3>
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-white">Multi-Study Comparison</h3>
+                <p className="text-xs text-gray-400">Radar comparison across timing, drug, and overall</p>
+              </div>
+              <CompactLegend 
+                className="hidden sm:flex"
+                items={[
+                  { color: 'bg-blue-500', label: 'Visit Timing' },
+                  { color: 'bg-green-500', label: 'Drug Compliance' }
+                ]}
+              />
+            </div>
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <RadarChart data={radarData}>
@@ -339,7 +387,13 @@ export default function ComplianceAnalytics({ studyId, className }: ComplianceAn
       {/* Compliance Alerts */}
       {alerts.length > 0 && (
         <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">Recent Compliance Alerts</h3>
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-white">Recent Compliance Alerts</h3>
+              <p className="text-xs text-gray-400">Grouped by severity; most recent first</p>
+            </div>
+            <ComplianceLegend type="severity" size="sm" className="hidden sm:block" />
+          </div>
           <div className="space-y-3">
             {alerts.map((alert) => (
               <div 

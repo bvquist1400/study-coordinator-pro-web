@@ -85,6 +85,7 @@ export async function GET(request: NextRequest) {
         visit_name,
         status,
         visit_date,
+        is_within_window,
         updated_at,
         created_at,
         study_id,
@@ -100,36 +101,43 @@ export async function GET(request: NextRequest) {
         )
       `)
       .in('study_id', allowedStudyIds)
-      .gte('created_at', startDate.toISOString())
-      .lte('created_at', endDate.toISOString())
+      // Use scheduled/occurred visit date for time-bucketing rather than record creation time
+      .gte('visit_date', startDate.toISOString())
+      .lte('visit_date', endDate.toISOString())
     if (visitsError) {
       console.error('Error fetching visits:', visitsError)
       return NextResponse.json({ error: 'Failed to fetch visits' }, { status: 500 })
     }
 
     // Calculate monthly visit performance
-    const monthlyData: { [key: string]: { scheduled: number, completed: number, missed: number } } = {}
+    const monthlyData: { [key: string]: { scheduled: number, completed: number, missed: number, completed_in_window: number, completed_out_window: number } } = {}
     
     // Initialize months
     for (let i = 0; i < months; i++) {
       const date = new Date()
       date.setMonth(date.getMonth() - (months - 1 - i))
       const monthKey = date.toISOString().substring(0, 7)
-      monthlyData[monthKey] = { scheduled: 0, completed: 0, missed: 0 }
+      monthlyData[monthKey] = { scheduled: 0, completed: 0, missed: 0, completed_in_window: 0, completed_out_window: 0 }
     }
 
-    // Process visits by creation month
+    // Process visits by visit_date month (reflects when the visit is/was scheduled)
     const visitsRows = (visits || []) as any[]
     visitsRows.forEach(visit => {
       const visitData = visit as any
-      const month = visitData.created_at.substring(0, 7)
+      if (!visitData.visit_date) return
+      const month = visitData.visit_date.substring(0, 7)
       if (monthlyData[month]) {
+        // Count total visits scheduled in the month, and break down status
         monthlyData[month].scheduled += 1
         if (visitData.status === 'completed') {
           monthlyData[month].completed += 1
-        } else if (visitData.status === 'missed') {
-          monthlyData[month].missed += 1
+          if (visitData.is_within_window === true) {
+            monthlyData[month].completed_in_window += 1
+          } else if (visitData.is_within_window === false) {
+            monthlyData[month].completed_out_window += 1
+          }
         }
+        if (visitData.status === 'missed') monthlyData[month].missed += 1
       }
     })
 
@@ -138,13 +146,18 @@ export async function GET(request: NextRequest) {
       const data = monthlyData[month]
       const date = new Date(month + '-01')
       const completion_rate = data.scheduled > 0 ? Math.round((data.completed / data.scheduled) * 100) : 0
+      const in_window_rate = data.completed > 0 ? Math.round((data.completed_in_window / data.completed) * 100) : 0
 
       return {
         month: date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' }),
         scheduled: data.scheduled,
         completed: data.completed,
         missed: data.missed,
-        completion_rate
+        completion_rate,
+        // new fields for client-side charting
+        completed_in_window: data.completed_in_window,
+        completed_out_window: data.completed_out_window,
+        in_window_rate
       }
     })
 
