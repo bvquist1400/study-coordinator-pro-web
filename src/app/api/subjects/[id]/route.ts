@@ -157,7 +157,7 @@ export async function PUT(
       .single()
 
     if (error) {
-      logger.error('Database error updating subject', error)
+      logger.error('Database error updating subject', error as any)
       if (error.code === '23505') { // Unique constraint violation
         return NextResponse.json({ 
           error: 'Subject number already exists in this study' 
@@ -207,7 +207,7 @@ export async function DELETE(
       .limit(1)
 
     if (visitsError) {
-      logger.error('Error checking subject visits before delete', visitsError)
+      logger.error('Error checking subject visits before delete', visitsError as any)
       return NextResponse.json({ error: 'Failed to verify subject deletion' }, { status: 500 })
     }
 
@@ -259,10 +259,10 @@ export async function DELETE(
       .single()
 
     if (error) {
-      if (error.code === 'PGRST116') {
+      if ((error as any).code === 'PGRST116') {
         return NextResponse.json({ error: 'Subject not found' }, { status: 404 })
       }
-      logger.error('Database error deleting subject', error)
+      logger.error('Database error deleting subject', error as any)
       return NextResponse.json({ error: 'Failed to delete subject' }, { status: 500 })
     }
 
@@ -271,7 +271,7 @@ export async function DELETE(
       subject 
     })
   } catch (error) {
-    logger.error('API error in subject DELETE', error)
+    logger.error('API error in subject DELETE', error as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

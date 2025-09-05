@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
       .eq('user_id', user.id)
 
     if (error) {
-      logger.error('Database error listing sites', error)
+      logger.error('Database error listing sites', error as any)
       return NextResponse.json({ error: 'Failed to fetch sites' }, { status: 500 })
     }
 

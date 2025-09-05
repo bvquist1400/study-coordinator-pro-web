@@ -26,7 +26,7 @@ export async function GET(
       if (error.code === 'PGRST116') {
         return NextResponse.json({ error: 'Study not found' }, { status: 404 })
       }
-      logger.error('Database error fetching study', error)
+      logger.error('Database error fetching study', error as any)
       return NextResponse.json({ error: 'Failed to fetch study' }, { status: 500 })
     }
 
@@ -98,7 +98,7 @@ export async function DELETE(
       if (error.code === 'PGRST116') {
         return NextResponse.json({ error: 'Study not found' }, { status: 404 })
       }
-      logger.error('Database error deleting study', error)
+      logger.error('Database error deleting study', error as any)
       return NextResponse.json({ error: 'Failed to delete study' }, { status: 500 })
     }
 

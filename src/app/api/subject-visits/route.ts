@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     const { data: rawVisits, error } = await query
 
     if (error) {
-      logger.error('Database error fetching subject visits', error)
+      logger.error('Database error fetching subject visits', error as any)
       return NextResponse.json({ error: 'Failed to fetch subject visits' }, { status: 500 })
     }
 
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      logger.error('Database error creating subject visit', error)
+      logger.error('Database error creating subject visit', error as any)
       return NextResponse.json({ error: 'Failed to create subject visit' }, { status: 500 })
     }
 

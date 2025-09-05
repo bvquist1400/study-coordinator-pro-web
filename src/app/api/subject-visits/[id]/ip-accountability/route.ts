@@ -70,7 +70,7 @@ export async function PUT(
             } as DrugComplianceInsert)
           
           if (error) {
-            logger.error('Error saving dispensed bottle', error)
+            logger.error('Error saving dispensed bottle', error as any)
             return NextResponse.json({ 
               error: 'Failed to save dispensed bottle data',
               detail: error.message 
@@ -109,7 +109,7 @@ export async function PUT(
               .eq('id', (existing[0] as any).id)
               
             if (error) {
-              logger.error('Error updating returned bottle', error)
+              logger.error('Error updating returned bottle', error as any)
               return NextResponse.json({ 
                 error: 'Failed to update returned bottle data',
                 detail: error.message 
@@ -132,7 +132,7 @@ export async function PUT(
               } as DrugComplianceInsert)
               
             if (error) {
-              logger.error('Error saving returned bottle', error)
+              logger.error('Error saving returned bottle', error as any)
               return NextResponse.json({ 
                 error: 'Failed to save returned bottle data',
                 detail: error.message 
