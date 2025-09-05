@@ -68,7 +68,7 @@ export async function GET(
 
     return NextResponse.json({ visit: transformedVisit })
   } catch (error) {
-    logger.error('API error in subject visit GET', error)
+    logger.error('API error in subject visit GET', error as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -114,7 +114,7 @@ export async function PUT(
         .single()
 
       if (error) {
-        logger.error('Database error upserting subject visit', error)
+        logger.error('Database error upserting subject visit', error as any)
         return NextResponse.json({ error: 'Failed to save subject visit' }, { status: 500 })
       }
 
@@ -221,7 +221,7 @@ export async function PUT(
         .single()
 
       if (error) {
-        logger.error('Database error updating subject visit', error)
+        logger.error('Database error updating subject visit', error as any)
         return NextResponse.json({ error: 'Failed to update subject visit' }, { status: 500 })
       }
 
@@ -232,7 +232,7 @@ export async function PUT(
       return NextResponse.json({ visit: subjectVisit })
     }
   } catch (error) {
-    logger.error('API error in subject visit PUT', error)
+    logger.error('API error in subject visit PUT', error as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -290,13 +290,13 @@ export async function DELETE(
       if (error.code === 'PGRST116') {
         return NextResponse.json({ error: 'Subject visit not found' }, { status: 404 })
       }
-      logger.error('Database error deleting subject visit', error)
+      logger.error('Database error deleting subject visit', error as any)
       return NextResponse.json({ error: 'Failed to delete subject visit' }, { status: 500 })
     }
 
     return NextResponse.json({ message: 'Subject visit deleted successfully', subjectVisit })
   } catch (error) {
-    logger.error('API error in subject visit DELETE', error)
+    logger.error('API error in subject visit DELETE', error as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
