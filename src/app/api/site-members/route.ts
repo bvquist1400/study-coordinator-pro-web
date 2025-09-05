@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
 
     // Insert membership
     type SiteMemberInsert = Database['public']['Tables']['site_members']['Insert']
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from('site_members')
       .insert({ site_id, user_id: targetUserId!, role } as SiteMemberInsert)
 
@@ -134,7 +134,7 @@ export async function PUT(request: NextRequest) {
     if (!isOwner) return NextResponse.json({ error: 'Only owners can update roles' }, { status: 403 })
 
     type SiteMemberUpdate = Database['public']['Tables']['site_members']['Update']
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from('site_members')
       .update({ role } as SiteMemberUpdate)
       .eq('site_id', site_id)
