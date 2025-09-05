@@ -173,7 +173,7 @@ export async function POST(request: NextRequest) {
     // Insert new schedules
     let insertedSchedules: VisitSchedule[] = []
     if (schedulesToInsert.length > 0) {
-      const { data: inserted, error: insertError } = await supabase
+      const { data: inserted, error: insertError } = await (supabase as any)
         .from('visit_schedules')
         .insert(schedulesToInsert as VisitScheduleInsert[])
         .select()
