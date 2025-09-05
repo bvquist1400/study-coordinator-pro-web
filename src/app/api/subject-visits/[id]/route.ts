@@ -103,7 +103,7 @@ export async function PUT(
       }
 
       // Try to upsert the record
-      const { data: subjectVisit, error } = await supabase
+      const { data: subjectVisit, error } = await (supabase as any)
         .from('subject_visits')
         .upsert({
           ...updateData,
