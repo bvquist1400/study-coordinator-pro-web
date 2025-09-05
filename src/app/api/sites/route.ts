@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
     }
 
     type SiteInsert = Database['public']['Tables']['sites']['Insert']
-    const { data: site, error: siteErr } = await supabase
+    const { data: site, error: siteErr } = await (supabase as any)
       .from('sites')
       .insert({ name: name.trim() } as SiteInsert)
       .select()
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
 
     const siteRow = site as { id: string }
     type SiteMemberInsert = Database['public']['Tables']['site_members']['Insert']
-    const { error: memberErr } = await supabase
+    const { error: memberErr } = await (supabase as any)
       .from('site_members')
       .insert({ site_id: siteRow.id, user_id: user.id, role: 'owner' } as SiteMemberInsert)
 

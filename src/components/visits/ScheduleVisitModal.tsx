@@ -98,10 +98,10 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
 
       if (subjectsRes.ok) {
         const data = await subjectsRes.json()
-        console.log('Raw subjects data:', data.subjects)
+        console.warn('Raw subjects data:', data.subjects)
         // For now, show all subjects regardless of status to ensure visits can be scheduled
         const filteredSubjects = data.subjects || []
-        console.log('Filtered subjects:', filteredSubjects)
+        console.warn('Filtered subjects:', filteredSubjects)
         setSubjects(filteredSubjects)
       } else {
         console.error('Failed to fetch subjects:', subjectsRes.status, await subjectsRes.text())
@@ -119,7 +119,7 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
 
       if (labKitsRes.ok) {
         const data = await labKitsRes.json()
-        console.log('Available lab kits:', data.labKits)
+        console.warn('Available lab kits:', data.labKits)
         setAvailableLabKits(data.labKits || [])
       } else {
         console.error('Failed to fetch lab kits:', labKitsRes.status, await labKitsRes.text())
