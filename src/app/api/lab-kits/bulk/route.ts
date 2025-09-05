@@ -15,6 +15,23 @@ interface BulkLabKit {
   status: string
 }
 
+type LabKitStatus = LabKitInsert['status']
+function normalizeStatus(status: string | null | undefined): LabKitStatus {
+  const v = (status || '').toLowerCase()
+  switch (v) {
+    case 'available':
+    case 'assigned':
+    case 'used':
+    case 'shipped':
+    case 'expired':
+    case 'destroyed':
+    case 'archived':
+      return v as LabKitStatus
+    default:
+      return 'available'
+  }
+}
+
 // POST /api/lab-kits/bulk - Bulk create lab kits
 export async function POST(request: NextRequest) {
   try {
@@ -118,7 +135,7 @@ export async function POST(request: NextRequest) {
       lot_number: kit.lot_number?.trim() || null,
       expiration_date: kit.expiration_date || null,
       received_date: kit.received_date || null,
-      status: kit.status || 'available',
+      status: normalizeStatus(kit.status),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     }))
