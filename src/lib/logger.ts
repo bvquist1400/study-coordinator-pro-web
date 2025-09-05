@@ -294,3 +294,6 @@ export const logger = new Logger()
 
 // Export for testing
 export { Logger }
+
+// Maintain compatibility with default imports
+export default logger
