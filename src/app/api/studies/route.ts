@@ -226,7 +226,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // Update study
-    const updateRes = await supabase
+    const updateRes = await (supabase as any)
       .from('studies')
       .update(updateObject as StudyUpdate)
       .eq('id', id)
@@ -241,7 +241,7 @@ export async function PUT(request: NextRequest) {
       if ((msg.includes('protocol_version') && msg.includes('does not exist')) || (msg.includes('anchor_day') && msg.includes('does not exist'))) {
         try {
           const { protocol_version: _pv, anchor_day: _ad, ...fallback } = updateObject as Record<string, unknown>
-          const retry = await supabase
+          const retry = await (supabase as any)
             .from('studies')
             .update(fallback as StudyUpdate)
             .eq('id', id)
