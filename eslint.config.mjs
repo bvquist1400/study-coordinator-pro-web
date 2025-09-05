@@ -41,6 +41,16 @@ const eslintConfig = [
       ],
     },
   },
+  // Allow richer console methods inside the logger implementation
+  {
+    files: ["src/lib/logger.ts"],
+    rules: {
+      "no-console": [
+        "warn",
+        { allow: ["warn", "error", "groupCollapsed", "groupEnd", "table"] }
+      ],
+    },
+  },
 ];
 
 export default eslintConfig;

@@ -52,7 +52,7 @@ export function useErrorHandler() {
     // Show toast notification if requested
     if (showToast && typeof window !== 'undefined') {
       // TODO: Integrate with toast notification system when implemented
-      console.log('Toast would show:', normalizedError.message)
+      console.warn('Toast would show:', normalizedError.message)
     }
 
     return normalizedError
