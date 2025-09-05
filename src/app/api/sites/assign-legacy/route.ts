@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     if (!isOwner) return NextResponse.json({ error: 'Only owners can assign studies to this site' }, { status: 403 })
 
     // Assign all legacy studies owned by this user (site_id IS NULL) to provided site
-    const { data: updated, error } = await supabase
+    const { data: updated, error } = await (supabase as any)
       .from('studies')
       .update({ site_id, updated_at: new Date().toISOString() } as StudyUpdate)
       .is('site_id', null)
