@@ -401,7 +401,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Insert subject with user ID
-    const { data: subject, error } = await supabase
+    const { data: subject, error } = await (supabase as any)
       .from('subjects')
       .insert({
         ...subjectData,
