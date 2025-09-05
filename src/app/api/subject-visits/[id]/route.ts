@@ -209,7 +209,7 @@ export async function PUT(
         }
       }
 
-      const { data: subjectVisit, error } = await supabase
+      const { data: subjectVisit, error } = await (supabase as any)
         .from('subject_visits')
         .update({
           ...updateData,

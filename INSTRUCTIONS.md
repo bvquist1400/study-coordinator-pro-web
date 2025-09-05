@@ -202,10 +202,22 @@ Personal productivity tool for clinical research coordinators - organizes daily 
 
 These conventions prevent recurring type-check failures with Next.js 15 + Supabase + strict TypeScript.
 
-- Next.js 15 dynamic routes: context params are a Promise
+- Next.js 15 dynamic routes: params are a Promise
   - Handlers must use: `export async function GET(req, { params }: { params: Promise<{ id: string }> }) { const { id } = await params }`
-- Supabase joined selects and aliases must be typed locally
-  - When selecting related tables or using aliases like `sites:site_id (...)`, declare a local row type and annotate/cast the result before accessing nested fields, e.g.
+
+- Logger usage and typing
+  - Always pass Errors to `logger.error`: `catch (error) { logger.error('Message', error as any) }`
+  - Import default logger: `import logger from '@/lib/logger'`; keep `export default logger` in `src/lib/logger.ts`.
+  - Use `console.warn`/`console.error` only in app code (no `console.log/info`). Rich console UI is allowed only in `src/lib/logger.ts`.
+
+- Supabase mutations: avoid `never` inference on insert/update/upsert
+  - Reads: `const { data, error } = await supabase.from('table').select('*')`
+  - Writes: `await (supabase as any).from('table').insert(payload as TableInsert).select()`
+  - Updates: `await (supabase as any).from('table').update(update as TableUpdate).eq('id', id).select()`
+  - Upserts: `await (supabase as any).from('table').upsert(row as TableInsert).select()`
+
+- Joined selects and aliases must be typed locally
+  - When using aliases (e.g., `sites:site_id (...)`), declare a local row type and cast before accessing nested fields.
     ```ts
     type MemberRow = { site_id: string; role: 'owner'|'coordinator'|'pi'|'monitor'; sites?: { id: string; name: string } | null }
     const { data } = await supabase
@@ -214,13 +226,17 @@ These conventions prevent recurring type-check failures with Next.js 15 + Supaba
     const rows = (data || []) as MemberRow[]
     rows.map(r => r.sites?.id ?? r.site_id)
     ```
-  - Alternatively, use `returns<RowType[]>()` on the select if available in your Supabase client version.
+  - Alternatively, use `returns<RowType[]>()` on the select if supported by your client version.
+
 - Prefer explicit result shapes for reducers/maps
   - Convert untyped arrays to typed ones before `reduce`/`map` to avoid `never` inference.
+
 - Avoid deprecated Supabase Admin APIs in routes
-  - Use a table lookup (e.g., `user_profiles`) instead of `auth.admin.getUserByEmail`.
-- Lint settings
-  - The repo relaxes `@typescript-eslint/no-explicit-any` and treats unused variables prefixed with `_` as non‑issues. When in doubt, type local results explicitly or prefix intentionally unused variables with `_`.
+  - Use table lookups (e.g., `user_profiles`) instead of `auth.admin.getUserByEmail`.
+
+- Lint settings (already configured)
+  - `no-console` is warn and allows only `warn`/`error` by default; `src/lib/logger.ts` has an override for grouping/table.
+  - Unused variables prefixed with `_` are ignored. Use `_` prefix for intentionally unused params.
 
 ## Predictive Lab Kit Process - DETAILED DOCUMENTATION
 
