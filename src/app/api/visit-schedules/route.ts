@@ -215,7 +215,7 @@ export async function PUT(request: NextRequest) {
     if (!membership.success) return NextResponse.json({ error: membership.error || 'Access denied' }, { status: membership.status || 403 })
 
     // Update visit schedule
-    const { data: visitSchedule, error } = await supabase
+    const { data: visitSchedule, error } = await (supabase as any)
       .from('visit_schedules')
       .update({
         ...updateData,
