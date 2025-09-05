@@ -46,7 +46,7 @@ export async function GET(
 
     return NextResponse.json({ study })
   } catch (error) {
-    logger.error('API error in study GET', error)
+    logger.error('API error in study GET', error as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -104,7 +104,7 @@ export async function DELETE(
 
     return NextResponse.json({ message: 'Study deleted successfully', study })
   } catch (error) {
-    logger.error('API error in study DELETE', error)
+    logger.error('API error in study DELETE', error as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
