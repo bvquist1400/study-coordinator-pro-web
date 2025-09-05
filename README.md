@@ -20,6 +20,8 @@ Environment
   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: public anon key
   - `SUPABASE_SERVICE_ROLE_KEY`: service role (server only)
   - `LOG_REDACT`: on|off (default on in prod)
+  - `LOG_TO_SERVICE`: on|off (default on in prod)
+  - `LOG_SAMPLE_RATE`: 0..1 (default 1)
   - Optional: `LOG_MAX_PAYLOAD`, feature flags
 
 Install

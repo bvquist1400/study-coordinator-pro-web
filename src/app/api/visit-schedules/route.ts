@@ -29,13 +29,13 @@ export async function GET(request: NextRequest) {
       .order('window_before_days', { ascending: false })
 
     if (error) {
-      console.error('Database error:', error)
+      logger.error('Database error fetching visit schedules', error as any, { studyId })
       return NextResponse.json({ error: 'Failed to fetch visit schedules' }, { status: 500 })
     }
 
     return NextResponse.json({ visitSchedules })
   } catch (error) {
-    console.error('API error:', error)
+    logger.error('API error in visit schedules GET', error as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
     const schedulesToInsert: VisitScheduleInsert[] = []
     const scheduleIdMap = new Map()
 
-    console.log('Processing visit schedules. Existing:', existingSchedules?.length, 'Incoming:', visit_schedules.length)
+    logger.debug('Processing visit schedules counts', { existingCount: existingSchedules?.length || 0, incomingCount: visit_schedules.length })
 
     // Process each incoming visit schedule
     // The frontend sends visit schedules with their visit_number as text (e.g., "OLS", "V1", etc.)
@@ -83,11 +83,7 @@ export async function POST(request: NextRequest) {
       const visitNumber = schedule.visit_number || `V${index + 1}` // Default to V1, V2, etc. for new visits
       const existingSchedule = (existingSchedules as VisitSchedule[])?.find(s => s.visit_number === visitNumber)
       
-      console.log(`Processing visit ${visitNumber}:`, {
-        incoming: schedule.visit_name,
-        existing: existingSchedule?.visit_name,
-        existingId: existingSchedule?.id
-      })
+      logger.debug('Processing visit schedule', { visitNumber, incoming: schedule.visit_name, existing: existingSchedule?.visit_name, existingId: existingSchedule?.id })
       
       if (existingSchedule) {
         // Update existing schedule - preserve ID and visit_number to maintain lab kit associations
@@ -100,7 +96,7 @@ export async function POST(request: NextRequest) {
         }
         schedulesToUpdate.push(updateSchedule)
         scheduleIdMap.set(visitNumber, existingSchedule.id)
-        console.log('Queued for update:', updateSchedule.visit_name, 'visit_number:', updateSchedule.visit_number)
+        logger.debug('Queued schedule update', { visit_name: updateSchedule.visit_name, visit_number: updateSchedule.visit_number })
       } else {
         // Insert new schedule - use the provided visit number (or generate one)
         const insertSchedule: VisitScheduleInsert = {
@@ -109,7 +105,7 @@ export async function POST(request: NextRequest) {
           study_id
         }
         schedulesToInsert.push(insertSchedule)
-        console.log('Queued for insert:', insertSchedule.visit_name, 'visit_number:', visitNumber)
+        logger.debug('Queued schedule insert', { visit_name: insertSchedule.visit_name, visit_number: visitNumber })
       }
     })
 
@@ -118,14 +114,14 @@ export async function POST(request: NextRequest) {
     const incomingVisitNumbers = visit_schedules
       .map(schedule => schedule.visit_number)
       .filter(n => n && n.trim() !== '') // Filter out empty/null visit numbers
-    console.log('Incoming visit numbers:', incomingVisitNumbers)
+    logger.debug('Incoming visit numbers', { incomingVisitNumbers })
     
     // Only delete schedules that aren't in the incoming list
     const schedulesToDelete = (existingSchedules as VisitSchedule[])?.filter(s => 
       !incomingVisitNumbers.includes(s.visit_number)
     ) || []
     
-    console.log('Schedules to delete:', schedulesToDelete.map(s => ({id: s.id, visit_number: s.visit_number, visit_name: s.visit_name})))
+    logger.debug('Schedules to delete', { toDelete: schedulesToDelete.map(s => ({ id: s.id, visit_number: s.visit_number, visit_name: s.visit_name })) })
     
     if (schedulesToDelete.length > 0) {
       const { error: deleteError } = await supabase
@@ -141,14 +137,10 @@ export async function POST(request: NextRequest) {
 
     // Update existing schedules
     const updatedSchedules: any[] = []
-    console.log('Updating schedules:', schedulesToUpdate.length, 'schedules')
+    logger.debug('Updating schedules count', { updateCount: schedulesToUpdate.length })
     
     for (const schedule of schedulesToUpdate) {
-      console.log('Updating schedule:', {
-        id: schedule.id,
-        visit_name: schedule.visit_name,
-        visit_number: schedule.visit_number
-      })
+      logger.debug('Updating schedule', { id: schedule.id, visit_name: schedule.visit_name, visit_number: schedule.visit_number })
       
       const updateData: VisitScheduleUpdate = {
         visit_name: schedule.visit_name,
@@ -174,7 +166,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Failed to update visit schedule', details: updateError.message }, { status: 500 })
       }
       
-      console.log('Successfully updated schedule:', updated)
+      logger.debug('Successfully updated schedule', { id: updated?.id, visit_number: updated?.visit_number })
       updatedSchedules.push(updated)
     }
 
@@ -198,10 +190,10 @@ export async function POST(request: NextRequest) {
 
     const allSchedules = [...updatedSchedules, ...insertedSchedules].sort((a, b) => a.visit_number - b.visit_number)
     
-    console.log('Successfully saved visit schedules:', allSchedules)
+    logger.debug('Successfully saved visit schedules', { count: allSchedules.length })
     return NextResponse.json({ visitSchedules: allSchedules }, { status: 201 })
   } catch (error) {
-    logger.error('API error in visit schedules POST', error)
+    logger.error('API error in visit schedules POST', error as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -235,7 +227,7 @@ export async function PUT(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error('Database error:', error)
+      logger.error('Database error updating visit schedule', error as any, { id })
       return NextResponse.json({ error: 'Failed to update visit schedule' }, { status: 500 })
     }
 
@@ -245,7 +237,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ visitSchedule })
   } catch (error) {
-    console.error('API error:', error)
+    logger.error('API error in visit schedules PUT', error as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

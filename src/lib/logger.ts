@@ -15,6 +15,8 @@ export interface LogEntry {
 
 const DEFAULT_MAX_PAYLOAD = Number(process.env.LOG_MAX_PAYLOAD || 4096)
 const ENABLE_REDACTION = (process.env.LOG_REDACT || (process.env.NODE_ENV === 'production' ? 'on' : 'off')) !== 'off'
+const LOG_TO_SERVICE = (process.env.LOG_TO_SERVICE || (process.env.NODE_ENV === 'production' ? 'on' : 'off')) !== 'off'
+const LOG_SAMPLE_RATE = Math.max(0, Math.min(1, Number(process.env.LOG_SAMPLE_RATE ?? '1')))
 
 type RedactOptions = {
   maxLen?: number
@@ -174,8 +176,11 @@ class Logger {
   }
 
   private async logToService(entry: LogEntry) {
-    // Only log errors to service, or all logs in production
-    const shouldLogToService = !this.isDevelopment || entry.level === 'error'
+    // Only log errors to service in dev; all logs in prod (sampled/toggleable)
+    const shouldLogToService = (!this.isDevelopment && LOG_TO_SERVICE) || (this.isDevelopment && entry.level === 'error' && LOG_TO_SERVICE)
+    if (!shouldLogToService) return
+    // Sampling guard
+    if (LOG_SAMPLE_RATE < 1 && Math.random() > LOG_SAMPLE_RATE) return
     
     try {
       // Store in localStorage for development debugging
@@ -191,8 +196,8 @@ class Logger {
         localStorage.setItem('app_logs', JSON.stringify(logs))
       }
 
-      // Send to API endpoint if conditions are met
-      if (shouldLogToService && typeof window !== 'undefined') {
+      // Send to API endpoint if conditions are met (client-side only)
+      if (typeof window !== 'undefined') {
         // Get auth token from supabase session
         const supabase = (await import('@/lib/supabase/client')).supabase
         const { data: { session } } = await supabase.auth.getSession()

@@ -12,7 +12,8 @@ Comprehensive testing framework set up with Jest, React Testing Library, and Git
 - `@testing-library/user-event` - User interaction simulation
 - `jest-environment-jsdom` - Browser-like test environment
 - `@types/jest` - TypeScript definitions
-- `ts-jest` - TypeScript support for Jest
+  
+Note: We use `next/jest` for TypeScript + Next integration; `ts-jest` is not used.
 
 ### Configuration Files
 - `jest.config.js` - Jest configuration with Next.js integration

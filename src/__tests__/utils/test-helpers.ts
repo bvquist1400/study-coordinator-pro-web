@@ -53,3 +53,10 @@ export const mockSupabaseResponse = {
   error: { data: null, error: { message: 'Test error', code: 'TEST_ERROR' } },
   empty: { data: [], error: null },
 }
+
+// Placeholder test to satisfy Jest's requirement for files under __tests__ to contain at least one test
+describe('utils/test-helpers placeholder', () => {
+  it('noop', () => {
+    expect(true).toBe(true)
+  })
+})

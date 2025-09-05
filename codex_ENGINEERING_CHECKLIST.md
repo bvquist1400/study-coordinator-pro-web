@@ -66,11 +66,11 @@ Last updated: 2025-09-01
 - [x] Exclude tests from production type-check (`tsconfig.json`)
 - [x] Restore strict Next build checks (no TS/ESLint ignores)
 
-- [ ] Logging hygiene and redaction
+- [x] Logging hygiene and redaction
   - Why: Prevent accidental PII/token leakage in logs.
-  - Files: `src/lib/logger.ts`, `/api/logs`
-  - Do: Redact tokens/emails/ids from context; cap payload size; add sampling/toggle by env.
-  - Done when: Sensitive fields redacted; dev logs unaffected.
+  - Files: `src/lib/logger.ts`, `/api/logs`, `eslint.config.mjs`
+  - Do: Redact tokens/emails/ids from context; cap payload size; add sampling/toggle by env; discourage `console.log` via ESLint; replace noisy server logs with structured logger.
+  - Done when: Sensitive fields redacted; dev logs unaffected; `/api/logs` re-redacts; `LOG_TO_SERVICE` and `LOG_SAMPLE_RATE` respected.
 
 - [x] RLS policies for site memberships (defense in depth)
   - Why: Some client fallbacks query Supabase directly; current RLS focuses on `user_id` ownership.
@@ -80,7 +80,7 @@ Last updated: 2025-09-01
 
 ## Medium Priority — DX and Consistency
 
-- [ ] Jest/ts-jest alignment
+- [x] Jest/ts-jest alignment
   - Why: `jest@30` with `ts-jest@29` mismatch; not used with `next/jest` anyway.
   - Files: `package.json`
   - Do: Remove `ts-jest` or upgrade to `^30` if actually needed.
@@ -92,7 +92,7 @@ Last updated: 2025-09-01
   - Do: Move into `migrations/` with proper numbering/commentary or remove if obsolete.
   - Done when: Single source of truth for schema changes.
 
-- [ ] README overhaul
+- [x] README overhaul
   - Why: Current README is stock Next.js; onboarding friction.
   - Files: `README.md`
   - Do: Document env vars, Supabase setup, scripts, testing, deploy, and link to `INSTRUCTIONS.md`, `TESTING.md`.
@@ -105,10 +105,10 @@ Last updated: 2025-09-01
   - Files: `src/__tests__/api/subjects-id.route.test.ts`
   - Do: Add tests for studies/subjects/subject‑visits/lab‑kits endpoints (GET/POST/PUT/DELETE happy + failure paths). Started with subjects GET by id.
 
-- [ ] Add date/time utility unit tests
+- [x] Add date/time utility unit tests
   - Why: Ensure UTC math correctness and durability.
 
-- [ ] Minor lint rules tightening
+- [x] Minor lint rules tightening
   - Why: Catch subtle bugs without blocking useful patterns.
   - Files: `eslint.config.mjs`
 

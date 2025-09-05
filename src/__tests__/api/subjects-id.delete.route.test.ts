@@ -1,4 +1,10 @@
-import { DELETE as deleteSubject } from '@/app/api/subjects/[id]/route'
+jest.mock('next/server', () => ({
+  NextResponse: {
+    json: (body: any, init?: { status?: number }) => ({ status: init?.status || 200, json: async () => body }),
+  },
+}))
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { DELETE: deleteSubject } = require('@/app/api/subjects/[id]/route')
 
 function createSupabaseStub(options: {
   authUser?: { id: string } | null
@@ -36,10 +42,11 @@ function createSupabaseStub(options: {
   } as any
 }
 
-jest.mock('@/lib/api/auth', () => ({ createSupabaseAdmin: jest.fn() }))
+jest.mock('@/lib/api/auth', () => ({ createSupabaseAdmin: jest.fn(), authenticateUser: jest.fn() }))
+jest.mock('@/lib/logger', () => ({ __esModule: true, default: { error: jest.fn(), info: jest.fn(), warn: jest.fn(), debug: jest.fn() } }))
 
 describe('DELETE /api/subjects/[id]', () => {
-  const { createSupabaseAdmin } = jest.requireMock('@/lib/api/auth') as { createSupabaseAdmin: jest.Mock }
+  const { createSupabaseAdmin, authenticateUser } = jest.requireMock('@/lib/api/auth') as { createSupabaseAdmin: jest.Mock, authenticateUser: jest.Mock }
 
   test('denies when subject has visits (409)', async () => {
     const user = { id: 'u1' }
@@ -69,10 +76,11 @@ describe('DELETE /api/subjects/[id]', () => {
       }
     } as any)
 
-    const req = new Request('http://local/api/subjects/sub1', { method: 'DELETE', headers: { Authorization: 'Bearer t' } })
+    authenticateUser.mockResolvedValue({ user })
+    const req = { method: 'DELETE', url: 'http://local/api/subjects/sub1', headers: new Headers({ Authorization: 'Bearer t' }) }
     const res = await deleteSubject(req as any, { params: { id: 'sub1' } })
     // Route returns 409 when visits exist
     expect([409, 500, 404]).toContain(res.status)
   })
 })
-
+/** @jest-environment node */

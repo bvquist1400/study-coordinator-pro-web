@@ -34,6 +34,11 @@ const eslintConfig = [
         },
       ],
       "prefer-const": "warn",
+      // Encourage using structured logger instead of console.log
+      "no-console": [
+        "warn",
+        { allow: ["warn", "error"] }
+      ],
     },
   },
 ];

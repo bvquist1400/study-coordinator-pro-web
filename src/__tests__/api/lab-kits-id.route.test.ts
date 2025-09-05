@@ -1,4 +1,10 @@
-import { GET as getLabKit, DELETE as deleteLabKit, PUT as updateLabKit } from '@/app/api/lab-kits/[id]/route'
+jest.mock('next/server', () => ({
+  NextResponse: {
+    json: (body: any, init?: { status?: number }) => ({ status: init?.status || 200, json: async () => body }),
+  },
+}))
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { GET: getLabKit, DELETE: deleteLabKit, PUT: updateLabKit } = require('@/app/api/lab-kits/[id]/route')
 
 function createSupabaseStub(options: {
   authUser?: { id: string; email?: string } | null
@@ -53,16 +59,18 @@ function createSupabaseStub(options: {
   } as any
 }
 
-jest.mock('@/lib/api/auth', () => ({ createSupabaseAdmin: jest.fn() }))
+jest.mock('@/lib/api/auth', () => ({ createSupabaseAdmin: jest.fn(), authenticateUser: jest.fn() }))
+jest.mock('@/lib/logger', () => ({ __esModule: true, default: { error: jest.fn(), info: jest.fn(), warn: jest.fn(), debug: jest.fn() } }))
 
 describe('Lab Kits API security and constraints', () => {
-  const { createSupabaseAdmin } = jest.requireMock('@/lib/api/auth') as { createSupabaseAdmin: jest.Mock }
+  const { createSupabaseAdmin, authenticateUser } = jest.requireMock('@/lib/api/auth') as { createSupabaseAdmin: jest.Mock, authenticateUser: jest.Mock }
 
   test('GET denies non-members (403)', async () => {
     const user = { id: 'u1', email: 'x@y.z' }
     const kit = { id: 'k1', studies: { id: 's1', site_id: 'site1', user_id: 'owner' } }
     createSupabaseAdmin.mockReturnValue(createSupabaseStub({ authUser: user, kit, member: false }))
-    const req = new Request('http://local/api/lab-kits/k1', { method: 'GET', headers: { Authorization: 'Bearer t' } })
+    authenticateUser.mockResolvedValue({ user })
+    const req = { method: 'GET', url: 'http://local/api/lab-kits/k1', headers: new Headers({ Authorization: 'Bearer t' }) }
     const res = await getLabKit(req as any, { params: { id: 'k1' } })
     expect(res.status).toBe(403)
   })
@@ -71,9 +79,10 @@ describe('Lab Kits API security and constraints', () => {
     const user = { id: 'u1' }
     const base = { id: 'k1', status: 'used', studies: { id: 's1', site_id: 'site1', user_id: 'owner' } }
     createSupabaseAdmin.mockReturnValue(createSupabaseStub({ authUser: user, kit: base, member: true, deleteOk: false }))
-    const req = new Request('http://local/api/lab-kits/k1', { method: 'DELETE', headers: { Authorization: 'Bearer t' } })
+    authenticateUser.mockResolvedValue({ user })
+    const req = { method: 'DELETE', url: 'http://local/api/lab-kits/k1', headers: new Headers({ Authorization: 'Bearer t' }) }
     const res = await deleteLabKit(req as any, { params: { id: 'k1' } })
     expect(res.status).toBe(400)
   })
 })
-
+/** @jest-environment node */
