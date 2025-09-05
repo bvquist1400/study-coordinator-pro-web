@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
       } as any)
 
     if (error) {
-      console.error('Error updating SOE:', error)
+      logger.error('Error updating SOE', error as any)
       return NextResponse.json({ error: 'Failed to update SOE' }, { status: 500 })
     }
 
@@ -59,7 +59,8 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('SOE update error:', error)
+    logger.error('SOE update error', error as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+import logger from '@/lib/logger'

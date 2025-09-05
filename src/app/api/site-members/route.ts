@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/api/auth'
+import type { Database } from '@/types/database'
 
 async function requireUser(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
@@ -95,9 +96,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Insert membership
+    type SiteMemberInsert = Database['public']['Tables']['site_members']['Insert']
     const { error } = await supabase
       .from('site_members')
-      .insert({ site_id, user_id: targetUserId!, role } as unknown as never)
+      .insert({ site_id, user_id: targetUserId!, role } as SiteMemberInsert)
 
     if (error) {
       const errCode = (error as { code?: string }).code
@@ -131,9 +133,10 @@ export async function PUT(request: NextRequest) {
     const isOwner = await requireOwner(supabase, site_id, user.id)
     if (!isOwner) return NextResponse.json({ error: 'Only owners can update roles' }, { status: 403 })
 
+    type SiteMemberUpdate = Database['public']['Tables']['site_members']['Update']
     const { error } = await supabase
       .from('site_members')
-      .update({ role } as unknown as never)
+      .update({ role } as SiteMemberUpdate)
       .eq('site_id', site_id)
       .eq('user_id', user_id)
 

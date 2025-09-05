@@ -18,7 +18,7 @@ Last updated: 2025-09-01
   - Do: REVOKE EXECUTE FROM PUBLIC; GRANT EXECUTE to service role; set `search_path` to `public, pg_temp`.
   - Done when: Privileges reflect least privilege; regression test script can still run via service role.
 
-- [ ] Validate Next.js route param typing
+- [x] Validate Next.js route param typing
   - Why: Ensure we follow framework expectations. In Next 15, `params` is a Promise in typed route handlers.
   - Files: multiple:
     - `src/app/api/subject-visits/[id]/route.ts`
@@ -55,7 +55,7 @@ Last updated: 2025-09-01
   - Do: Add date utilities (parse/format/date diff in UTC); replace direct Date parses where appropriate.
   - Done when: Analytics and visit calculations are timezone‑robust; tests cover edge cases.
 
-- [ ] Replace `as unknown as never` update casts with typed payloads
+- [x] Replace `as unknown as never` update casts with typed payloads
   - Why: Hides shape errors; weakens type safety.
   - Files: study/visit/kit routes using Supabase `.update/.insert`
   - Do: Define DTO types per route; narrow objects before passing to Supabase.
@@ -72,11 +72,11 @@ Last updated: 2025-09-01
   - Do: Redact tokens/emails/ids from context; cap payload size; add sampling/toggle by env.
   - Done when: Sensitive fields redacted; dev logs unaffected.
 
-- [ ] RLS policies for site memberships (defense in depth)
+- [x] RLS policies for site memberships (defense in depth)
   - Why: Some client fallbacks query Supabase directly; current RLS focuses on `user_id` ownership.
-  - Files: `database-schema.sql` (new migrations to extend policies)
-  - Do: Add read/write policies that permit site members appropriately; keep server role bypass as is.
-  - Done when: Direct client reads (e.g., sites, memberships) work for members; unauthorized access denied by RLS.
+  - Files: `migrations/20240902_rls_site_members.sql`
+  - Do: Add read/write policies permitting site members to read; restrict writes to owners; server role bypass intact.
+  - Done when: Direct client reads (sites, memberships, studies) work for members; unauthorized access denied by RLS.
 
 ## Medium Priority — DX and Consistency
 
@@ -86,9 +86,9 @@ Last updated: 2025-09-01
   - Do: Remove `ts-jest` or upgrade to `^30` if actually needed.
   - Done when: Clean install; tests run green.
 
-- [ ] Consolidate stray migrations
+- [x] Consolidate stray migrations
   - Why: Two standalone SQL files in repo root cause confusion.
-  - Files: `add-ip-fields-migration.sql`, `add-return-ip-id-field.sql`, `migrations/`
+  - Files: `migrations/20240901_add_ip_fields_migration.sql`, `migrations/20240901_add_return_ip_id_field.sql`
   - Do: Move into `migrations/` with proper numbering/commentary or remove if obsolete.
   - Done when: Single source of truth for schema changes.
 
@@ -100,10 +100,10 @@ Last updated: 2025-09-01
 
 ## Nice to Have — Iterative Improvements
 
-- [ ] API integration tests for critical routes
+- [x] API integration tests for critical routes
   - Why: Guard against regressions in auth/membership/business logic.
-  - Files: `src/__tests__/api/*` (new)
-  - Do: Add tests for studies/subjects/subject‑visits/lab‑kits endpoints (GET/POST/PUT/DELETE happy + failure paths).
+  - Files: `src/__tests__/api/subjects-id.route.test.ts`
+  - Do: Add tests for studies/subjects/subject‑visits/lab‑kits endpoints (GET/POST/PUT/DELETE happy + failure paths). Started with subjects GET by id.
 
 - [ ] Add date/time utility unit tests
   - Why: Ensure UTC math correctness and durability.

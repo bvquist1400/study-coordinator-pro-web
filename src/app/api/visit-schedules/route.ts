@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser, verifyStudyMembership, createSupabaseAdmin } from '@/lib/api/auth'
-import type { VisitSchedule } from '@/types/database'
+import type { VisitSchedule, VisitScheduleInsert, VisitScheduleUpdate } from '@/types/database'
+import logger from '@/lib/logger'
 
 // GET /api/visit-schedules?study_id=xxx - Get visit schedules for a study
 export async function GET(request: NextRequest) {
@@ -66,12 +67,12 @@ export async function POST(request: NextRequest) {
       .order('window_before_days', { ascending: false })
 
     if (fetchError) {
-      console.error('Fetch error:', fetchError)
+      logger.error('Fetch error loading existing visit schedules', fetchError)
       return NextResponse.json({ error: 'Failed to fetch existing visit schedules' }, { status: 500 })
     }
 
-    const schedulesToUpdate: any[] = []
-    const schedulesToInsert: any[] = []
+    const schedulesToUpdate: VisitScheduleUpdate[] = []
+    const schedulesToInsert: VisitScheduleInsert[] = []
     const scheduleIdMap = new Map()
 
     console.log('Processing visit schedules. Existing:', existingSchedules?.length, 'Incoming:', visit_schedules.length)
@@ -90,7 +91,7 @@ export async function POST(request: NextRequest) {
       
       if (existingSchedule) {
         // Update existing schedule - preserve ID and visit_number to maintain lab kit associations
-        const updateSchedule = {
+        const updateSchedule: VisitScheduleUpdate = {
           id: existingSchedule.id,
           ...schedule,
           visit_number: existingSchedule.visit_number, // Keep original visit number (text)
@@ -102,7 +103,7 @@ export async function POST(request: NextRequest) {
         console.log('Queued for update:', updateSchedule.visit_name, 'visit_number:', updateSchedule.visit_number)
       } else {
         // Insert new schedule - use the provided visit number (or generate one)
-        const insertSchedule = {
+        const insertSchedule: VisitScheduleInsert = {
           ...schedule,
           visit_number: visitNumber, // Use the text visit number as provided
           study_id
@@ -133,7 +134,7 @@ export async function POST(request: NextRequest) {
         .in('id', schedulesToDelete.map(s => s.id))
 
       if (deleteError) {
-        console.error('Delete error:', deleteError)
+        logger.error('Delete error removing unused visit schedules', deleteError)
         return NextResponse.json({ error: 'Failed to remove unused visit schedules' }, { status: 500 })
       }
     }
@@ -149,7 +150,7 @@ export async function POST(request: NextRequest) {
         visit_number: schedule.visit_number
       })
       
-      const updateData = {
+      const updateData: VisitScheduleUpdate = {
         visit_name: schedule.visit_name,
         visit_day: schedule.visit_day,
         window_before_days: schedule.window_before_days,
@@ -163,13 +164,13 @@ export async function POST(request: NextRequest) {
       
       const { data: updated, error: updateError } = await (supabase as any)
         .from('visit_schedules')
-        .update(updateData)
+        .update(updateData as VisitScheduleUpdate)
         .eq('id', schedule.id)
         .select()
         .single()
 
       if (updateError) {
-        console.error('Update error for schedule:', schedule.id, updateError)
+        logger.error('Update error for visit schedule', updateError, { id: schedule.id })
         return NextResponse.json({ error: 'Failed to update visit schedule', details: updateError.message }, { status: 500 })
       }
       
@@ -178,15 +179,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Insert new schedules
-    let insertedSchedules: any[] = []
+    let insertedSchedules: VisitSchedule[] = []
     if (schedulesToInsert.length > 0) {
       const { data: inserted, error: insertError } = await supabase
         .from('visit_schedules')
-        .insert(schedulesToInsert as unknown as never)
+        .insert(schedulesToInsert as VisitScheduleInsert[])
         .select()
 
       if (insertError) {
-        console.error('Insert error:', insertError)
+        logger.error('Insert error creating visit schedules', insertError)
         return NextResponse.json({ 
           error: 'Failed to create visit schedules',
           details: insertError.message 
@@ -200,7 +201,7 @@ export async function POST(request: NextRequest) {
     console.log('Successfully saved visit schedules:', allSchedules)
     return NextResponse.json({ visitSchedules: allSchedules }, { status: 201 })
   } catch (error) {
-    console.error('API error:', error)
+    logger.error('API error in visit schedules POST', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -227,7 +228,7 @@ export async function PUT(request: NextRequest) {
       .update({
         ...updateData,
         updated_at: new Date().toISOString()
-      } as unknown as never)
+      } as VisitScheduleUpdate)
       .eq('id', id)
       .eq('study_id', study_id) // Extra security check
       .select()

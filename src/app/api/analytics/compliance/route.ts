@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
 
     const { data: allowedStudies, error: studiesErr } = await studiesQuery
     if (studiesErr) {
-      console.error('Error fetching studies for compliance analytics:', studiesErr)
+      logger.error('Error fetching studies for compliance analytics', studiesErr)
       return NextResponse.json({ error: 'Failed to resolve studies' }, { status: 500 })
     }
     const allowedStudyIds = ((allowedStudies || []) as Array<{ id: string }>).map(s => s.id)
@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
       .gte('updated_at', startDate.toISOString())
       .lte('updated_at', endDate.toISOString())
     if (visitsError) {
-      console.error('Error fetching visits:', visitsError)
+      logger.error('Error fetching visits for compliance analytics', visitsError)
       return NextResponse.json({ error: 'Failed to fetch visits' }, { status: 500 })
     }
 
@@ -141,7 +141,7 @@ export async function GET(request: NextRequest) {
       .lte('assessment_date', endDate.toISOString().split('T')[0])
       .in('subjects.study_id', allowedStudyIds)
     if (drugError) {
-      console.error('Error fetching drug compliance:', drugError)
+      logger.error('Error fetching drug compliance for analytics', drugError)
       return NextResponse.json({ error: 'Failed to fetch drug compliance' }, { status: 500 })
     }
 
@@ -357,7 +357,8 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error in compliance analytics:', error)
+    logger.error('Error in compliance analytics', error as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+import logger from '@/lib/logger'

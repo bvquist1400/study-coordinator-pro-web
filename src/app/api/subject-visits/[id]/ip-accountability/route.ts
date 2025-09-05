@@ -1,17 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser, verifyStudyMembership, createSupabaseAdmin } from '@/lib/api/auth'
 import { saveVisitWithIP, type VisitIPData } from '@/lib/ip-accountability'
+import logger from '@/lib/logger'
 import type { DrugComplianceUpdate, DrugComplianceInsert, SubjectVisitUpdate } from '@/types/database'
 
 // PUT /api/subject-visits/[id]/ip-accountability - Save visit with IP accountability
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const { user, error: authError, status: authStatus } = await authenticateUser(request)
     if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
-    const resolvedParams = await params
+    const resolvedParams = params
     
     // DB client
     const supabase = createSupabaseAdmin()
@@ -69,7 +70,7 @@ export async function PUT(
             } as DrugComplianceInsert)
           
           if (error) {
-            console.error('Error saving dispensed bottle:', error)
+            logger.error('Error saving dispensed bottle', error)
             return NextResponse.json({ 
               error: 'Failed to save dispensed bottle data',
               detail: error.message 
@@ -108,7 +109,7 @@ export async function PUT(
               .eq('id', (existing[0] as any).id)
               
             if (error) {
-              console.error('Error updating returned bottle:', error)
+              logger.error('Error updating returned bottle', error)
               return NextResponse.json({ 
                 error: 'Failed to update returned bottle data',
                 detail: error.message 
@@ -131,7 +132,7 @@ export async function PUT(
               } as DrugComplianceInsert)
               
             if (error) {
-              console.error('Error saving returned bottle:', error)
+              logger.error('Error saving returned bottle', error)
               return NextResponse.json({ 
                 error: 'Failed to save returned bottle data',
                 detail: error.message 
@@ -166,7 +167,7 @@ export async function PUT(
         .eq('id', resolvedParams.id)
         
       if (visitError) {
-        console.error('Error updating visit:', visitError)
+        logger.error('Error updating visit', visitError as any)
         return NextResponse.json({ 
           error: 'Failed to update visit record',
           detail: visitError.message 
@@ -203,7 +204,7 @@ export async function PUT(
       const result = await saveVisitWithIP(vAny.subject_id, user.id, visitData)
       
       if (!result.success) {
-        console.error('IP accountability save failed:', result.error)
+        logger.error('IP accountability save failed', result.error as any)
         return NextResponse.json({ 
           error: 'Failed to save visit with IP accountability',
           detail: result.error 
@@ -224,7 +225,7 @@ export async function PUT(
     })
     
   } catch (error) {
-    console.error('API error:', error)
+    logger.error('API error in IP accountability PUT', error as any)
     return NextResponse.json({ 
       error: 'Internal server error',
       detail: error instanceof Error ? error.message : 'Unknown error'

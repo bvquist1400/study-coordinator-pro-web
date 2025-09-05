@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
       .lte('visit_date', futureDate.toISOString().split('T')[0])
 
     if (visitsError) {
-      console.error('Visits error:', visitsError)
+      logger.error('Visits error in inventory forecast', visitsError)
       return NextResponse.json({ error: 'Failed to fetch upcoming visits' }, { status: 500 })
     }
 
@@ -112,7 +112,7 @@ export async function GET(request: NextRequest) {
       .in('status', ['available', 'assigned'])
 
     if (kitsError) {
-      console.error('Kits error:', kitsError)
+      logger.error('Kits error in inventory forecast', kitsError)
       return NextResponse.json({ error: 'Failed to fetch lab kits' }, { status: 500 })
     }
 
@@ -214,7 +214,8 @@ export async function GET(request: NextRequest) {
       }
     })
   } catch (error) {
-    console.error('API error:', error)
+    logger.error('API error in inventory forecast', error as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+import logger from '@/lib/logger'

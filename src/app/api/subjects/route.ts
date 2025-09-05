@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/api/auth'
+import type { SubjectInsert } from '@/types/database'
+import logger from '@/lib/logger'
 
 // GET /api/subjects?study_id=xxx - Get subjects for a study
 export async function GET(request: NextRequest) {
@@ -72,7 +74,7 @@ export async function GET(request: NextRequest) {
 
       const { data: subjects, error: subjectsErr } = await subjectQuery
       if (subjectsErr) {
-        console.error('Database error:', subjectsErr)
+        logger.error('Database error fetching subjects', subjectsErr)
         return NextResponse.json({ error: 'Failed to fetch subjects' }, { status: 500 })
       }
 
@@ -126,12 +128,12 @@ export async function GET(request: NextRequest) {
         .order('assessment_date', { ascending: true })
 
       if (visitsErr) {
-        console.error('Error fetching visits for subjects', visitsErr)
+        logger.error('Error fetching visits for subjects', visitsErr)
         return NextResponse.json({ error: 'Failed to fetch subject visits' }, { status: 500 })
       }
 
       if (drugComplianceErr) {
-        console.error('Error fetching drug compliance for subjects', drugComplianceErr)
+        logger.error('Error fetching drug compliance for subjects', drugComplianceErr)
         return NextResponse.json({ error: 'Failed to fetch drug compliance data' }, { status: 500 })
       }
 
@@ -320,14 +322,14 @@ export async function GET(request: NextRequest) {
       const { data: subjects, error } = await query
 
       if (error) {
-        console.error('Database error:', error)
+        logger.error('Database error fetching subjects (standard path)', error)
         return NextResponse.json({ error: 'Failed to fetch subjects' }, { status: 500 })
       }
 
       return NextResponse.json({ subjects })
     }
   } catch (error) {
-    console.error('API error:', error)
+    logger.error('API error in subjects GET', error as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -405,22 +407,13 @@ export async function POST(request: NextRequest) {
         ...subjectData,
         user_id: user.id,
         status: subjectData.status || 'screening'
-      } as unknown as never)
+      } as SubjectInsert)
       .select()
       .single()
 
     if (error) {
-      console.error('Database error:', error)
-      console.error('Error details:', {
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint
-      })
-      console.error('Data being inserted:', {
-        ...subjectData,
-        user_id: user.id,
-        status: subjectData.status || 'screening'
+      logger.error('Database error creating subject', error as any, {
+        data: { ...subjectData, user_id: user.id, status: subjectData.status || 'screening' }
       })
       
       if (error.code === '23505') { // Unique constraint violation
@@ -436,7 +429,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ subject }, { status: 201 })
   } catch (error) {
-    console.error('API error:', error)
+    logger.error('API error in subjects POST', error as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/api/auth'
+import type { SubjectUpdate } from '@/types/database'
+import logger from '@/lib/logger'
 
 // GET /api/subjects/[id] - Get specific subject
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const supabase = createSupabaseAdmin()
@@ -15,7 +17,7 @@ export async function GET(
     }
 
     const token = authHeader.split(' ')[1]
-    const resolvedParams = await params
+    const resolvedParams = params
     
     // Verify the JWT token
     const { data: { user }, error: authError } = await supabase.auth.getUser(token)
@@ -34,7 +36,7 @@ export async function GET(
       if (error.code === 'PGRST116') {
         return NextResponse.json({ error: 'Subject not found' }, { status: 404 })
       }
-      console.error('Database error:', error)
+      logger.error('Database error fetching subject', error)
       return NextResponse.json({ error: 'Failed to fetch subject' }, { status: 500 })
     }
 
@@ -64,7 +66,7 @@ export async function GET(
 
     return NextResponse.json({ subject })
   } catch (error) {
-    console.error('API error:', error)
+    logger.error('API error in subject GET', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -72,7 +74,7 @@ export async function GET(
 // PUT /api/subjects/[id] - Update subject
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const supabase = createSupabaseAdmin()
@@ -91,7 +93,7 @@ export async function PUT(
     }
 
     const updateData = await request.json()
-    const resolvedParams = await params
+    const resolvedParams = params
 
     // Create update object with allowed fields
     const updateObject = {
@@ -149,13 +151,13 @@ export async function PUT(
     // Update subject
     const { data: subject, error } = await supabase
       .from('subjects')
-      .update(updateObject as unknown as never)
+      .update(updateObject as SubjectUpdate)
       .eq('id', resolvedParams.id)
       .select()
       .single()
 
     if (error) {
-      console.error('Database error:', error)
+      logger.error('Database error updating subject', error)
       if (error.code === '23505') { // Unique constraint violation
         return NextResponse.json({ 
           error: 'Subject number already exists in this study' 
@@ -170,7 +172,7 @@ export async function PUT(
 
     return NextResponse.json({ subject })
   } catch (error) {
-    console.error('API error:', error)
+    logger.error('API error in subject PUT', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -178,7 +180,7 @@ export async function PUT(
 // DELETE /api/subjects/[id] - Delete subject
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const supabase = createSupabaseAdmin()
@@ -189,7 +191,7 @@ export async function DELETE(
     }
 
     const token = authHeader.split(' ')[1]
-    const resolvedParams = await params
+    const resolvedParams = params
     
     // Verify the JWT token
     const { data: { user }, error: authError } = await supabase.auth.getUser(token)
@@ -205,7 +207,7 @@ export async function DELETE(
       .limit(1)
 
     if (visitsError) {
-      console.error('Error checking visits:', visitsError)
+      logger.error('Error checking subject visits before delete', visitsError)
       return NextResponse.json({ error: 'Failed to verify subject deletion' }, { status: 500 })
     }
 
@@ -260,7 +262,7 @@ export async function DELETE(
       if (error.code === 'PGRST116') {
         return NextResponse.json({ error: 'Subject not found' }, { status: 404 })
       }
-      console.error('Database error:', error)
+      logger.error('Database error deleting subject', error)
       return NextResponse.json({ error: 'Failed to delete subject' }, { status: 500 })
     }
 
@@ -269,7 +271,7 @@ export async function DELETE(
       subject 
     })
   } catch (error) {
-    console.error('API error:', error)
+    logger.error('API error in subject DELETE', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

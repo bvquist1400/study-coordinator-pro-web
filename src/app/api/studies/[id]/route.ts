@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser, createSupabaseAdmin } from '@/lib/api/auth'
+import logger from '@/lib/logger'
 
 // GET /api/studies/[id] - Get specific study
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const { user, error: authError, status: authStatus } = await authenticateUser(request)
     if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
-    const resolvedParams = await params
+    const resolvedParams = params
     
     // Verify the JWT token
     const supabase = createSupabaseAdmin()
@@ -25,7 +26,7 @@ export async function GET(
       if (error.code === 'PGRST116') {
         return NextResponse.json({ error: 'Study not found' }, { status: 404 })
       }
-      console.error('Database error:', error)
+      logger.error('Database error fetching study', error)
       return NextResponse.json({ error: 'Failed to fetch study' }, { status: 500 })
     }
 
@@ -45,7 +46,7 @@ export async function GET(
 
     return NextResponse.json({ study })
   } catch (error) {
-    console.error('API error:', error)
+    logger.error('API error in study GET', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -53,12 +54,12 @@ export async function GET(
 // DELETE /api/studies/[id] - Delete specific study
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const { user, error: authError, status: authStatus } = await authenticateUser(request)
     if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
-    const resolvedParams = await params
+    const resolvedParams = params
     
     // Verify the JWT token
     const supabase = createSupabaseAdmin()
@@ -97,13 +98,13 @@ export async function DELETE(
       if (error.code === 'PGRST116') {
         return NextResponse.json({ error: 'Study not found' }, { status: 404 })
       }
-      console.error('Database error:', error)
+      logger.error('Database error deleting study', error)
       return NextResponse.json({ error: 'Failed to delete study' }, { status: 500 })
     }
 
     return NextResponse.json({ message: 'Study deleted successfully', study })
   } catch (error) {
-    console.error('API error:', error)
+    logger.error('API error in study DELETE', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

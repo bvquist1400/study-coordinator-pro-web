@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser, createSupabaseAdmin } from '@/lib/api/auth'
 import { isWithinVisitWindow, getDaysFromScheduled } from '@/lib/visit-calculator'
+import logger from '@/lib/logger'
+import type { SubjectVisitInsert, SubjectVisitUpdate } from '@/types/database'
 
 // GET /api/subject-visits/[id] - Get specific subject visit
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const { user, error: authError, status } = await authenticateUser(request)
     if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: status || 401 })
-    const resolvedParams = await params
+    const resolvedParams = params
     
     // Verify the JWT token
     const supabase = createSupabaseAdmin()
@@ -29,7 +31,7 @@ export async function GET(
       if (error.code === 'PGRST116') {
         return NextResponse.json({ error: 'Subject visit not found' }, { status: 404 })
       }
-      console.error('Database error:', error)
+      logger.error('Database error fetching subject visit', error)
       return NextResponse.json({ error: 'Failed to fetch subject visit' }, { status: 500 })
     }
 
@@ -66,7 +68,7 @@ export async function GET(
 
     return NextResponse.json({ visit: transformedVisit })
   } catch (error) {
-    console.error('API error:', error)
+    logger.error('API error in subject visit GET', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -74,7 +76,7 @@ export async function GET(
 // PUT /api/subject-visits/[id] - Update or upsert subject visit (for VisitCard)
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const { user, error: authError, status } = await authenticateUser(request)
@@ -84,7 +86,7 @@ export async function PUT(
     const supabase = createSupabaseAdmin()
 
     const updateData = await request.json()
-    const resolvedParams = await params
+    const resolvedParams = params
 
     // If this is an upsert (new visit), we need to create it
     if (updateData.id === resolvedParams.id && updateData.study_id && updateData.visit_name && updateData.visit_date) {
@@ -107,12 +109,12 @@ export async function PUT(
           ...updateData,
           user_id: user.id,
           updated_at: new Date().toISOString()
-        } as unknown as never)
+        } as SubjectVisitInsert)
         .select()
         .single()
 
       if (error) {
-        console.error('Database error:', error)
+        logger.error('Database error upserting subject visit', error)
         return NextResponse.json({ error: 'Failed to save subject visit' }, { status: 500 })
       }
 
@@ -213,13 +215,13 @@ export async function PUT(
           ...updateData,
           ...windowCalculation,
           updated_at: new Date().toISOString()
-        } as unknown as never)
+        } as SubjectVisitUpdate)
         .eq('id', resolvedParams.id)
         .select()
         .single()
 
       if (error) {
-        console.error('Database error:', error)
+        logger.error('Database error updating subject visit', error)
         return NextResponse.json({ error: 'Failed to update subject visit' }, { status: 500 })
       }
 
@@ -230,7 +232,7 @@ export async function PUT(
       return NextResponse.json({ visit: subjectVisit })
     }
   } catch (error) {
-    console.error('API error:', error)
+    logger.error('API error in subject visit PUT', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -238,12 +240,12 @@ export async function PUT(
 // DELETE /api/subject-visits/[id] - Delete specific subject visit
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const { user, error: authError, status } = await authenticateUser(request)
     if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: status || 401 })
-    const resolvedParams = await params
+    const resolvedParams = params
     
     // Verify the JWT token
     const supabase = createSupabaseAdmin()
@@ -288,13 +290,13 @@ export async function DELETE(
       if (error.code === 'PGRST116') {
         return NextResponse.json({ error: 'Subject visit not found' }, { status: 404 })
       }
-      console.error('Database error:', error)
+      logger.error('Database error deleting subject visit', error)
       return NextResponse.json({ error: 'Failed to delete subject visit' }, { status: 500 })
     }
 
     return NextResponse.json({ message: 'Subject visit deleted successfully', subjectVisit })
   } catch (error) {
-    console.error('API error:', error)
+    logger.error('API error in subject visit DELETE', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/api/auth'
+import type { LabKitInsert } from '@/types/database'
 
 type StudyAccessRow = { id: string; site_id: string | null; user_id: string }
 
@@ -109,7 +110,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Prepare lab kits for insertion
-    const kitsToInsert = labKits.map(kit => ({
+    const kitsToInsert: LabKitInsert[] = labKits.map(kit => ({
       study_id: kit.study_id,
       visit_schedule_id: kit.visit_schedule_id,
       accession_number: kit.accession_number.trim(),
@@ -125,7 +126,7 @@ export async function POST(request: NextRequest) {
     // Insert all lab kits
     const { data: insertedKits, error: insertError } = await supabase
       .from('lab_kits')
-      .insert(kitsToInsert as unknown as never)
+      .insert(kitsToInsert as LabKitInsert[])
       .select()
 
     if (insertError) {

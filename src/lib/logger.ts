@@ -13,6 +13,89 @@ export interface LogEntry {
   url?: string
 }
 
+const DEFAULT_MAX_PAYLOAD = Number(process.env.LOG_MAX_PAYLOAD || 4096)
+const ENABLE_REDACTION = (process.env.LOG_REDACT || (process.env.NODE_ENV === 'production' ? 'on' : 'off')) !== 'off'
+
+type RedactOptions = {
+  maxLen?: number
+  aggressive?: boolean
+}
+
+const SENSITIVE_KEYS = [
+  'authorization','access_token','refresh_token','token','jwt','apiKey','supabaseKey',
+  'email','full_name','ip_id','return_ip_id','accession_number','password','secret','ssn','subject_number','user_id','idToken'
+]
+
+function maskEmail(value: string) {
+  const [user, domain] = value.split('@')
+  if (!domain) return '[REDACTED]'
+  const first = user.slice(0, 1)
+  return `${first}${'*'.repeat(Math.max(0, user.length - 1))}@${domain}`
+}
+
+function maskIdLike(value: string) {
+  if (value.length <= 4) return '****'
+  const keep = Math.min(6, Math.floor(value.length / 3))
+  return `${value.slice(0, keep)}${'*'.repeat(Math.max(4, value.length - keep))}`
+}
+
+function shouldRedactKey(key: string) {
+  const k = key.toLowerCase()
+  return SENSITIVE_KEYS.some(s => k.includes(s))
+}
+
+function redactValueByKey(key: string, value: any) {
+  if (value == null) return value
+  const k = key.toLowerCase()
+  if (k.includes('email') && typeof value === 'string') return maskEmail(value)
+  if (k.includes('authorization') || k.includes('token') || k.includes('apikey') || k.includes('key') || k.includes('password') || k.includes('secret')) return '[REDACTED]'
+  if (k.includes('ip_id') || k.includes('return_ip_id') || k.includes('accession') || k.includes('subject_number') || k === 'user_id') {
+    if (typeof value === 'string') return maskIdLike(value)
+    return '[REDACTED]'
+  }
+  return value
+}
+
+export function redact(obj: any, options: RedactOptions = {}) {
+  if (!ENABLE_REDACTION) return obj
+  const maxLen = options.maxLen ?? DEFAULT_MAX_PAYLOAD
+  const seen = new WeakSet()
+
+  function limitStr(s: string) {
+    if (s.length <= maxLen) return s
+    return s.slice(0, maxLen) + `…[truncated ${s.length - maxLen}]`
+  }
+
+  function walk(input: any, parentKey?: string, depth = 0): any {
+    if (input == null) return input
+    if (depth > 5) return '[Depth limit]'
+    if (typeof input === 'string') return parentKey ? redactValueByKey(parentKey, limitStr(input)) : limitStr(input)
+    if (typeof input !== 'object') return input
+    if (seen.has(input)) return '[Circular]'
+    seen.add(input)
+
+    if (Array.isArray(input)) {
+      const out: any[] = []
+      const limit = Math.min(input.length, 100)
+      for (let i = 0; i < limit; i++) out.push(walk(input[i], parentKey, depth + 1))
+      if (input.length > limit) out.push(`[+${input.length - limit} more]`)
+      return out
+    }
+
+    const out: Record<string, any> = {}
+    for (const [k, v] of Object.entries(input)) {
+      if (shouldRedactKey(k)) {
+        out[k] = redactValueByKey(k, v)
+      } else {
+        out[k] = walk(v, k, depth + 1)
+      }
+    }
+    return out
+  }
+
+  return walk(obj)
+}
+
 class Logger {
   private isDevelopment: boolean
   private sessionId: string
@@ -37,7 +120,7 @@ class Logger {
       message,
       timestamp: new Date().toISOString(),
       sessionId: this.sessionId,
-      context
+      context: context ? (ENABLE_REDACTION ? redact(context) : context) : undefined
     }
 
     if (this.userId) {
@@ -115,13 +198,14 @@ class Logger {
         const { data: { session } } = await supabase.auth.getSession()
         
         if (session?.access_token) {
+          const redacted = ENABLE_REDACTION ? redact(entry) : entry
           fetch('/api/logs', {
             method: 'POST',
             headers: { 
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${session.access_token}`
             },
-            body: JSON.stringify(entry)
+            body: JSON.stringify(redacted)
           }).catch(error => {
             console.error('Failed to send log to API:', error)
           })

@@ -1,36 +1,82 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+Study Coordinator Pro — Web
 
-## Getting Started
+Opinionated Next.js app for study/site coordination with visits, IP accountability, and analytics. This README focuses on getting a contributor productive quickly.
 
-First, run the development server:
+Links
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- INSTRUCTIONS: `INSTRUCTIONS.md`
+- Testing Guide: `TESTING.md`
+- Engineering Checklist: `codex_ENGINEERING_CHECKLIST.md`
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Prerequisites
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- Node 20+ and npm 10+
+- Supabase project (self-hosted or cloud)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Environment
 
-## Learn More
+- Copy `.env.local` and fill values. Required keys (examples):
+  - `NEXT_PUBLIC_SUPABASE_URL`: https://<project>.supabase.co
+  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: public anon key
+  - `SUPABASE_SERVICE_ROLE_KEY`: service role (server only)
+  - `LOG_REDACT`: on|off (default on in prod)
+  - Optional: `LOG_MAX_PAYLOAD`, feature flags
 
-To learn more about Next.js, take a look at the following resources:
+Install
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `npm ci` (preferred) or `npm install`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Database
 
-## Deploy on Vercel
+- Bootstrap schema: `setup-database.sql`
+- Full schema reference: `database-schema.sql`
+- Local tweaks and fixes (idempotent): files under `migrations/`
+  - Example order:
+    1) `migrations/20240901_add_ip_fields_migration.sql`
+    2) `migrations/20240901_add_return_ip_id_field.sql`
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Run
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Dev: `npm run dev` (Turbopack)
+- Build: `npm run build`
+- Start: `npm start`
+
+Scripts
+
+- Lint: `npm run lint`
+- Tests: `npm test` | `npm run test:watch` | `npm run test:coverage`
+- Data fix/diagnostics: `scripts/*` (see filenames)
+
+Testing
+
+- Jest 30 with `next/jest` and `jsdom` env.
+- Tests live under `src/__tests__/`.
+- See `TESTING.md` for scenarios and tips.
+
+Key App Areas
+
+- API routes: `src/app/api/**` (uniform auth/membership, UTC-safe date handling)
+- Lib: `src/lib/**` (`supabase` clients, date utils, logger with redaction)
+- Components/Pages: `src/app/**`, `src/components/**`
+
+Auth
+
+- Server routes use a Supabase Admin client and verify either:
+  - Site membership via `site_members`, or
+  - Legacy ownership via `studies.user_id`
+
+IP Accountability
+
+- Endpoints under:
+  - `src/app/api/subject-visits/[id]/ip-accountability/route.ts`
+  - Data model: `drug_compliance`, fields on `subject_visits`
+
+Deployment
+
+- Next.js 15 App Router; deploy via Vercel or your platform of choice.
+- Ensure env vars set for runtime; configure Supabase URL/keys.
+
+Notes
+
+- Logs redact sensitive fields by default in production. Toggle with `LOG_REDACT`.
+- Date handling prefers UTC-safe utilities to avoid off-by-one errors.

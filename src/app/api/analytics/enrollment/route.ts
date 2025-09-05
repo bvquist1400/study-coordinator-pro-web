@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
 
     const { data: allowedStudies, error: studiesErr } = await studiesQuery
     if (studiesErr) {
-      console.error('Error fetching studies for analytics:', studiesErr)
+      logger.error('Error fetching studies for enrollment analytics', studiesErr)
       return NextResponse.json({ error: 'Failed to resolve studies' }, { status: 500 })
     }
     const allowedStudyIds = ((allowedStudies || []) as Array<{ id: string }>).map(s => s.id)
@@ -93,7 +93,7 @@ export async function GET(request: NextRequest) {
       .lte('enrollment_date', toDateOnly(endDate))
 
     if (subjectsError) {
-      console.error('Error fetching subjects:', subjectsError)
+      logger.error('Error fetching subjects for enrollment analytics', subjectsError)
       return NextResponse.json({ error: 'Failed to fetch subjects' }, { status: 500 })
     }
 
@@ -174,7 +174,8 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error in enrollment analytics:', error)
+    logger.error('Error in enrollment analytics', error as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+import logger from '@/lib/logger'

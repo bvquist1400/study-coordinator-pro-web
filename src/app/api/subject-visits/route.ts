@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser, verifyStudyMembership, createSupabaseAdmin } from '@/lib/api/auth'
+import type { LabKitUpdate } from '@/types/database'
+import logger from '@/lib/logger'
 
 // GET /api/subject-visits?studyId|study_id=xxx&subjectId|subject_id=xxx&startDate=xxx&endDate=xxx&summary=true - Get subject visits
 export async function GET(request: NextRequest) {
@@ -50,7 +52,7 @@ export async function GET(request: NextRequest) {
     const { data: rawVisits, error } = await query
 
     if (error) {
-      console.error('Database error:', error)
+      logger.error('Database error fetching subject visits', error)
       return NextResponse.json({ error: 'Failed to fetch subject visits' }, { status: 500 })
     }
 
@@ -65,7 +67,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ subjectVisits })
   } catch (error) {
-    console.error('API error:', error)
+    logger.error('API error in subject visits GET', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -102,7 +104,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error('Database error:', error)
+      logger.error('Database error creating subject visit', error)
       return NextResponse.json({ error: 'Failed to create subject visit' }, { status: 500 })
     }
 
@@ -114,19 +116,19 @@ export async function POST(request: NextRequest) {
           status: 'assigned',
           visit_schedule_id: visitData.visit_schedule_id || null,
           updated_at: new Date().toISOString()
-        } as unknown as never)
+        } as LabKitUpdate)
         .eq('id', visitData.lab_kit_id)
         .eq('study_id', visitData.study_id) // Ensure kit belongs to same study
 
       if (kitError) {
-        console.error('Failed to update lab kit status:', kitError)
+        logger.error('Failed to update lab kit status', kitError as any)
         // Don't fail the visit creation, just log the error
       }
     }
 
     return NextResponse.json({ visit: subjectVisit }, { status: 201 })
   } catch (error) {
-    console.error('API error:', error)
+    logger.error('API error in subject visits POST', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/api/auth'
+import logger from '@/lib/logger'
+import type { Database } from '@/types/database'
 
 // GET /api/sites - List sites for current user (via membership)
 export async function GET(request: NextRequest) {
@@ -22,7 +24,7 @@ export async function GET(request: NextRequest) {
       .eq('user_id', user.id)
 
     if (error) {
-      console.error('Database error:', error)
+      logger.error('Database error listing sites', error)
       return NextResponse.json({ error: 'Failed to fetch sites' }, { status: 500 })
     }
 
@@ -42,7 +44,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ sites })
   } catch (error) {
-    console.error('API error:', error)
+    logger.error('API error in sites GET', error as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -67,30 +69,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Site name is required' }, { status: 400 })
     }
 
+    type SiteInsert = Database['public']['Tables']['sites']['Insert']
     const { data: site, error: siteErr } = await supabase
       .from('sites')
-      .insert({ name: name.trim() } as unknown as never)
+      .insert({ name: name.trim() } as SiteInsert)
       .select()
       .single()
 
     if (siteErr || !site) {
-      console.error('Create site error:', siteErr)
+      logger.error('Create site error', siteErr as any)
       return NextResponse.json({ error: 'Failed to create site', details: (siteErr as any)?.message || (siteErr as any)?.hint || String(siteErr) }, { status: 500 })
     }
 
     const siteRow = site as { id: string }
+    type SiteMemberInsert = Database['public']['Tables']['site_members']['Insert']
     const { error: memberErr } = await supabase
       .from('site_members')
-      .insert({ site_id: siteRow.id, user_id: user.id, role: 'owner' } as unknown as never)
+      .insert({ site_id: siteRow.id, user_id: user.id, role: 'owner' } as SiteMemberInsert)
 
     if (memberErr) {
-      console.error('Add owner membership error:', memberErr)
+      logger.error('Add owner membership error', memberErr as any)
       return NextResponse.json({ error: 'Site created, but failed to add owner membership', details: (memberErr as any)?.message || (memberErr as any)?.hint || String(memberErr) }, { status: 500 })
     }
 
     return NextResponse.json({ site }, { status: 201 })
   } catch (error) {
-    console.error('API error:', error)
+    logger.error('API error in sites POST', error as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

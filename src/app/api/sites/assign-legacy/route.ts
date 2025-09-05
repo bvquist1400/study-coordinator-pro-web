@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser, createSupabaseAdmin } from '@/lib/api/auth'
+import logger from '@/lib/logger'
+import type { StudyUpdate } from '@/types/database'
 
 async function requireOwner(supabase: ReturnType<typeof createSupabaseAdmin>, siteId: string, userId: string) {
   const { data: member } = await supabase
@@ -29,20 +31,19 @@ export async function POST(request: NextRequest) {
     // Assign all legacy studies owned by this user (site_id IS NULL) to provided site
     const { data: updated, error } = await supabase
       .from('studies')
-      .update({ site_id, updated_at: new Date().toISOString() } as unknown as never)
+      .update({ site_id, updated_at: new Date().toISOString() } as StudyUpdate)
       .is('site_id', null)
       .eq('user_id', user.id)
       .select('id')
 
     if (error) {
-      console.error('Assign legacy error:', error)
+      logger.error('Assign legacy error', error as any)
       return NextResponse.json({ error: 'Failed to assign legacy studies' }, { status: 500 })
     }
 
     return NextResponse.json({ success: true, assigned: updated?.length || 0 })
   } catch (error) {
-    console.error('API error:', error)
+    logger.error('API error in assign-legacy POST', error as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

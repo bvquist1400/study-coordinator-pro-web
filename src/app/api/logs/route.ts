@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser } from '@/lib/api/auth'
+import { redact } from '@/lib/logger'
+import logger from '@/lib/logger'
 
 // POST /api/logs - Log client-side errors
 export async function POST(request: NextRequest) {
@@ -30,19 +32,23 @@ export async function POST(request: NextRequest) {
     // }
 
     // Log to console (in production, send to external service)
-    console.group(`📊 Client Log - ${logData.level.toUpperCase()}`)
-    console.log('Message:', logData.message)
-    console.log('User:', user?.email)
-    console.log('Timestamp:', logData.timestamp)
-    
-    if (logData.context) {
-      console.log('Context:', logData.context)
-    }
-    
-    if (logData.stack) {
-      console.error('Stack:', logData.stack)
-    }
-    
+    const safeLog = redact({
+      level: String(logData.level || ''),
+      message: String(logData.message || ''),
+      timestamp: String(logData.timestamp || ''),
+      context: logData.context || undefined,
+      stack: logData.stack || undefined,
+      user: user?.email || user?.id || 'unknown',
+      userAgent: request.headers.get('user-agent') || undefined,
+      ip: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || undefined,
+    })
+
+    console.group(`📊 Client Log - ${String(logData.level || '').toUpperCase()}`)
+    console.log('Message:', safeLog['message'])
+    console.log('User:', safeLog['user'])
+    console.log('Timestamp:', safeLog['timestamp'])
+    if (safeLog['context']) console.log('Context:', safeLog['context'])
+    if (safeLog['stack']) console.error('Stack:', safeLog['stack'])
     console.groupEnd()
 
     // TODO: In production, send to external logging service
@@ -60,7 +66,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error processing log:', error)
+    logger.error('Error processing client log', error as any)
     return NextResponse.json({ error: 'Failed to process log entry' }, { status: 500 })
   }
 }

@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { Database } from '@/types/database'
+import logger from '@/lib/logger'
 
 // Server-side Supabase client factory
 export function createSupabaseAdmin(): SupabaseClient<Database> {
@@ -58,7 +59,7 @@ export async function authenticateUser(request: NextRequest): Promise<AuthResult
 
     return { user }
   } catch (error) {
-    console.error('Authentication error:', error)
+    logger.error('Authentication error', error as any)
     return {
       user: null,
       error: error instanceof Error ? `Authentication failed: ${error.message}` : 'Authentication failed',
@@ -90,7 +91,7 @@ export async function verifyStudyOwnership(studyId: string, userId: string): Pro
 
     return { success: true }
   } catch (error) {
-    console.error('Study ownership verification error:', error)
+    logger.error('Study ownership verification error', error as any)
     return {
       success: false,
       error: 'Failed to verify study ownership',
@@ -135,7 +136,7 @@ export async function verifyStudyMembership(studyId: string, userId: string): Pr
 
     return { success: true }
   } catch (error) {
-    console.error('Study membership verification error:', error)
+    logger.error('Study membership verification error', error as any)
     return { success: false, error: 'Failed to verify study membership', status: 500 }
   }
 }
