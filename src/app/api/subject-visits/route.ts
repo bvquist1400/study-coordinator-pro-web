@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
 
     // If a lab kit was assigned, update its status to 'assigned'
     if (visitData.lab_kit_id) {
-      const { error: kitError } = await supabase
+      const { error: kitError } = await (supabase as any)
         .from('lab_kits')
         .update({ 
           status: 'assigned',

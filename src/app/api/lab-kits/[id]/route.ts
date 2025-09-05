@@ -128,7 +128,7 @@ export async function PUT(
     }
 
     // Update the lab kit
-    const { data: updatedKit, error: updateError } = await supabase
+    const { data: updatedKit, error: updateError } = await (supabase as any)
       .from('lab_kits')
       .update({
         ...updateData,
