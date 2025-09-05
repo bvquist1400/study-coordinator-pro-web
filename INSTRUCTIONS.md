@@ -36,7 +36,10 @@ This top section is the concise, current guide for developers. Older, product-ma
 - Clarified we use `next/jest`; removed reliance on `ts-jest`.
 
 ---
-## Archived Reference (long-form background)
+## Archived Reference
+The previous long-form background has been moved to `docs/ARCHIVE.md` to keep this guide concise.
+
+<!-- Archived content was here; see docs/ARCHIVE.md if needed. -->
 
 ## Project Overview
 **Web-first SaaS application** for clinical research coordinators - a productivity tool built from scratch to optimize daily workflows.
