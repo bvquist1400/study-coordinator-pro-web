@@ -5,12 +5,12 @@ import logger from '@/lib/logger'
 // GET /api/studies/[id] - Get specific study
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { user, error: authError, status: authStatus } = await authenticateUser(request)
     if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
-    const resolvedParams = params
+    const resolvedParams = await params
     
     // Verify the JWT token
     const supabase = createSupabaseAdmin()
@@ -54,12 +54,12 @@ export async function GET(
 // DELETE /api/studies/[id] - Delete specific study
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { user, error: authError, status: authStatus } = await authenticateUser(request)
     if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
-    const resolvedParams = params
+    const resolvedParams = await params
     
     // Verify the JWT token
     const supabase = createSupabaseAdmin()

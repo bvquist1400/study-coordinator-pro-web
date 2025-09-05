@@ -7,12 +7,12 @@ import type { SubjectVisitInsert, SubjectVisitUpdate } from '@/types/database'
 // GET /api/subject-visits/[id] - Get specific subject visit
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { user, error: authError, status } = await authenticateUser(request)
     if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: status || 401 })
-    const resolvedParams = params
+    const resolvedParams = await params
     
     // Verify the JWT token
     const supabase = createSupabaseAdmin()
@@ -76,7 +76,7 @@ export async function GET(
 // PUT /api/subject-visits/[id] - Update or upsert subject visit (for VisitCard)
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { user, error: authError, status } = await authenticateUser(request)
@@ -86,7 +86,7 @@ export async function PUT(
     const supabase = createSupabaseAdmin()
 
     const updateData = await request.json()
-    const resolvedParams = params
+    const resolvedParams = await params
 
     // If this is an upsert (new visit), we need to create it
     if (updateData.id === resolvedParams.id && updateData.study_id && updateData.visit_name && updateData.visit_date) {
@@ -240,12 +240,12 @@ export async function PUT(
 // DELETE /api/subject-visits/[id] - Delete specific subject visit
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { user, error: authError, status } = await authenticateUser(request)
     if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: status || 401 })
-    const resolvedParams = params
+    const resolvedParams = await params
     
     // Verify the JWT token
     const supabase = createSupabaseAdmin()

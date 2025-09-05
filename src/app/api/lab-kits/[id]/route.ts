@@ -9,7 +9,7 @@ type LabKitWithStudy = Record<string, unknown> & { studies: StudyAccessRow }
 // GET /api/lab-kits/[id] - Get specific lab kit details
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { user, error: authError, status: authStatus } = await authenticateUser(request)
@@ -18,7 +18,7 @@ export async function GET(
     // Verify the JWT token
     const supabase = createSupabaseAdmin()
 
-    const { id: kitId } = params
+    const { id: kitId } = await params
 
     // Get lab kit with study information for access control
     const { data: labKit, error } = await supabase
@@ -66,7 +66,7 @@ export async function GET(
 // PUT /api/lab-kits/[id] - Update specific lab kit
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { user, error: authError, status: authStatus } = await authenticateUser(request)
@@ -75,7 +75,7 @@ export async function PUT(
     // Verify the JWT token
     const supabase = createSupabaseAdmin()
 
-    const { id: kitId } = params
+    const { id: kitId } = await params
     const updateData = await request.json()
 
     // First get the lab kit to verify access
@@ -153,7 +153,7 @@ export async function PUT(
 // DELETE /api/lab-kits/[id] - Delete specific lab kit
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { user, error: authError, status: authStatus } = await authenticateUser(request)
@@ -162,7 +162,7 @@ export async function DELETE(
     // Verify the JWT token
     const supabase = createSupabaseAdmin()
 
-    const { id: kitId } = params
+    const { id: kitId } = await params
 
     // First get the lab kit to verify access
     const { data: existingKit, error: fetchError } = await supabase

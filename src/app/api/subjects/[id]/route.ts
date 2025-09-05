@@ -6,7 +6,7 @@ import logger from '@/lib/logger'
 // GET /api/subjects/[id] - Get specific subject
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = createSupabaseAdmin()
@@ -17,7 +17,7 @@ export async function GET(
     }
 
     const token = authHeader.split(' ')[1]
-    const resolvedParams = params
+    const resolvedParams = await params
     
     // Verify the JWT token
     const { data: { user }, error: authError } = await supabase.auth.getUser(token)
@@ -74,7 +74,7 @@ export async function GET(
 // PUT /api/subjects/[id] - Update subject
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = createSupabaseAdmin()
@@ -93,7 +93,7 @@ export async function PUT(
     }
 
     const updateData = await request.json()
-    const resolvedParams = params
+    const resolvedParams = await params
 
     // Create update object with allowed fields
     const updateObject = {
@@ -180,7 +180,7 @@ export async function PUT(
 // DELETE /api/subjects/[id] - Delete subject
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = createSupabaseAdmin()
@@ -191,7 +191,7 @@ export async function DELETE(
     }
 
     const token = authHeader.split(' ')[1]
-    const resolvedParams = params
+    const resolvedParams = await params
     
     // Verify the JWT token
     const { data: { user }, error: authError } = await supabase.auth.getUser(token)

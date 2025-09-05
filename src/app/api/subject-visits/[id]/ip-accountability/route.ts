@@ -7,12 +7,12 @@ import type { DrugComplianceUpdate, DrugComplianceInsert, SubjectVisitUpdate } f
 // PUT /api/subject-visits/[id]/ip-accountability - Save visit with IP accountability
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { user, error: authError, status: authStatus } = await authenticateUser(request)
     if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
-    const resolvedParams = params
+    const resolvedParams = await params
     
     // DB client
     const supabase = createSupabaseAdmin()
