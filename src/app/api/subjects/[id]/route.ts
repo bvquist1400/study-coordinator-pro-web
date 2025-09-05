@@ -66,7 +66,7 @@ export async function GET(
 
     return NextResponse.json({ subject })
   } catch (error) {
-    logger.error('API error in subject GET', error)
+    logger.error('API error in subject GET', error as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
