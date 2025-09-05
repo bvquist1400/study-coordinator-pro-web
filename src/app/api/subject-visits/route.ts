@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ visit: subjectVisit }, { status: 201 })
   } catch (error) {
-    logger.error('API error in subject visits POST', error)
+    logger.error('API error in subject visits POST', error as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
