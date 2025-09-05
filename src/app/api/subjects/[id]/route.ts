@@ -149,7 +149,7 @@ export async function PUT(
     }
 
     // Update subject
-    const { data: subject, error } = await supabase
+    const { data: subject, error } = await (supabase as any)
       .from('subjects')
       .update(updateObject as SubjectUpdate)
       .eq('id', resolvedParams.id)
@@ -172,7 +172,7 @@ export async function PUT(
 
     return NextResponse.json({ subject })
   } catch (error) {
-    logger.error('API error in subject PUT', error)
+    logger.error('API error in subject PUT', error as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
