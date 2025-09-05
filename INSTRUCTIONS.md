@@ -1,4 +1,42 @@
-# Study Coordinator Pro - Development Instructions
+# Study Coordinator Pro — Development Instructions (Updated)
+
+This top section is the concise, current guide for developers. Older, product-marketing content remains below under “Archived Reference”.
+
+## Quick Start
+- Read `README.md` for environment variables and run commands.
+- Tests use Jest 30 + `next/jest` (no `ts-jest`). See `TESTING.md` for patterns.
+- Prefer `src/lib/logger.ts` over `console.log` (ESLint warns). Logs redact by default.
+
+## Key Conventions
+- Route params: `export async function GET(req, { params }: { params: { id: string } })` (no `await params`).
+- Auth: use `authenticateUser(request)` and `verifyStudyMembership(studyId, user.id)` in API routes.
+- Supabase: define typed DTOs for `.insert/.update`. Avoid `as unknown as never`.
+- Dates: use `src/lib/date-utils.ts` for UTC‑safe parse/format.
+- Errors: return `NextResponse.json({ error }, { status })` using consistent status codes.
+
+## Logging & Redaction
+- Env toggles: `LOG_REDACT`, `LOG_TO_SERVICE`, `LOG_SAMPLE_RATE`, `LOG_MAX_PAYLOAD`.
+- Client logs can POST to `/api/logs` (authenticated). External forwarding is disabled unless toggled on.
+- Do not log tokens, emails, subject numbers, accession numbers, or IP IDs.
+
+## Testing Tips
+- Components: mock `@/lib/supabase/client` and stub `fetch` as needed.
+- API routes: if `next/server` Request/Response globals conflict with Node env, mock:
+  ```ts
+  jest.mock('next/server', () => ({
+    NextResponse: { json: (body: any, init?: { status?: number }) => ({ status: init?.status || 200, json: async () => body }) },
+  }))
+  ```
+
+## Recent Changes (what’s new)
+- Added `LOG_TO_SERVICE` + `LOG_SAMPLE_RATE`; client-only service logging; payload redaction preserved.
+- ESLint `no-console` (warn; allows warn/error) to encourage structured logging.
+- API tests stabilized by mocking `next/server` in Node env.
+- Schedule of Events tests updated (session + fetch mocks; fewer brittle assertions).
+- Clarified we use `next/jest`; removed reliance on `ts-jest`.
+
+---
+## Archived Reference (long-form background)
 
 ## Project Overview
 **Web-first SaaS application** for clinical research coordinators - a productivity tool built from scratch to optimize daily workflows.
