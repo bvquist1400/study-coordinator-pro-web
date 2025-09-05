@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ subjectVisits })
   } catch (error) {
-    logger.error('API error in subject visits GET', error)
+    logger.error('API error in subject visits GET', error as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
