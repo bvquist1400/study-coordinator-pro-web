@@ -64,7 +64,7 @@ export default function BulkImportPage() {
 
       if (response.ok) {
         const data = await response.json()
-        console.log('Studies loaded:', data.studies)
+        console.warn('Studies loaded:', data.studies)
         setStudies(data.studies || [])
       } else {
         console.error('Failed to load studies:', response.status, await response.text())

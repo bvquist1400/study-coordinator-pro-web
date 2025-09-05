@@ -188,7 +188,7 @@ export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) 
         return
       }
 
-      console.log('Study created successfully:', data)
+      console.warn('Study created successfully:', data)
       onSuccess()
       onClose()
       

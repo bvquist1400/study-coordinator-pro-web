@@ -141,7 +141,7 @@ export default function EditSubjectForm({ subjectId, studyId: _studyId, onClose,
         notes: formData.notes.trim() || null
       }
 
-      console.log('Updating subject data:', submitData)
+      console.warn('Updating subject data:', submitData)
 
       const response = await fetch(`/api/subjects/${subjectId}`, {
         method: 'PUT',

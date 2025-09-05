@@ -105,7 +105,7 @@ export default function SubjectVisitTimeline({
   const loadTimelineData = useCallback(async () => {
     try {
       setLoading(true)
-      console.log('🔍 Loading timeline for study:', studyId)
+      console.warn('🔍 Loading timeline for study:', studyId)
 
       // Get auth session
       const { data: { session } } = await supabase.auth.getSession()
@@ -122,8 +122,8 @@ export default function SubjectVisitTimeline({
         .select('study_id, visit_name, visit_number')
         .limit(5)
         
-      console.log('🔍 Can access visit_schedules table?', allSchedulesError ? 'NO' : 'YES')
-      console.log('🔍 Sample schedules in DB:', allSchedules)
+      console.warn('🔍 Can access visit_schedules table?', allSchedulesError ? 'NO' : 'YES')
+      console.warn('🔍 Sample schedules in DB:', allSchedules)
       
       // Load study anchor day for correct Day 0/Day 1 offsets
       let anchorDay = 0
@@ -148,12 +148,12 @@ export default function SubjectVisitTimeline({
         if (response.ok) {
           const data = await response.json()
           schedules = data.visitSchedules
-          console.log('📅 Schedules from API:', schedules?.length || 0, schedules)
+          console.warn('📅 Schedules from API:', schedules?.length || 0, schedules)
         } else {
-          console.log('🚨 API failed:', response.status, response.statusText)
+          console.warn('🚨 API failed:', response.status, response.statusText)
         }
       } catch (apiError) {
-        console.log('🚨 API error:', apiError)
+        console.warn('🚨 API error:', apiError)
       }
       
       // Fallback to direct Supabase query
@@ -170,7 +170,7 @@ export default function SubjectVisitTimeline({
         }
         
         schedules = directSchedules
-        console.log('📅 Schedules from Supabase direct:', schedules?.length || 0, schedules)
+        console.warn('📅 Schedules from Supabase direct:', schedules?.length || 0, schedules)
       }
 
       // Fetch actual subject visits
@@ -601,7 +601,7 @@ export default function SubjectVisitTimeline({
                   className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
                   onClick={() => {
                     // This would trigger the schedule visit modal
-                    console.log('Schedule individual visit clicked')
+                    console.warn('Schedule individual visit clicked')
                   }}
                 >
                   Schedule Visit

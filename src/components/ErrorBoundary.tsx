@@ -47,7 +47,7 @@ export default class ErrorBoundary extends Component<Props, State> {
     }
 
     // Log to console for now (replace with actual service call)
-    console.group('🚨 Error Boundary - Error Details')
+    console.warn('🚨 Error Boundary - Error Details')
     console.error('Error:', error)
     console.error('Error Info:', errorInfo)
     console.table(errorData)

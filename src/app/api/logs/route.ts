@@ -43,13 +43,19 @@ export async function POST(request: NextRequest) {
       ip: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || undefined,
     })
 
-    console.group(`📊 Client Log - ${String(logData.level || '').toUpperCase()}`)
-    console.log('Message:', safeLog['message'])
-    console.log('User:', safeLog['user'])
-    console.log('Timestamp:', safeLog['timestamp'])
-    if (safeLog['context']) console.log('Context:', safeLog['context'])
-    if (safeLog['stack']) console.error('Stack:', safeLog['stack'])
-    console.groupEnd()
+    // Route through structured logger to satisfy lint rules
+    const lvl = String(logData.level || '').toLowerCase()
+    const msg = String(safeLog['message'] || '')
+    const ctx = { ...safeLog }
+    if (lvl === 'error') {
+      logger.error(msg, undefined, ctx as any)
+    } else if (lvl === 'warn' || lvl === 'warning') {
+      logger.warn(msg, ctx as any)
+    } else if (lvl === 'debug') {
+      logger.debug(msg, ctx as any)
+    } else {
+      logger.info(msg, ctx as any)
+    }
 
     // TODO: In production, send to external logging service
     // Examples:

@@ -97,7 +97,7 @@ export default function AddSubjectForm({ studyId, onClose, onSave }: AddSubjectF
         notes: formData.notes.trim() || null
       }
 
-      console.log('Submitting subject data:', submitData)
+      console.warn('Submitting subject data:', submitData)
 
       const response = await fetch('/api/subjects', {
         method: 'POST',

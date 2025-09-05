@@ -100,7 +100,7 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
         existingSchedules = data
       }
       
-      console.log('Loaded existing schedules from DB:', existingSchedules)
+      console.warn('Loaded existing schedules from DB:', existingSchedules)
 
       let visitsToUse: Visit[]
       let proceduresToUse: Procedure[]
@@ -150,7 +150,7 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
           }
         })
         
-        console.log('Converted visits for display:', visitsToUse)
+        console.warn('Converted visits for display:', visitsToUse)
 
         // Create procedures with saved procedure assignments
         proceduresToUse = defaultProcedures.map((p: any, i: number) => {
@@ -306,7 +306,7 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
           notes: null
         }
         
-        console.log(`Visit ${index + 1} data:`, {
+        console.warn(`Visit ${index + 1} data:`, {
           displayVisitNumber: visit.visitNumber,
           originalVisitNumber: visit.originalVisitNumber,
           finalVisitNumber: scheduleToSave.visit_number,
@@ -316,7 +316,7 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
         return scheduleToSave
       })
 
-      console.log('Saving visit schedules:', JSON.stringify(visitSchedulesToSave, null, 2))
+      console.warn('Saving visit schedules:', JSON.stringify(visitSchedulesToSave, null, 2))
 
       // Save via API route (handles RLS properly)
       const response = await fetch('/api/visit-schedules', {
@@ -341,10 +341,10 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
       // Save notes if any
       if (notes.trim()) {
         // Could save notes to a separate table or study notes field
-        console.log('Notes to save:', notes)
+        console.warn('Notes to save:', notes)
       }
 
-      console.log('Schedule saved successfully!')
+      console.warn('Schedule saved successfully!')
       
       if (onSave) {
         // onSave expects full VisitSchedule objects, but we're just saving

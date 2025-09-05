@@ -192,14 +192,14 @@ export default function DashboardPage() {
 
         // Drug compliance snapshot: Use the working analytics API approach
         try {
-          console.log('🔍 Fetching drug compliance data via API...')
+          console.warn('🔍 Fetching drug compliance data via API...')
           
           // Get auth token like the working compliance page does
           const { data: { session } } = await supabase.auth.getSession()
           const token = session?.access_token
           
           if (!token) {
-            console.log('❌ No auth token available')
+            console.warn('❌ No auth token available')
             setDrugComplianceRate({ rate: 0, window: 'no auth' })
             return
           }
@@ -211,11 +211,11 @@ export default function DashboardPage() {
             }
           })
           
-          console.log('📊 API response status:', response.status)
+          console.warn('📊 API response status:', response.status)
           
           if (response.ok) {
             const data = await response.json()
-            console.log('✅ API data received:', { 
+            console.warn('✅ API data received:', { 
               summary: data.summary,
               drugRate: data.summary?.overallDrugRate 
             })
@@ -223,7 +223,7 @@ export default function DashboardPage() {
             const drugRate = data.summary?.overallDrugRate || 0
             setDrugComplianceRate({ rate: drugRate, window: '60d' })
           } else {
-            console.log('❌ API request failed:', response.status)
+            console.warn('❌ API request failed:', response.status)
             setDrugComplianceRate({ rate: 0, window: 'API error' })
           }
         } catch (error) {

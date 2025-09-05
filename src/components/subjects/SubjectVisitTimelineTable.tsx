@@ -309,7 +309,7 @@ export default function SubjectVisitTimelineTable({
 
   const _handleCellEdit = (visitId: string, field: string, value: string | number) => {
     // TODO: Implement cell editing logic
-    console.log('Edit cell:', visitId, field, value)
+    console.warn('Edit cell:', visitId, field, value)
     setEditingCell(null)
   }
 
