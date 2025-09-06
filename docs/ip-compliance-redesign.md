@@ -33,6 +33,7 @@ Table: `drug_events`
 - `subject_id UUID` (FK subjects)
 - `user_id UUID` (FK auth.users)
 - `visit_id UUID NULL` (FK subject_visits)
+- `drug_id UUID` (FK study_drugs)
 - `ip_id TEXT` (bottle/kit identifier)
 - `event_type TEXT CHECK IN ('dispensed','returned')`
 - `count INTEGER` (positive integer)
@@ -42,13 +43,14 @@ Table: `drug_events`
 
 Indexes:
 
-- `(subject_id, ip_id, event_date)`
+- `(subject_id, drug_id, ip_id, event_date)`
 - `(visit_id)`
 - `(event_type, event_date)`
 
 Derived View: `drug_compliance_view`
 
 - Groups events by subject + ip_id (and optionally by cycle) to compute:
+  - Per-drug grouping: include `drug_id` so compliance is computed separately for each drug within a study
   - `dispensed_count = SUM(count WHERE event_type='dispensed')`
   - `returned_count = SUM(count WHERE event_type='returned')`
   - `actual_taken = dispensed_count - returned_count`
@@ -84,7 +86,8 @@ Pros:
 ## Dosing + Expected Taken
 
 - Store dosing metadata once and reuse in computation:
-  - Study: `dosing_frequency` with derived `dose_per_day` (QD=1, BID=2, TID=3, QID=4, weekly/custom as needed).
+  - Drug-level: `study_drugs.dosing_frequency` with derived `dose_per_day` (QD=1, BID=2, TID=3, QID=4, weekly/custom as needed). Allows multiple drugs per study (e.g., apixaban/placebo and milvexian/placebo) to have distinct dosing.
+  - Study-level default remains as fallback when a drug has no explicit dosing configured.
   - Optional subject override for titrations/deviations.
 - Define date math precisely (inclusive/exclusive) to avoid off‑by‑one.
 
@@ -97,10 +100,11 @@ Payload:
 ```json
 {
   "dispensed_bottles": [
-    { "ip_id": "B123", "count": 30, "start_date": "2025-09-01" }
+    { "ip_id": "B123", "drug_name": "Apixaban",  "count": 30, "start_date": "2025-09-01" },
+    { "ip_id": "B124", "drug_name": "Milvexian", "count": 30, "start_date": "2025-09-01" }
   ],
   "returned_bottles": [
-    { "ip_id": "B123", "count": 4, "last_dose_date": "2025-09-25" }
+    { "ip_id": "B123", "drug_name": "Apixaban", "count": 4, "last_dose_date": "2025-09-25" }
   ]
 }
 ```
@@ -108,6 +112,7 @@ Payload:
 Behavior:
 
 - If `visit_id` is present (from route), events link to that visit.
+- Each bottle carries `drug_id`, `drug_code`, or `drug_name` resolving to `study_drugs`; server looks up `dose_per_day` per drug. If omitted, and no kit map exists, the request is rejected with a clear validation error.
 - If called outside a visit (quick return), allow `visit_id` NULL or create an “Unscheduled – IP Return” visit as policy.
 - Server validates: counts non‑negative, cannot return more than dispensed minus already returned, dates sane.
 - Server computes expected taken using dosing metadata.
@@ -116,15 +121,15 @@ Behavior:
 ## UI/UX
 
 - Visit Detail Modal: Keep two clear sections on the same screen
-  - Dispense: add bottles (ip_id, count, start_date)
-  - Return: select prior ip_id, returned_count, last_dose_date
+  - Dispense: add bottles per drug (drug selector or pre-grouped by drug; ip_id, count, start_date)
+  - Return: select prior ip_id (filtered by drug), returned_count, last_dose_date
   - Submit once; server records all in one transaction.
 
 - Quick Action: “Record IP Return”
   - Available on Subject and Lab Kits pages.
   - Minimal modal to log returns outside of a scheduled visit; optional link to a visit.
 
-- Subject Visits: Render compliance values from the derived view/table; stop reading legacy snapshots once migration completes.
+- Subject Visits: Render compliance per drug (and optionally per bottle) from the derived view/table; show an Overall compliance for the visit period (see Analytics). Stop reading legacy snapshots once migration completes.
 
 ## Database Changes
 
@@ -135,7 +140,15 @@ Common to both options:
   - Keep `drug_dispensing_required` and notes.
 - Keep compatibility triggers temporarily if needed to populate snapshots for old UIs.
 
-Option A (events): create `drug_events` + `drug_compliance_view`.
+Option A (events):
+
+- Create `study_drugs` to model per‑study drugs and dosing:
+  - `id UUID PK`, `study_id UUID FK`, `code TEXT UNIQUE WITHIN study`, `name TEXT`, `dosing_frequency TEXT CHECK IN ('QD','BID','TID','QID','weekly','custom')`, `dose_per_day NUMERIC NULL`, `notes TEXT`.
+  - Index: `(study_id, code)`.
+
+- Create `drug_events` (as above) including `drug_id` FK to `study_drugs`.
+
+- Create `drug_compliance_view` that joins events to `study_drugs` to source `dose_per_day` per drug.
 
 Option B (cycles): adjust `drug_compliance` to allow multiple cycles per ip via `(subject_id, ip_id, dispensing_date)`; add `dose_per_day`.
 
@@ -143,10 +156,11 @@ Option B (cycles): adjust `drug_compliance` to allow multiple cycles per ip via 
 
 1) Introduce new schema alongside existing
 
-- Create events table + view (Option A), or adjust `drug_compliance` (Option B).
+- Create `study_drugs`, events table + view (Option A), or adjust `drug_compliance` (Option B).
 - Backfill from current rows:
   - Option A: emit two events per row (dispensed with `dispensing_date`, returned with `ip_last_dose_date`).
-  - Option B: enforce new unique key, set `dose_per_day` from study.
+  - Populate `drug_id` by mapping `ip_id` to a drug using a site‑provided kit map if available; if not, leave NULL and flag for manual assignment. Add a lightweight admin tool to bulk assign `drug_id` for historical bottles.
+- Option B: enforce new unique key, set `dose_per_day` from study.
 
 2) Switch writes
 
@@ -167,10 +181,11 @@ Option B (cycles): adjust `drug_compliance` to allow multiple cycles per ip via 
 
 - Ensure RLS policies allow users to manage own study/site data.
 - Events model: row‑level policy on `subject_id`/site membership; JOIN safety for the view.
+- Scope `study_drugs` reads to users with access to the study; ensure `drug_events.drug_id` join does not leak cross‑study data.
 
 ## Indexing
 
-- Events: `(subject_id, ip_id, event_date)`, `(visit_id)`, `(event_type, event_date)`.
+- Events: `(subject_id, drug_id, ip_id, event_date)`, `(visit_id)`, `(event_type, event_date)`.
 - Cycles: `(subject_id, ip_id, dispensing_date)`, `(assessment_date)` for reporting.
 
 ## Validation Rules
@@ -178,10 +193,16 @@ Option B (cycles): adjust `drug_compliance` to allow multiple cycles per ip via 
 - No negative counts; returned_count cannot exceed outstanding.
 - `start_date <= last_dose_date` when both present.
 - Optionally disallow returns before any dispense event.
+- For multi‑drug studies, validate `drug_id` presence (or resolvable from `drug_code`/`drug_name`). If no sponsor/site kit map is configured, `drug_id` (directly or via code/name) is required on every bottle row.
 
 ## Analytics Impacts
 
 - Compliance alerts: flag < 80% and > 100% (overuse) as non‑compliant; cap > 100 for averages.
+- Per‑drug compliance: compute and display one percentage per drug (derived from events grouped by drug).
+- Overall compliance (visit/period): display both
+  - Weighted average by expected_taken across all drugs in the period (recommended default)
+  - Minimum per‑drug compliance (conservative indicator for alerts)
+  UI shows: Apixaban %, Milvexian %, Overall (weighted avg), and Overall (min).
 - Timing compliance remains based on `is_within_window`; exclude NULLs from denominators.
 
 ## Rollout & Risks
@@ -194,4 +215,34 @@ Option B (cycles): adjust `drug_compliance` to allow multiple cycles per ip via 
 - Do we require every return to be associated with a visit (policy)?
 - Do we need subject‑level dosing overrides (titrations)?
 - Should we split cycles when the same `ip_id` is re‑issued?
+- How do we map `ip_id` → `drug_id` in blinded/double‑dummy contexts? Will sites provide a kit map, or should the UI require selecting a drug per bottle entry?
 
+## Kit Mapping Explained
+
+In many randomized or double‑dummy studies, the printed bottle/kit number (`ip_id`) by itself does not reveal the underlying drug (e.g., Apixaban vs Milvexian vs matching placebos). We need a way to associate each bottle event with the correct drug so we can apply the right dosing and compute per‑drug compliance.
+
+Two ways to achieve this:
+
+- Sponsor/Site Kit Map (preferred when available)
+  - A secure table (or CSV import) that lists which kit numbers belong to which drug for a study.
+  - Example schema: `study_kit_map(study_id, ip_id, drug_id, valid_from, valid_to, site_id NULL)`.
+  - Workflow:
+    1) Import the map once per study.
+    2) When saving events, the server looks up `ip_id` in the map to set `drug_id` automatically.
+    3) During migration/backfill, we join existing records to the map to populate missing `drug_id`.
+  - Benefits: Users don’t have to pick a drug in the UI; consistent and fast.
+
+- UI‑Selected Drug (when no map is provided)
+  - Each bottle row in the visit UI includes a required Drug field (e.g., `drug_name`).
+  - The API accepts `drug_id`/`drug_code`/`drug_name` and resolves it to `study_drugs`.
+  - If omitted and no kit map exists, validation fails with a clear error.
+  - Benefits: Works without sponsor maps; immediate and explicit.
+
+Blinding considerations:
+- If the site should not know actual drug identities, define blinded labels (e.g., "Drug A", "Drug B") in `study_drugs` and display those instead of real names.
+- The analytics pipeline can still aggregate per blinded label; unblinded reports can map labels to true drug names in secure contexts.
+- Default path (no kit map present)
+  - Configure `study_drugs` for each study (e.g., Apixaban, Milvexian, matched placebos or blinded labels like Drug A/B).
+  - UI requires selecting a Drug for each bottle (dispense and return).
+  - API requires `drug_id` or resolvable `drug_name`/`drug_code` per bottle; otherwise rejects.
+  - Derived compliance is computed per drug using the configured per‑drug dosing.

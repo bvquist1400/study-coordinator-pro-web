@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Fragment } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { formatDateUTC, parseDateUTC } from '@/lib/date-utils'
 
@@ -25,6 +25,7 @@ interface SubjectVisit {
   ip_dispensed: number | null
   ip_returned: number | null
   ip_id: string | null
+  return_ip_id?: string | null
   visit_schedules: VisitSchedule | null
 }
 
@@ -46,6 +47,7 @@ interface TimelineVisit {
   ip_dispensed: number | null
   ip_returned: number | null
   ip_id: string | null
+  return_ip_id: string | null
   compliance_percentage: number | null
   is_compliant: boolean | null
 }
@@ -161,7 +163,72 @@ export default function SubjectVisitTimelineTable({
       }
 
       // Build the complete timeline
-      const timeline = buildCompleteTimeline(schedules || [], visits || [], anchorDate, anchorDay)
+      let timeline = buildCompleteTimeline(schedules || [], visits || [], anchorDate, anchorDay)
+
+      // Fetch drug compliance for this subject and map to visits by visit_id
+      const { data: dcRows, error: dcError } = await supabase
+        .from('drug_compliance')
+        .select('visit_id, ip_id, assessment_date, compliance_percentage, is_compliant')
+        .eq('subject_id', subjectId)
+        .not('visit_id', 'is', null)
+        .order('assessment_date', { ascending: true })
+
+      if (!dcError && dcRows) {
+        const byVisit = new Map<string, { compliance_percentage: number | null; is_compliant: boolean | null; assessment_date: string | null }>()
+        const byReturnKey = new Map<string, { compliance_percentage: number | null; is_compliant: boolean | null; assessment_date: string | null }>()
+        for (const row of dcRows as any[]) {
+          const vid = row.visit_id as string
+          // latest record per visit wins
+          byVisit.set(vid, {
+            compliance_percentage: row.compliance_percentage,
+            is_compliant: row.is_compliant,
+            assessment_date: row.assessment_date
+          })
+          // Also index by (ip_id + assessment_date) for fallback matching
+          if (row.ip_id && row.assessment_date) {
+            byReturnKey.set(`${row.ip_id}|${row.assessment_date}`, {
+              compliance_percentage: row.compliance_percentage,
+              is_compliant: row.is_compliant,
+              assessment_date: row.assessment_date
+            })
+          }
+        }
+        timeline = timeline.map(v => {
+          if (byVisit.has(v.id)) {
+            const m = byVisit.get(v.id)!
+            return { ...v, compliance_percentage: m.compliance_percentage, is_compliant: m.is_compliant }
+          }
+          // Fallback: if this visit recorded a return (return_ip_id + actual_date), match by (ip_id, assessment_date)
+          if (v.return_ip_id && v.actual_date) {
+            const key = `${v.return_ip_id}|${v.actual_date}`
+            if (byReturnKey.has(key)) {
+              const m = byReturnKey.get(key)!
+              return { ...v, compliance_percentage: m.compliance_percentage, is_compliant: m.is_compliant }
+            }
+          }
+          return v
+        })
+      }
+
+      // Also overlay server-computed compliance from metrics (already fetched via API with admin privileges)
+      if (metrics?.ip_dispensing_history && Array.isArray(metrics.ip_dispensing_history)) {
+        const fromMetrics = new Map<string, { compliance_percentage: number | null; is_compliant: boolean | null }>()
+        for (const h of metrics.ip_dispensing_history as any[]) {
+          if (h.visit_id && (h.compliance_percentage !== null && h.compliance_percentage !== undefined)) {
+            fromMetrics.set(h.visit_id as string, {
+              compliance_percentage: Number(h.compliance_percentage),
+              is_compliant: h.is_compliant ?? null
+            })
+          }
+        }
+        if (fromMetrics.size > 0) {
+          timeline = timeline.map(v => fromMetrics.has(v.id)
+            ? { ...v, compliance_percentage: fromMetrics.get(v.id)!.compliance_percentage, is_compliant: fromMetrics.get(v.id)!.is_compliant }
+            : v
+          )
+        }
+      }
+
       setTimelineVisits(timeline)
 
     } catch (error) {
@@ -265,6 +332,7 @@ export default function SubjectVisitTimelineTable({
         ip_dispensed: actualVisit?.ip_dispensed || null,
         ip_returned: actualVisit?.ip_returned || null,
         ip_id: actualVisit?.ip_id || null,
+        return_ip_id: (actualVisit as any)?.return_ip_id || null,
         compliance_percentage: null, // Will be calculated from drug_compliance table
         is_compliant: null
       })
@@ -376,7 +444,7 @@ export default function SubjectVisitTimelineTable({
                 <th className="px-4 py-3 text-left text-gray-300 font-medium">Actual Date</th>
                 <th className="px-4 py-3 text-left text-gray-300 font-medium">Window</th>
                 <th className="px-4 py-3 text-left text-gray-300 font-medium">Activities</th>
-                <th className="px-4 py-3 text-left text-gray-300 font-medium">IP Compliance</th>
+                
                 <th className="px-4 py-3 text-left text-gray-300 font-medium">Status</th>
                 <th className="px-4 py-3 text-left text-gray-300 font-medium">Actions</th>
               </tr>
@@ -387,9 +455,9 @@ export default function SubjectVisitTimelineTable({
                 const rowBg = _index % 2 === 0 ? 'bg-gray-800/20' : 'bg-gray-800/10'
                 
                 return (
-                  <>
+                  <Fragment key={visit.id}>
                     {/* Main Row */}
-                    <tr key={visit.id} className={`${rowBg} hover:bg-gray-700/30 transition-colors border-b border-gray-700/50`}>
+                    <tr className={`${rowBg} hover:bg-gray-700/30 transition-colors border-b border-gray-700/50`}>
                       {/* Expand Button */}
                       <td className="px-4 py-3">
                         <button
@@ -457,28 +525,7 @@ export default function SubjectVisitTimelineTable({
                         </div>
                       </td>
                       
-                      {/* IP Compliance */}
-                      <td className="px-4 py-3 text-gray-300">
-                        {visit.compliance_percentage !== null ? (
-                          <div className="flex items-center space-x-2">
-                            <span className={`font-medium ${
-                              visit.compliance_percentage >= 90 ? 'text-green-400' :
-                              visit.compliance_percentage >= 75 ? 'text-yellow-400' : 'text-red-400'
-                            }`}>
-                              {visit.compliance_percentage}%
-                            </span>
-                            {visit.is_compliant && (
-                              <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                              </svg>
-                            )}
-                          </div>
-                        ) : (
-                          visit.ip_dispensed ? (
-                            <span className="text-gray-400 text-xs">Pending</span>
-                          ) : '-'
-                        )}
-                      </td>
+                      
                       
                       {/* Status */}
                       <td className="px-4 py-3">
@@ -508,7 +555,7 @@ export default function SubjectVisitTimelineTable({
                     {isExpanded && (
                       <tr className={`${rowBg} border-b border-gray-700/50`}>
                         <td></td>
-                        <td colSpan={9} className="px-4 py-4">
+                        <td colSpan={8} className="px-4 py-4">
                           <div className="bg-gray-800/50 rounded-lg p-4 space-y-4">
                             {/* All Activities */}
                             {visit.procedures && (
@@ -599,7 +646,7 @@ export default function SubjectVisitTimelineTable({
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 )
               })}
             </tbody>

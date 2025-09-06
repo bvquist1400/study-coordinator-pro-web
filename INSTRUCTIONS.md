@@ -14,6 +14,15 @@ This top section is the concise, current guide for developers. Older, product-ma
 - Dates: use `src/lib/date-utils.ts` for UTC‑safe parse/format.
 - Errors: return `NextResponse.json({ error }, { status })` using consistent status codes.
 
+## Database Schema Source of Truth
+- The current Supabase schema is checked into `supabase_database_structure/` as SQL files (one per table/feature).
+- Before proposing any DB change, review the relevant SQL file(s) in that folder.
+- Workflow for DB changes:
+  - Propose the change in chat (summarize rationale and exact SQL diff).
+  - After approval, update the corresponding file(s) in `supabase_database_structure/` to reflect the change.
+  - If a migration is needed, add a migration SQL under `migrations/` and reference the updated structure.
+  - Keep structure files and migrations consistent; structure files should always represent the latest agreed schema.
+
 ## Logging & Redaction
 - Env toggles: `LOG_REDACT`, `LOG_TO_SERVICE`, `LOG_SAMPLE_RATE`, `LOG_MAX_PAYLOAD`.
 - Client logs can POST to `/api/logs` (authenticated). External forwarding is disabled unless toggled on.
@@ -34,6 +43,18 @@ This top section is the concise, current guide for developers. Older, product-ma
 - API tests stabilized by mocking `next/server` in Node env.
 - Schedule of Events tests updated (session + fetch mocks; fewer brittle assertions).
 - Clarified we use `next/jest`; removed reliance on `ts-jest`.
+
+## IP Compliance Plan (Phased)
+- Phase 1 (in progress): Solidify single-drug workflow (MK-0616/Placebo, QD=1)
+  - Atomic save via `save_visit_ip_batch` RPC for all dispenses/returns in a visit (mandatory; no per-bottle loops in API).
+  - Server-side inclusive date math (last − first + 1) with dose_per_day from study config; prefer DB function for expected calculations.
+  - UI hides drug selector when a study has exactly one drug; auto-assign the drug for each bottle.
+  - Validation: non-negative counts; returns ≤ outstanding; start_date ≤ last_dose_date; clear errors when required fields missing.
+  - Source of truth: review/adjust SQL in `supabase_database_structure/` before proposing DB changes.
+- Phase 2 (later): Multi-drug support
+  - Introduce `study_drugs` and per-bottle drug selection only when a study has >1 drug.
+  - Compute/display per-drug compliance and overall (weighted average + min).
+  - Consider events model for robust audit if/when multi-bottle/corrections become common.
 
 ---
 ## Archived Reference

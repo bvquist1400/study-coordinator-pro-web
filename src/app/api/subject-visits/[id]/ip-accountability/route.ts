@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser, verifyStudyMembership, createSupabaseAdmin } from '@/lib/api/auth'
 import { saveVisitWithIP, type VisitIPData } from '@/lib/ip-accountability'
 import logger from '@/lib/logger'
-import type { DrugComplianceUpdate, DrugComplianceInsert, SubjectVisitUpdate } from '@/types/database'
+import type { SubjectVisitUpdate } from '@/types/database'
 
 // PUT /api/subject-visits/[id]/ip-accountability - Save visit with IP accountability
 export async function PUT(
@@ -44,104 +44,29 @@ export async function PUT(
     const membership = await verifyStudyMembership(vAny.study_id, user.id)
     if (!membership.success) return NextResponse.json({ error: membership.error || 'Access denied' }, { status: membership.status || 403 })
 
-    const requestData = await request.json()
-    
-    // Handle multi-bottle data if present
-    if (requestData.dispensed_bottles || requestData.returned_bottles) {
-      // Multi-bottle format - save each bottle separately
-      const dispensedBottles = requestData.dispensed_bottles || []
-      const returnedBottles = requestData.returned_bottles || []
-      
-      // Save dispensed bottles
-      for (const bottle of dispensedBottles) {
-        if (bottle.ip_id && bottle.count > 0 && bottle.start_date) {
-          const { error } = await (supabase
-            .from('drug_compliance') as any)
-            .insert({
-              subject_id: vAny.subject_id,
-              user_id: user.id,
-              assessment_date: bottle.start_date,
-              dispensed_count: bottle.count,
-              returned_count: 0,
-              expected_taken: 0, // Will be calculated by trigger
-              visit_id: resolvedParams.id,
-              ip_id: bottle.ip_id.trim(),
-              dispensing_date: bottle.start_date
-            } as DrugComplianceInsert)
-          
-          if (error) {
-            logger.error('Error saving dispensed bottle', error as any)
-            return NextResponse.json({ 
-              error: 'Failed to save dispensed bottle data',
-              detail: error.message 
-            }, { status: 500 })
-          }
+  const requestData = await request.json()
+  
+  // Handle multi-bottle data if present
+  if (requestData.dispensed_bottles || requestData.returned_bottles) {
+      // Multi-bottle format: validate and call atomic RPC (mandatory)
+      const dispensedBottles = (requestData.dispensed_bottles || []).filter((b: any) => b && b.ip_id && b.count > 0 && b.start_date)
+      const returnedBottles = (requestData.returned_bottles || []).filter((b: any) => b && b.ip_id && b.count > 0 && b.last_dose_date)
+
+      if (dispensedBottles.length > 0 || returnedBottles.length > 0) {
+        const rpcPayload = {
+          p_subject_id: vAny.subject_id,
+          p_user_id: user.id,
+          p_visit_id: resolvedParams.id,
+          p_dispensed: dispensedBottles,
+          p_returned: returnedBottles
+        } as any
+        const rpc = await supabase.rpc('save_visit_ip_batch', rpcPayload)
+        if (rpc.error) {
+          logger.error('RPC save_visit_ip_batch error', rpc.error as any)
+          return NextResponse.json({ error: 'Failed to save IP accountability', detail: rpc.error.message }, { status: 500 })
         }
       }
-      
-      // Save returned bottles
-      for (const bottle of returnedBottles) {
-        if (bottle.ip_id && bottle.count > 0 && bottle.last_dose_date) {
-          // Find existing compliance record for this bottle
-          const { data: existing } = await supabase
-            .from('drug_compliance')
-            .select('*')
-            .eq('subject_id', vAny.subject_id)
-            .eq('ip_id', bottle.ip_id.trim())
-            .order('dispensing_date', { ascending: false })
-            .limit(1)
 
-          if (existing && existing.length > 0) {
-            // Update existing record with return data
-            const startDate = new Date((existing[0] as any).dispensing_date || bottle.last_dose_date)
-            const endDate = new Date(bottle.last_dose_date)
-            const daysDifference = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)))
-            const expected = daysDifference * 1 // Default 1 dose per day
-
-            const { error } = await (supabase
-              .from('drug_compliance') as any)
-              .update({
-                returned_count: bottle.count,
-                assessment_date: bottle.last_dose_date,
-                expected_taken: expected,
-                ip_last_dose_date: bottle.last_dose_date
-              } as DrugComplianceUpdate)
-              .eq('id', (existing[0] as any).id)
-              
-            if (error) {
-              logger.error('Error updating returned bottle', error as any)
-              return NextResponse.json({ 
-                error: 'Failed to update returned bottle data',
-                detail: error.message 
-              }, { status: 500 })
-            }
-          } else {
-            // Create new return-only record if no dispensing record exists
-            const { error } = await (supabase
-              .from('drug_compliance') as any)
-              .insert({
-                subject_id: vAny.subject_id,
-                user_id: user.id,
-                assessment_date: bottle.last_dose_date,
-                dispensed_count: 0,
-                returned_count: bottle.count,
-                expected_taken: 0,
-                visit_id: resolvedParams.id,
-                ip_id: bottle.ip_id.trim(),
-                ip_last_dose_date: bottle.last_dose_date
-              } as DrugComplianceInsert)
-              
-            if (error) {
-              logger.error('Error saving returned bottle', error as any)
-              return NextResponse.json({ 
-                error: 'Failed to save returned bottle data',
-                detail: error.message 
-              }, { status: 500 })
-            }
-          }
-        }
-      }
-      
       // Update visit record with summary data (using first bottle for backward compatibility)
       const updateData: any = {
         status: requestData.status || 'completed'

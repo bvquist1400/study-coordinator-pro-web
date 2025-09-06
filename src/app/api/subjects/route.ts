@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     // Verify user membership on the study's site
     const { data: study, error: studyError } = await supabase
       .from('studies')
-      .select('id, site_id, user_id, created_by')
+      .select('id, site_id, user_id, created_by, dosing_frequency')
       .eq('id', studyId)
       .single()
 
@@ -199,27 +199,21 @@ export async function GET(request: NextRequest) {
         let activeDrugBottle = null
         let expectedReturnDate = null
         
-        // Build complete IP dispensing history for timeline with compliance data
-        const ipDispensingHistory = ipVisits.map((visit: any) => {
-          // Find drug compliance record where this visit was the return/assessment visit
-          const complianceRecord = drugCompliances.find(dc => 
-            (dc as any).visit_id === visit.id
-          ) as any
-
+        // Build IP dispensing history per bottle from drug_compliance rows (authoritative for returns)
+        const ipDispensingHistory = (drugCompliances as any[]).map((dc: any) => {
           return {
-            visit_id: visit.id,
-            visit_date: visit.visit_date,
-            ip_id: visit.ip_id,
-            ip_dispensed: visit.ip_dispensed,
-            ip_start_date: visit.ip_start_date || visit.visit_date,
-            ip_returned: visit.ip_returned,
-            ip_last_dose_date: visit.ip_last_dose_date,
-            visit_name: visit.visit_name || 'Visit',
-            // Include compliance data if this visit had a compliance assessment
-            compliance_percentage: complianceRecord ? complianceRecord.compliance_percentage : null,
-            is_compliant: complianceRecord ? complianceRecord.is_compliant : null,
-            expected_taken: complianceRecord ? complianceRecord.expected_taken : null,
-            assessment_date: complianceRecord ? complianceRecord.assessment_date : null
+            visit_id: dc.id, // unique row identifier for history
+            visit_date: dc.dispensing_date || dc.assessment_date,
+            ip_id: dc.ip_id,
+            ip_dispensed: dc.dispensed_count,
+            ip_start_date: dc.dispensing_date,
+            ip_returned: dc.returned_count || null,
+            ip_last_dose_date: dc.ip_last_dose_date || null,
+            visit_name: 'IP',
+            compliance_percentage: dc.compliance_percentage,
+            is_compliant: dc.is_compliant,
+            expected_taken: dc.expected_taken,
+            assessment_date: dc.assessment_date
           }
         })
 
@@ -267,11 +261,25 @@ export async function GET(request: NextRequest) {
               days_since_dispensing: Math.floor((now.getTime() - new Date((lastIpVisit.ip_start_date || lastIpVisit.visit_date) + 'T00:00:00Z').getTime()) / (1000 * 60 * 60 * 24))
             }
 
-            // Estimate expected return date (30 days after start, or based on dispensed count)
-            const startDate = new Date((lastIpVisit.ip_start_date || lastIpVisit.visit_date) + 'T00:00:00Z')
-            const estimatedDuration = Math.min(lastIpVisit.ip_dispensed, 30) // Cap at 30 days
-            expectedReturnDate = new Date(startDate)
-            expectedReturnDate.setDate(expectedReturnDate.getDate() + estimatedDuration)
+            // Expected return aligns to the next scheduled visit's target date when available
+            if (nextVisit && (nextVisit as any).visit_date) {
+              expectedReturnDate = new Date(((nextVisit as any).visit_date as string) + 'T00:00:00Z')
+            } else {
+              // Fallback: estimate based on dosing (inclusive end date)
+              const startDate = new Date((lastIpVisit.ip_start_date || lastIpVisit.visit_date) + 'T00:00:00Z')
+              const freq = (study as any)?.dosing_frequency as string | undefined
+              const dosePerDay = !freq ? 1 : (
+                freq === 'QD' ? 1 :
+                freq === 'BID' ? 2 :
+                freq === 'TID' ? 3 :
+                freq === 'QID' ? 4 :
+                freq === 'weekly' ? (1 / 7) : 1
+              )
+              const dispensed = Number(lastIpVisit.ip_dispensed || 0)
+              const durationDays = dosePerDay > 0 ? Math.ceil(dispensed / dosePerDay) : dispensed
+              expectedReturnDate = new Date(startDate)
+              expectedReturnDate.setDate(expectedReturnDate.getDate() + Math.max(0, durationDays - 1))
+            }
           }
         }
 
