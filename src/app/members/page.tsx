@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useErrorHandler } from '@/hooks/useErrorHandler'
 import DashboardLayout from '@/components/dashboard/DashboardLayout'
 import { supabase } from '@/lib/supabase/client'
 import { useSite } from '@/components/site/SiteProvider'
@@ -21,6 +22,9 @@ export default function MembersPage() {
   const [siteName, setSiteName] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<Role>('coordinator')
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [confirmUserId, setConfirmUserId] = useState<string | null>(null)
+  const { handleApiError, handleError } = useErrorHandler()
 
   const currentSite = useMemo(() => sites.find(s => s.id === currentSiteId) || null, [sites, currentSiteId])
 
@@ -35,7 +39,7 @@ export default function MembersPage() {
       if (!res.ok) throw new Error(data.error || 'Failed to load members')
       setMembers(data.members || [])
     } catch (e) {
-      console.error(e)
+      handleError(e as Error, { showToast: true, context: { feature: 'members.load' } })
     } finally {
       setLoading(false)
     }
@@ -65,8 +69,8 @@ export default function MembersPage() {
       await refreshSites()
       setCurrentSiteId(data.site.id)
     } catch (e) {
-      console.error(e)
-      alert((e as Error).message)
+      const err = handleError(e as Error, { showToast: true, context: { feature: 'members.createSite' } })
+      setErrorMsg(err.message)
     } finally {
       setCreatingSite(false)
     }
@@ -88,8 +92,8 @@ export default function MembersPage() {
       setInviteRole('coordinator')
       await loadMembers()
     } catch (e) {
-      console.error(e)
-      alert((e as Error).message)
+      const err = handleError(e as Error, { showToast: true, context: { feature: 'members.invite' } })
+      setErrorMsg(err.message)
     }
   }
 
@@ -107,34 +111,51 @@ export default function MembersPage() {
       if (!res.ok) throw new Error(data.error || 'Failed to update role')
       await loadMembers()
     } catch (e) {
-      console.error(e)
-      alert((e as Error).message)
+      const err = handleError(e as Error, { showToast: true, context: { feature: 'members.updateRole' } })
+      setErrorMsg(err.message)
     }
   }
 
   const removeMember = async (userId: string) => {
     if (!currentSiteId) return
-    if (!confirm('Remove this member?')) return
+    setConfirmUserId(userId)
+    return
+  }
+
+  const confirmRemove = async () => {
+    if (!currentSiteId || !confirmUserId) return
     try {
       const token = await getToken()
       if (!token) return
       const res = await fetch('/api/site-members', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ site_id: currentSiteId, user_id: userId })
+        body: JSON.stringify({ site_id: currentSiteId, user_id: confirmUserId })
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to remove member')
+      if (!res.ok) {
+        await handleApiError(res, '/api/site-members', { action: 'delete' })
+        const data = await res.json().catch(() => ({}))
+        throw new Error((data as any).error || 'Failed to remove member')
+      }
       await loadMembers()
+      setConfirmUserId(null)
     } catch (e) {
-      console.error(e)
-      alert((e as Error).message)
+      const err = handleError(e as Error, { showToast: true, context: { feature: 'members.remove' } })
+      setErrorMsg(err.message)
     }
   }
 
   return (
     <DashboardLayout>
       <div className="space-y-6">
+        {errorMsg && (
+          <div className="bg-red-900/20 border border-red-700 text-red-300 px-4 py-3 rounded-lg" role="alert">
+            <div className="flex items-start justify-between">
+              <span>{errorMsg}</span>
+              <button aria-label="Dismiss error" className="text-red-300 hover:text-red-200" onClick={() => setErrorMsg(null)}>×</button>
+            </div>
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-white">Members</h1>
@@ -265,5 +286,28 @@ export default function MembersPage() {
         )}
       </div>
     </DashboardLayout>
+    {confirmUserId && (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+        <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-md">
+          <h2 id="confirm-title" className="text-white text-lg font-semibold mb-2">Remove member?</h2>
+          <p className="text-gray-300 mb-4">This action will remove the user from this site. You can re-add them later if needed.</p>
+          <div className="flex justify-end gap-3">
+            <button
+              className="px-4 py-2 bg-gray-700 text-gray-100 rounded"
+              onClick={() => setConfirmUserId(null)}
+            >
+              Cancel
+            </button>
+            <button
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded"
+              onClick={confirmRemove}
+              autoFocus
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
   )
 }

@@ -37,8 +37,7 @@ export default function DashboardPage() {
   const [timingCompliance, setTimingCompliance] = useState<{ rate: number; window: string }>({ rate: 0, window: '30d' })
   const [drugComplianceRate, setDrugComplianceRate] = useState<{ rate: number; window: string }>({ rate: 0, window: '30d' })
 
-  // Activity and alerts
-  const [, setRecentActivity] = useState<Array<{ id: string; visit_name: string; status: string; updated_at: string }>>([])
+  // Alerts
   const [complianceAlerts, setComplianceAlerts] = useState<Array<{ id: string; visit_name: string; updated_at: string }>>([])
   const [calendarStrip, setCalendarStrip] = useState<Array<{ date: string; count: number }>>([])
 
@@ -153,13 +152,7 @@ export default function DashboardPage() {
           .lt('visit_date', toISO(today))
         setOverdueVisits(overdue?.length || 0)
 
-        // Recent activity: latest 5 updated visits
-        const { data: ra } = await supabase
-          .from('subject_visits')
-          .select('id, visit_name, status, updated_at')
-          .order('updated_at', { ascending: false })
-          .limit(5)
-        setRecentActivity(ra || [])
+        // Recent activity (removed unused state)
 
         // Compliance alerts: completed but out-of-window in last 14 days
         const twoWeeks = new Date(); twoWeeks.setDate(today.getDate() - 14)

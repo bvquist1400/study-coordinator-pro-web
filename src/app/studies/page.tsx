@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { type User } from '@supabase/supabase-js'
 import { type Study } from '@/types/database'
 import { useSite } from '@/components/site/SiteProvider'
 import DashboardLayout from '@/components/dashboard/DashboardLayout'
@@ -14,7 +13,6 @@ import ScheduleOfEventsBuilder from '@/components/studies/ScheduleOfEventsBuilde
 
 export default function StudiesPage() {
   const router = useRouter()
-  const [, setUser] = useState<User | null>(null)
   const [studies, setStudies] = useState<Study[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [showAddForm, setShowAddForm] = useState(false)
@@ -36,7 +34,7 @@ export default function StudiesPage() {
           return
         }
         
-        setUser(userData.user)
+        // user is authenticated; no need to persist in state here
 
         // Try API first for membership-scoped studies, with optional site filter
         try {
@@ -132,15 +130,16 @@ export default function StudiesPage() {
     }
   }
 
-  const getDosingLabel = (abbr?: string | null) => {
-    switch ((abbr || '').toUpperCase()) {
+  const getDosingLabel = (abbr?: Study['dosing_frequency'] | null) => {
+    const v = (abbr ?? '').toString().toUpperCase()
+    switch (v) {
       case 'QD': return 'Once daily'
       case 'BID': return 'Twice daily'
       case 'TID': return 'Three times daily'
       case 'QID': return 'Four times daily'
       case 'WEEKLY': return 'Weekly'
       case 'CUSTOM': return 'Custom'
-      default: return abbr || 'Not specified'
+      default: return (abbr as string) || 'Not specified'
     }
   }
 
@@ -272,8 +271,8 @@ export default function StudiesPage() {
                         </svg>
                       </button>
                     </p>
-                    {Boolean((study as Partial<Study>).protocol_version) && (
-                      <p className="text-blue-300 font-mono text-xs mb-2">Version: {(study as Partial<Study>).protocol_version}</p>
+                    {Boolean(study.protocol_version) && (
+                      <p className="text-blue-300 font-mono text-xs mb-2">Version: {study.protocol_version}</p>
                     )}
                     {study.sponsor && (
                       <p className="text-gray-300 text-sm mb-1">Sponsor: {study.sponsor}</p>
@@ -290,7 +289,7 @@ export default function StudiesPage() {
                       Target Enrollment: {study.target_enrollment || 'Not set'}
                     </div>
                     <div className="text-sm text-gray-400">
-                      Dosing: {getDosingLabel(study.dosing_frequency as unknown as string)}
+                      Dosing: {getDosingLabel(study.dosing_frequency)}
                     </div>
                     <div className="text-xs text-gray-500 mt-2" title={new Date(study.updated_at).toLocaleString()}>
                       Last updated: {timeAgo(study.updated_at)}

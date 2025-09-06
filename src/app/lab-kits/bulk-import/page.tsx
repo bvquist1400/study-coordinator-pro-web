@@ -33,6 +33,8 @@ export default function BulkImportPage() {
   const [visitSchedules, setVisitSchedules] = useState<VisitSchedule[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [successMsg, setSuccessMsg] = useState<string | null>(null)
   
   // Form state
   const [selectedStudyId, setSelectedStudyId] = useState('')
@@ -154,12 +156,12 @@ export default function BulkImportPage() {
 
   const handleSubmit = async () => {
     if (!selectedStudyId) {
-      alert('Please select a study')
+      setErrorMsg('Please select a study')
       return
     }
 
     if (!validateRows()) {
-      alert('Please fix the errors in the grid')
+      setErrorMsg('Please fix the errors in the grid')
       return
     }
 
@@ -168,7 +170,7 @@ export default function BulkImportPage() {
     )
 
     if (validRows.length === 0) {
-      alert('Please add at least one lab kit')
+      setErrorMsg('Please add at least one lab kit')
       return
     }
 
@@ -202,15 +204,15 @@ export default function BulkImportPage() {
 
       if (response.ok) {
         const result = await response.json()
-        alert(`Successfully imported ${result.imported} lab kits`)
+        setSuccessMsg(`Successfully imported ${result.imported} lab kits`)
         router.push('/lab-kits')
       } else {
-        const error = await response.json()
-        alert(`Error importing lab kits: ${error.error}`)
+        const error = await response.json().catch(() => ({ error: 'Failed to import lab kits' }))
+        setErrorMsg(`Error importing lab kits: ${error.error}`)
       }
     } catch (error) {
       console.error('Error submitting:', error)
-      alert('Failed to import lab kits')
+      setErrorMsg('Failed to import lab kits')
     } finally {
       setSubmitting(false)
     }
@@ -230,6 +232,22 @@ export default function BulkImportPage() {
   return (
     <div className="min-h-screen bg-black">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {errorMsg && (
+          <div className="mb-4 bg-red-900/20 border border-red-700 text-red-300 px-4 py-3 rounded-lg" role="alert">
+            <div className="flex items-start justify-between">
+              <span>{errorMsg}</span>
+              <button aria-label="Dismiss error" className="text-red-300 hover:text-red-200" onClick={() => setErrorMsg(null)}>×</button>
+            </div>
+          </div>
+        )}
+        {successMsg && (
+          <div className="mb-4 bg-green-900/20 border border-green-700 text-green-300 px-4 py-3 rounded-lg" role="status">
+            <div className="flex items-start justify-between">
+              <span>{successMsg}</span>
+              <button aria-label="Dismiss" className="text-green-300 hover:text-green-200" onClick={() => setSuccessMsg(null)}>×</button>
+            </div>
+          </div>
+        )}
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
