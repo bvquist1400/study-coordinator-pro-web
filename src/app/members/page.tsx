@@ -146,6 +146,7 @@ export default function MembersPage() {
   }
 
   return (
+    <>
     <DashboardLayout>
       <div className="space-y-6">
         {errorMsg && (
@@ -309,5 +310,6 @@ export default function MembersPage() {
         </div>
       </div>
     )}
+    </>
   )
 }

@@ -7,11 +7,12 @@ import type { SubjectVisitUpdate } from '@/types/database'
 // PUT /api/subject-visits/[id]/ip-accountability - Save visit with IP accountability
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { user, error: authError, status: authStatus } = await authenticateUser(request)
     if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
+    const resolvedParams = await params
     
     // DB client
     const supabase = createSupabaseAdmin()
@@ -20,7 +21,7 @@ export async function PUT(
     const { data: visit } = await supabase
       .from('subject_visits')
       .select('subject_id, study_id')
-      .eq('id', params.id)
+      .eq('id', resolvedParams.id)
       .single()
 
     if (!visit) {
@@ -55,7 +56,7 @@ export async function PUT(
         const rpcPayload = {
           p_subject_id: vAny.subject_id,
           p_user_id: user.id,
-          p_visit_id: params.id,
+          p_visit_id: resolvedParams.id,
           p_dispensed: dispensedBottles,
           p_returned: returnedBottles
         } as any
@@ -88,7 +89,7 @@ export async function PUT(
       const { error: visitError } = await (supabase
         .from('subject_visits') as any)
         .update(updateData as SubjectVisitUpdate)
-        .eq('id', params.id)
+        .eq('id', resolvedParams.id)
         
       if (visitError) {
         logger.error('Error updating visit', visitError as any)
@@ -101,7 +102,7 @@ export async function PUT(
     } else {
       // Legacy single-bottle format - use existing logic
       const visitData: VisitIPData = {
-        visit_id: params.id,
+        visit_id: resolvedParams.id,
         visit_date: requestData.visit_date || requestData.scheduled_date,
         status: requestData.status || 'completed',
         
