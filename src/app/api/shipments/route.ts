@@ -17,23 +17,68 @@ export async function GET(request: NextRequest) {
     if (!membership.success) return NextResponse.json({ error: membership.error || 'Access denied' }, { status: membership.status || 403 })
 
     const supabase = createSupabaseAdmin()
-    // Join shipments to lab_kits to filter by study
-    const { data, error } = await supabase
+    // 1) Shipments linked via lab_kits for this study
+    const { data: data1, error: err1 } = await supabase
       .from('lab_kit_shipments')
       .select(`
         id, airway_bill_number, carrier, shipped_date, tracking_status,
+        accession_number,
+        lab_kit_id,
         lab_kits:lab_kits!inner(id, study_id)
       `)
       .eq('lab_kits.study_id', studyId)
       .order('created_at', { ascending: false })
-
-    if (error) {
-      logger.error('Shipments list error', error as any)
+    if (err1) {
+      logger.error('Shipments list error (join lab_kits)', err1 as any)
       return NextResponse.json({ error: 'Failed to fetch shipments' }, { status: 500 })
     }
 
-    // Map minimal payload
-    const shipments = (data || []).map((row: any) => ({
+    // 2) Accession-only shipments linked via subject_visit_id to this study
+    const { data: data2, error: err2 } = await supabase
+      .from('lab_kit_shipments')
+      .select(`
+        id, airway_bill_number, carrier, shipped_date, tracking_status,
+        accession_number,
+        lab_kit_id,
+        subject_visits:subject_visits!inner(id, study_id)
+      `)
+      .is('lab_kit_id', null)
+      .not('accession_number', 'is', null)
+      .eq('subject_visits.study_id', studyId)
+      .order('created_at', { ascending: false })
+    if (err2) {
+      logger.error('Shipments list error (join subject_visits)', err2 as any)
+      return NextResponse.json({ error: 'Failed to fetch shipments' }, { status: 500 })
+    }
+
+    // 3) Accession-only shipments whose accession matches a lab kit in this study
+    const { data: accRows } = await supabase
+      .from('lab_kits')
+      .select('accession_number')
+      .eq('study_id', studyId)
+    let data3: any[] = []
+    const accList = (accRows || []).map((r: any) => r.accession_number).filter(Boolean)
+    if (accList.length > 0) {
+      const { data: d3, error: err3 } = await supabase
+        .from('lab_kit_shipments')
+        .select('id, airway_bill_number, carrier, shipped_date, tracking_status, accession_number, lab_kit_id')
+        .is('lab_kit_id', null)
+        .in('accession_number', accList)
+      if (err3) {
+        logger.error('Shipments list error (accession-only match)', err3 as any)
+      } else {
+        data3 = d3 || []
+      }
+    }
+
+    // Merge and dedupe by id
+    const seen = new Map<string, any>()
+    for (const row of [...(data1 || []), ...(data2 || []), ...data3]) {
+      const id = (row as any).id as string
+      if (!seen.has(id)) seen.set(id, row)
+    }
+
+    const shipments = Array.from(seen.values()).map((row: any) => ({
       id: row.id as string,
       airway_bill_number: row.airway_bill_number as string,
       carrier: row.carrier as string,

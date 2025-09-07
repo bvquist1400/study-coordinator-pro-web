@@ -46,7 +46,7 @@ export default function CreateShipmentModal({ studyId, onClose, onSuccess }: Cre
           const { labKits } = await resp.json()
           setKits(labKits || [])
         }
-      } catch (e) {
+      } catch (_e) {
         setKits([])
       } finally {
         setLoading(false)
@@ -96,7 +96,7 @@ export default function CreateShipmentModal({ studyId, onClose, onSuccess }: Cre
       }
       onSuccess()
       onClose()
-    } catch (e) {
+    } catch (_e) {
       setErrorMsg('Failed to create shipments')
     } finally {
       setSubmitting(false)

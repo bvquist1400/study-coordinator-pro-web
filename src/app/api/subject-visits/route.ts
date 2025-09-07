@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser, verifyStudyMembership, createSupabaseAdmin } from '@/lib/api/auth'
-import type { LabKitUpdate } from '@/types/database'
+// Removed unused LabKitUpdate import
 import logger from '@/lib/logger'
 
 // GET /api/subject-visits?studyId|study_id=xxx&subjectId|subject_id=xxx&startDate=xxx&endDate=xxx&summary=true - Get subject visits

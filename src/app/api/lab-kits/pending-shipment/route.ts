@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Resolve kits by accession (global unique but validate study)
-    let kitsByAcc: KitRow[] = []
+    const kitsByAcc: KitRow[] = []
     const accToReason = new Map<string, string>()
     if (accessionNumbers.length > 0) {
       const { data, error } = await supabase

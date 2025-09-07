@@ -906,7 +906,7 @@ function BulkPendingShipmentModal({ studyId, selectedIds, onClose, onDone }: Bul
         return
       }
       setResult(json)
-    } catch (e) {
+    } catch (_e) {
       setErrorMsg('Failed to mark pending shipment')
     } finally {
       setSubmitting(false)
