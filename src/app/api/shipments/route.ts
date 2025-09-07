@@ -172,7 +172,7 @@ export async function POST(request: NextRequest) {
         await (supabase as any)
           .from('lab_kit_shipments')
           .update({ subject_visit_id: visitId } as any)
-          .eq('id', s.id)
+          .eq('id', (s as any).id)
         await (supabase as any)
           .from('subject_visits')
           .update({ lab_kit_shipped_date: shipDateToSet } as any)
