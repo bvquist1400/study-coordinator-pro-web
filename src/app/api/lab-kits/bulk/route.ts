@@ -97,33 +97,28 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check for duplicate accession numbers within each study
-    for (const studyId of studyIds) {
-      const studyKits = labKits.filter(kit => kit.study_id === studyId)
-      const accessionNumbers = studyKits.map(kit => kit.accession_number.trim())
-      
-      // Check for duplicates within the request
-      const duplicates = accessionNumbers.filter((item, index) => accessionNumbers.indexOf(item) !== index)
-      if (duplicates.length > 0) {
-        return NextResponse.json({ 
-          error: `Duplicate accession numbers in request: ${duplicates.join(', ')}` 
-        }, { status: 409 })
-      }
+    // Check for duplicate accession numbers globally
+    const accessionNumbers = labKits.map(kit => kit.accession_number.trim())
+    // Duplicates within the request
+    const duplicates = accessionNumbers.filter((item, index) => accessionNumbers.indexOf(item) !== index)
+    if (duplicates.length > 0) {
+      return NextResponse.json({ 
+        error: `Duplicate accession numbers in request: ${[...new Set(duplicates)].join(', ')}` 
+      }, { status: 409 })
+    }
 
-      // Check for existing accession numbers in the database
-      const { data: existingKits } = await supabase
-        .from('lab_kits')
-        .select('accession_number')
-        .eq('study_id', studyId)
-        .in('accession_number', accessionNumbers)
+    // Existing in DB (global)
+    const { data: existingKits } = await supabase
+      .from('lab_kits')
+      .select('accession_number')
+      .in('accession_number', accessionNumbers)
 
-      if (existingKits && existingKits.length > 0) {
-        type AccRow = { accession_number: string }
-        const existing = (existingKits as AccRow[]).map(kit => kit.accession_number)
-        return NextResponse.json({ 
-          error: `These accession numbers already exist in study ${studyId}: ${existing.join(', ')}` 
-        }, { status: 409 })
-      }
+    if (existingKits && existingKits.length > 0) {
+      type AccRow = { accession_number: string }
+      const existing = (existingKits as AccRow[]).map(kit => kit.accession_number)
+      return NextResponse.json({ 
+        error: `These accession numbers already exist: ${existing.join(', ')}` 
+      }, { status: 409 })
     }
 
     // Prepare lab kits for insertion

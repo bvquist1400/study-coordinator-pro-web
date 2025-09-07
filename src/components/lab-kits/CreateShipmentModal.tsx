@@ -20,6 +20,8 @@ type LabKit = {
 export default function CreateShipmentModal({ studyId, onClose, onSuccess }: CreateShipmentModalProps) {
   const [kits, setKits] = useState<LabKit[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [manualAccession, setManualAccession] = useState('')
+  const [manualAccessionList, setManualAccessionList] = useState<Set<string>>(new Set())
   const [airwayBill, setAirwayBill] = useState('')
   const [carrier, setCarrier] = useState<'fedex' | 'ups' | 'other'>('fedex')
   const [shippedDate, setShippedDate] = useState(todayLocalISODate())
@@ -66,8 +68,8 @@ export default function CreateShipmentModal({ studyId, onClose, onSuccess }: Cre
       setErrorMsg('Airway bill number is required')
       return
     }
-    if (selected.size === 0) {
-      setErrorMsg('Select at least one kit')
+    if (selected.size === 0 && manualAccessionList.size === 0) {
+      setErrorMsg('Select at least one kit or enter accession numbers')
       return
     }
     try {
@@ -80,6 +82,7 @@ export default function CreateShipmentModal({ studyId, onClose, onSuccess }: Cre
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({
           labKitIds: Array.from(selected),
+          accessionNumbers: Array.from(manualAccessionList),
           airwayBillNumber: airwayBill.trim(),
           carrier,
           shippedDate: shippedDate || null,
@@ -132,6 +135,44 @@ export default function CreateShipmentModal({ studyId, onClose, onSuccess }: Cre
             </div>
           </div>
 
+          {/* Manual accession numbers input */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-300">Add Accession Numbers (optional)</label>
+            <div className="flex gap-2">
+              <input
+                value={manualAccession}
+                onChange={e => setManualAccession(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    const v = manualAccession.trim()
+                    if (v) {
+                      setManualAccessionList(prev => new Set(prev).add(v))
+                      setManualAccession('')
+                    }
+                  }
+                }}
+                placeholder="Scan or type accession number"
+                className="flex-1 bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2"
+              />
+              <button
+                type="button"
+                onClick={() => { const v = manualAccession.trim(); if (v) { setManualAccessionList(prev => new Set(prev).add(v)); setManualAccession('') } }}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
+              >Add</button>
+            </div>
+            {manualAccessionList.size > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {Array.from(manualAccessionList).map(acc => (
+                  <span key={acc} className="inline-flex items-center bg-gray-700/60 border border-gray-600 text-gray-100 rounded-full px-3 py-1 text-sm">
+                    <span className="font-mono mr-2">{acc}</span>
+                    <button onClick={() => setManualAccessionList(prev => { const n = new Set(prev); n.delete(acc); return n })} className="text-gray-300 hover:text-white">×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div>
             <h3 className="text-md font-semibold text-white mb-2">Select Kits (status: pending_shipment)</h3>
             <div className="border border-gray-700 rounded-lg overflow-hidden">
@@ -169,7 +210,7 @@ export default function CreateShipmentModal({ studyId, onClose, onSuccess }: Cre
 
         <div className="flex items-center justify-end space-x-3 p-6 border-t border-gray-700">
           <button onClick={onClose} className="px-4 py-2 text-gray-300 hover:text-white" disabled={submitting}>Cancel</button>
-          <button onClick={submit} disabled={submitting || !airwayBill.trim() || selected.size === 0} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50">
+          <button onClick={submit} disabled={submitting || !airwayBill.trim() || (selected.size === 0 && manualAccessionList.size === 0)} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50">
             {submitting ? 'Creating...' : 'Create Shipment'}
           </button>
         </div>

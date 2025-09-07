@@ -108,23 +108,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create subject visit' }, { status: 500 })
     }
 
-    // If a lab kit was assigned, update its status to 'assigned'
-    if (visitData.lab_kit_id) {
-      const { error: kitError } = await (supabase as any)
-        .from('lab_kits')
-        .update({ 
-          status: 'assigned',
-          visit_schedule_id: visitData.visit_schedule_id || null,
-          updated_at: new Date().toISOString()
-        } as LabKitUpdate)
-        .eq('id', visitData.lab_kit_id)
-        .eq('study_id', visitData.study_id) // Ensure kit belongs to same study
-
-      if (kitError) {
-        logger.error('Failed to update lab kit status', kitError as any)
-        // Don't fail the visit creation, just log the error
-      }
-    }
+    // Removed: automatic transition to 'assigned'.
 
     return NextResponse.json({ visit: subjectVisit }, { status: 201 })
   } catch (error) {

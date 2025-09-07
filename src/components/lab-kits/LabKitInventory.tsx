@@ -30,6 +30,7 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
   const [selectedKits, setSelectedKits] = useState<Set<string>>(new Set())
   const [bulkAction, setBulkAction] = useState<'edit' | 'delete' | 'archive' | null>(null)
   const [showBulkEditModal, setShowBulkEditModal] = useState(false)
+  const [showPendingModal, setShowPendingModal] = useState(false)
   const [groupByVisit, setGroupByVisit] = useState(true)
 
   const loadLabKits = useCallback(async () => {
@@ -342,7 +343,7 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
             />
           </div>
           {/* Status select retained for accessibility on smaller screens (tabs above) */}
-          <div>
+          <div className="flex gap-3">
             <button
               onClick={() => setGroupByVisit(!groupByVisit)}
               className={`px-4 py-2 rounded-md font-medium transition-colors ${
@@ -353,9 +354,26 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
             >
               {groupByVisit ? '📊 Grouped' : '📋 List'}
             </button>
+            <button
+              onClick={() => setShowPendingModal(true)}
+              className="px-4 py-2 rounded-md font-medium bg-orange-600 hover:bg-orange-700 text-white transition-colors"
+              title="Mark selected kits or pasted accessions as pending shipment"
+            >
+              Mark Pending Shipment
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Bulk Pending Modal */}
+      {showPendingModal && (
+        <BulkPendingShipmentModal
+          studyId={studyId}
+          selectedIds={Array.from(selectedKits)}
+          onClose={() => setShowPendingModal(false)}
+          onDone={() => { setShowPendingModal(false); setSelectedKits(new Set()); onRefresh() }}
+        />
+      )}
 
       {/* Bulk Actions Toolbar */}
       {selectedKits.size > 0 && (
@@ -374,6 +392,16 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
             </div>
             
             <div className="flex items-center space-x-3">
+              <button
+                onClick={() => setShowPendingModal(true)}
+                disabled={bulkAction !== null}
+                className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center space-x-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h10M9 20h6" />
+                </svg>
+                <span>Mark Pending</span>
+              </button>
               <button
                 onClick={handleBulkEdit}
                 disabled={bulkAction !== null}
@@ -833,6 +861,118 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
           }}
         />
       )}
+    </div>
+  )
+}
+
+interface BulkPendingShipmentModalProps {
+  studyId: string
+  selectedIds: string[]
+  onClose: () => void
+  onDone: () => void
+}
+
+function BulkPendingShipmentModal({ studyId, selectedIds, onClose, onDone }: BulkPendingShipmentModalProps) {
+  const [text, setText] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [result, setResult] = useState<{ updated: number; invalid: Array<{ id?: string; accession_number?: string; reason: string }> } | null>(null)
+
+  const parseAccessions = () => {
+    const tokens = text
+      .split(/[\s,;]+/)
+      .map(s => s.trim())
+      .filter(Boolean)
+    return Array.from(new Set(tokens))
+  }
+
+  const submit = async () => {
+    try {
+      setSubmitting(true)
+      setErrorMsg(null)
+      setResult(null)
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) return
+      const accessionNumbers = parseAccessions()
+      const resp = await fetch('/api/lab-kits/pending-shipment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ studyId, labKitIds: selectedIds, accessionNumbers })
+      })
+      const json = await resp.json().catch(() => ({}))
+      if (!resp.ok) {
+        setErrorMsg(json.error || 'Failed to mark pending shipment')
+        return
+      }
+      setResult(json)
+    } catch (e) {
+      setErrorMsg('Failed to mark pending shipment')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-800/95 border border-gray-700 rounded-2xl max-w-2xl w-full">
+        <div className="p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold text-white">Mark Pending Shipment</h2>
+            <button onClick={onClose} className="text-gray-400 hover:text-white">✕</button>
+          </div>
+
+          <div className="space-y-4">
+            <p className="text-gray-300 text-sm">Selected kits: <span className="font-medium">{selectedIds.length}</span></p>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Paste accession numbers (optional)</label>
+              <textarea
+                rows={6}
+                value={text}
+                onChange={e => setText(e.target.value)}
+                placeholder="One per line, or separated by spaces/commas"
+                className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {text && (
+                <p className="text-xs text-gray-400 mt-1">Parsed: {parseAccessions().length}</p>
+              )}
+            </div>
+
+            {errorMsg && (
+              <div className="bg-red-900/20 border border-red-700 text-red-300 px-3 py-2 rounded">{errorMsg}</div>
+            )}
+
+            {result && (
+              <div className="bg-gray-700/40 border border-gray-600 text-gray-100 px-3 py-2 rounded">
+                <p>Updated: {result.updated}</p>
+                {result.invalid?.length > 0 && (
+                  <div className="mt-2 text-sm">
+                    <p className="text-gray-300 mb-1">Invalid:</p>
+                    <ul className="list-disc list-inside text-gray-300 max-h-40 overflow-auto">
+                      {result.invalid.map((r, i) => (
+                        <li key={i} className="font-mono">
+                          {(r.accession_number || r.id || 'unknown')}: {r.reason}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-3 mt-6">
+            <button onClick={onClose} className="px-4 py-2 text-gray-300 hover:text-white">Close</button>
+            {result ? (
+              <button onClick={onDone} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded">Done</button>
+            ) : (
+              <button onClick={submit} disabled={submitting} className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded disabled:opacity-50">
+                {submitting ? 'Marking…' : 'Mark Pending'}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

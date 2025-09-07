@@ -12,7 +12,7 @@ create table public.lab_kits (
   created_at timestamp with time zone null default now(),
   updated_at timestamp with time zone null default now(),
   constraint lab_kits_pkey primary key (id),
-  constraint unique_accession_per_study unique (study_id, accession_number),
+  constraint unique_accession_number unique (accession_number),
   constraint lab_kits_study_id_fkey foreign KEY (study_id) references studies (id) on delete CASCADE,
   constraint lab_kits_visit_schedule_id_fkey foreign KEY (visit_schedule_id) references visit_schedules (id) on delete set null,
   constraint lab_kits_status_check check (
@@ -24,7 +24,9 @@ create table public.lab_kits (
           'used'::text,
           'pending_shipment'::text,
           'shipped'::text,
-          'expired'::text
+          'expired'::text,
+          'destroyed'::text,
+          'archived'::text
         ]
       )
     )

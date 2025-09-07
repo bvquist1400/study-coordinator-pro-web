@@ -590,7 +590,7 @@ export interface Database {
           accession_number?: string
           kit_type?: string | null
           expiration_date?: string | null
-          status?: 'available' | 'assigned' | 'used' | 'shipped' | 'expired' | 'destroyed' | 'archived'
+          status?: 'available' | 'assigned' | 'used' | 'pending_shipment' | 'shipped' | 'expired' | 'destroyed' | 'archived'
           received_date?: string | null
           notes?: string | null
           created_at?: string
@@ -600,7 +600,8 @@ export interface Database {
       lab_kit_shipments: {
         Row: {
           id: string
-          lab_kit_id: string
+          lab_kit_id: string | null
+          accession_number: string | null
           subject_visit_id: string | null
           airway_bill_number: string
           carrier: 'fedex' | 'ups' | 'other'
@@ -615,7 +616,8 @@ export interface Database {
         }
         Insert: {
           id?: string
-          lab_kit_id: string
+          lab_kit_id?: string | null
+          accession_number?: string | null
           subject_visit_id?: string | null
           airway_bill_number: string
           carrier?: 'fedex' | 'ups' | 'other'
@@ -630,7 +632,8 @@ export interface Database {
         }
         Update: {
           id?: string
-          lab_kit_id?: string
+          lab_kit_id?: string | null
+          accession_number?: string | null
           subject_visit_id?: string | null
           airway_bill_number?: string
           carrier?: 'fedex' | 'ups' | 'other'
@@ -650,7 +653,7 @@ export interface Database {
           lab_kit_id: string
           subject_visit_id: string
           used_date: string
-          used_by: string
+          used_by_user_id: string | null
           notes: string | null
           created_at: string
         }
@@ -659,7 +662,7 @@ export interface Database {
           lab_kit_id: string
           subject_visit_id: string
           used_date?: string
-          used_by: string
+          used_by_user_id?: string | null
           notes?: string | null
           created_at?: string
         }
@@ -668,7 +671,7 @@ export interface Database {
           lab_kit_id?: string
           subject_visit_id?: string
           used_date?: string
-          used_by?: string
+          used_by_user_id?: string | null
           notes?: string | null
           created_at?: string
         }

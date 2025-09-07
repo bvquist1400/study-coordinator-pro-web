@@ -1,6 +1,7 @@
 create table public.lab_kit_shipments (
   id uuid not null default gen_random_uuid (),
-  lab_kit_id uuid not null,
+  lab_kit_id uuid null,
+  accession_number text null,
   subject_visit_id uuid null,
   airway_bill_number text not null,
   carrier text null default 'fedex'::text,
@@ -18,6 +19,9 @@ create table public.lab_kit_shipments (
     (
       carrier = any (array['fedex'::text, 'ups'::text, 'other'::text])
     )
+  ),
+  constraint shipments_kit_or_accession_chk check (
+    lab_kit_id is not null or accession_number is not null
   )
 ) TABLESPACE pg_default;
 

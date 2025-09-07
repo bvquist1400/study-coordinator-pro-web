@@ -20,6 +20,20 @@ export async function GET(request: NextRequest) {
     const membership = await verifyStudyMembership(studyId, user.id)
     if (!membership.success) return NextResponse.json({ error: membership.error || 'Access denied' }, { status: membership.status || 403 })
 
+    // Auto-expire kits whose expiration_date has passed
+    try {
+      const today = new Date()
+      today.setUTCHours(0,0,0,0)
+      const todayISO = today.toISOString().slice(0,10)
+      await supabase
+        .from('lab_kits')
+        // @ts-expect-error string[] for in filter
+        .update({ status: 'expired' })
+        .lt('expiration_date', todayISO)
+        .in('status', ['available','assigned','used','pending_shipment'])
+        .eq('study_id', studyId)
+    } catch {}
+
     // Build query with optional join to visit_schedules
     let query = supabase
       .from('lab_kits')
@@ -68,11 +82,10 @@ export async function POST(request: NextRequest) {
     const membership = await verifyStudyMembership(kitData.study_id, user.id)
     if (!membership.success) return NextResponse.json({ error: membership.error || 'Access denied' }, { status: membership.status || 403 })
 
-    // Check for duplicate accession number within the study
+    // Check for global duplicate accession number
     const { data: existingKit } = await supabase
       .from('lab_kits')
       .select('id')
-      .eq('study_id', kitData.study_id)
       .eq('accession_number', kitData.accession_number)
       .maybeSingle()
 

@@ -137,12 +137,45 @@ export async function PUT(
       }
     }
 
-    // Return updated visit data
+    // Fetch updated visit and create lab_kit_usage if applicable
     const { data: updatedVisit } = await supabase
       .from('subject_visits')
-      .select('*')
+      .select('id, status, accession_number, visit_date')
       .eq('id', resolvedParams.id)
       .single()
+
+    // Create usage record on completion when accession_number resolves to a known kit
+    try {
+      const v: any = updatedVisit
+      if (v && v.status === 'completed' && v.accession_number) {
+        const { data: kit } = await supabase
+          .from('lab_kits')
+          .select('id')
+          .eq('accession_number', v.accession_number)
+          .maybeSingle()
+        const kitId = (kit as any)?.id
+        if (kitId) {
+          const { data: existingUsage } = await supabase
+            .from('lab_kit_usage')
+            .select('id')
+            .eq('lab_kit_id', kitId)
+            .eq('subject_visit_id', resolvedParams.id)
+            .maybeSingle()
+          if (!existingUsage) {
+            await supabase
+              .from('lab_kit_usage')
+              .insert({
+                lab_kit_id: kitId,
+                subject_visit_id: resolvedParams.id,
+                used_date: v.visit_date,
+                used_by_user_id: user.id
+              } as any)
+          }
+        }
+      }
+    } catch (e) {
+      logger.warn?.('lab_kit_usage insert failed', e as any)
+    }
 
     return NextResponse.json({ 
       visit: updatedVisit,
