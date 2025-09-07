@@ -191,7 +191,9 @@ export async function PUT(
                 const anchor = new Date(subj.randomization_date)
                 const anchorOffset = (stAny?.anchor_day ?? 0) === 1 ? 1 : 0
                 const t = new Date(anchor)
-                t.setDate(t.getDate() + (vsAny.visit_day ?? 0) + anchorOffset)
+                // For Day 1 studies, Day 1 = anchor date; subtract 1 from visit_day when anchor_day=1
+                const dayOffset = (vsAny.visit_day ?? 0) - anchorOffset
+                t.setDate(t.getDate() + dayOffset)
                 targetDate = t
               }
             }

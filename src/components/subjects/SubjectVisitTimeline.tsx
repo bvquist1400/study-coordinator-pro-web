@@ -246,8 +246,8 @@ export default function SubjectVisitTimeline({
     // Process each scheduled visit
     schedules.forEach(schedule => {
       const scheduledDate = new Date(anchorDateObj)
-      const anchorOffset = anchorDay === 1 ? 1 : 0
-      scheduledDate.setDate(scheduledDate.getDate() + schedule.visit_day + anchorOffset)
+      const dayOffset = schedule.visit_day - (anchorDay === 1 ? 1 : 0)
+      scheduledDate.setDate(scheduledDate.getDate() + dayOffset)
 
       // Calculate window dates
       const windowStart = schedule.window_before_days ? new Date(scheduledDate) : null
