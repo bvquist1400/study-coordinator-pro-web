@@ -26,6 +26,7 @@ create table public.subject_visits (
   local_labs_completed boolean null,
   ip_id text null,
   return_ip_id text null,
+  visit_not_needed boolean null default false,
   constraint subject_visits_pkey primary key (id),
   constraint subject_visits_study_id_fkey foreign KEY (study_id) references studies (id),
   constraint subject_visits_subject_id_fkey foreign KEY (subject_id) references subjects (id) on delete CASCADE,
@@ -50,6 +51,8 @@ create index IF not exists idx_subject_visits_subject_id on public.subject_visit
 create index IF not exists idx_subject_visits_scheduled_date on public.subject_visits using btree (visit_date) TABLESPACE pg_default;
 
 create index IF not exists idx_subject_visits_status on public.subject_visits using btree (status) TABLESPACE pg_default;
+
+create index IF not exists idx_subject_visits_visit_not_needed on public.subject_visits using btree (visit_not_needed) TABLESPACE pg_default;
 
 create trigger update_subject_visits_updated_at BEFORE
 update on subject_visits for EACH row

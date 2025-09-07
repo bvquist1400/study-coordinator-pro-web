@@ -104,7 +104,8 @@ export async function GET(request: NextRequest) {
           ip_start_date,
           ip_returned,
           ip_last_dose_date,
-          visit_schedule_id
+          visit_schedule_id,
+          visit_not_needed
         `)
         .in('subject_id', subjectIds)
         .order('visit_date', { ascending: true })
@@ -157,9 +158,11 @@ export async function GET(request: NextRequest) {
       // Build metrics
       const now = new Date()
       const subjectsWithMetrics = (subjects as any[]).map((subject: any) => {
-        const visits = visitsBySubject.get(subject.id) || []
+        const allVisits = visitsBySubject.get(subject.id) || []
         const drugCompliances = drugComplianceBySubject.get(subject.id) || []
 
+        // Filter out visits marked as not needed for metrics calculation
+        const visits = allVisits.filter(v => !(v as any).visit_not_needed)
 
         const completedVisits = visits.filter(v => (v as any).status === 'completed')
         const upcomingVisits = visits.filter(v => {
@@ -192,7 +195,7 @@ export async function GET(request: NextRequest) {
         const daysSinceLastVisit = lastVisit ? Math.floor((now.getTime() - new Date(((lastVisit as any).visit_date as string) + 'T00:00:00Z').getTime()) / (1000 * 60 * 60 * 24)) : null
         const daysUntilNextVisit = nextVisit ? Math.floor((new Date(((nextVisit as any).visit_date as string) + 'T00:00:00Z').getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null
 
-        // Calculate drug compliance metrics using drug_compliance table
+        // Calculate drug compliance metrics using drug_compliance table (use filtered visits)
         const ipVisits = visits.filter(v => (v as any).ip_dispensed && (v as any).ip_dispensed > 0)
         let drugCompliance = null
         let lastDrugDispensing = null

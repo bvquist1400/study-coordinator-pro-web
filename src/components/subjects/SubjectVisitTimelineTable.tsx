@@ -26,6 +26,7 @@ interface SubjectVisit {
   ip_returned: number | null
   ip_id: string | null
   return_ip_id?: string | null
+  visit_not_needed?: boolean | null
   visit_schedules: VisitSchedule | null
 }
 
@@ -50,6 +51,7 @@ interface TimelineVisit {
   return_ip_id: string | null
   compliance_percentage: number | null
   is_compliant: boolean | null
+  visit_not_needed: boolean | null
 }
 
 interface SubjectVisitTimelineTableProps {
@@ -108,6 +110,7 @@ export default function SubjectVisitTimelineTable({
   const [loading, setLoading] = useState(true)
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
   const [_editingCell, setEditingCell] = useState<{visitId: string, field: string} | null>(null)
+  const [showEditModal, setShowEditModal] = useState<{visitId: string, type: 'ip' | 'note' | 'reschedule'} | null>(null)
 
   const loadTimelineData = useCallback(async () => {
     try {
@@ -334,7 +337,8 @@ export default function SubjectVisitTimelineTable({
         ip_id: actualVisit?.ip_id || null,
         return_ip_id: (actualVisit as any)?.return_ip_id || null,
         compliance_percentage: null, // Will be calculated from drug_compliance table
-        is_compliant: null
+        is_compliant: null,
+        visit_not_needed: actualVisit?.visit_not_needed || null
       })
     })
 
@@ -369,8 +373,9 @@ export default function SubjectVisitTimelineTable({
   }
 
   const getStatusLabel = (visit: TimelineVisit) => {
+    if (visit.visit_not_needed) return 'NOT NEEDED'
     if (visit.is_overdue && visit.status === 'scheduled') return 'OVERDUE'
-    if (visit.status === 'not_scheduled') return 'NOT SCHEDULED'
+    if (visit.status === 'not_scheduled' && !visit.visit_not_needed) return 'NOT SCHEDULED'
     if (visit.status === 'upcoming') return 'UPCOMING'
     return visit.status.toUpperCase()
   }
@@ -379,6 +384,116 @@ export default function SubjectVisitTimelineTable({
     // TODO: Implement cell editing logic
     console.warn('Edit cell:', visitId, field, value)
     setEditingCell(null)
+  }
+
+  const handleVisitNotNeededToggle = async (visitId: string, isNotNeeded: boolean) => {
+    try {
+      // Check if this is a placeholder visit that needs to be created first
+      if (visitId.startsWith('schedule-')) {
+        if (isNotNeeded) {
+          // Create the visit record as "not needed"
+          await createVisitAsNotNeeded(visitId)
+        }
+        return
+      }
+
+      // Update existing visit
+      const { data, error } = await supabase
+        .from('subject_visits')
+        .update({ visit_not_needed: isNotNeeded })
+        .eq('id', visitId)
+        .select()
+      
+      if (error) {
+        console.error('Error updating visit_not_needed:', error)
+        console.error('Error details:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        })
+        
+        // Show user-friendly error message
+        alert(`Failed to update visit status: ${error.message || 'Unknown error'}. The visit_not_needed column may not exist in the database yet.`)
+        return
+      }
+      
+      if (data) {
+        console.log('Successfully updated visit_not_needed:', data)
+        // Reload the timeline data
+        await loadTimelineData()
+      }
+    } catch (error) {
+      console.error('Error toggling visit not needed:', error)
+      alert('Failed to update visit status. Please check the console for details.')
+    }
+  }
+
+  const createVisitAsNotNeeded = async (scheduleVisitId: string) => {
+    try {
+      // Extract the schedule ID from the placeholder ID
+      const scheduleId = scheduleVisitId.replace('schedule-', '')
+      
+      // Find the visit in our timeline to get the details
+      const visit = timelineVisits.find(v => v.id === scheduleVisitId)
+      if (!visit) {
+        alert('Visit details not found')
+        return
+      }
+
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        alert('User not authenticated')
+        return
+      }
+
+      // Create the visit record
+      const { data, error } = await supabase
+        .from('subject_visits')
+        .insert({
+          subject_id: subjectId,
+          visit_schedule_id: scheduleId,
+          user_id: user.id,
+          visit_name: visit.visit_name,
+          visit_date: visit.scheduled_date.split('T')[0], // Convert to date format
+          status: 'cancelled', // Use cancelled status for not-needed visits
+          visit_not_needed: true,
+          study_id: studyId
+        })
+        .select()
+
+      if (error) {
+        console.error('Error creating visit as not needed:', error)
+        alert(`Failed to create visit: ${error.message}`)
+        return
+      }
+
+      if (data) {
+        console.log('Successfully created visit as not needed:', data)
+        // Reload the timeline data
+        await loadTimelineData()
+      }
+    } catch (error) {
+      console.error('Error creating visit as not needed:', error)
+      alert('Failed to create visit. Please check the console for details.')
+    }
+  }
+
+  const handleEditIP = (visitId: string) => {
+    setShowEditModal({ visitId, type: 'ip' })
+  }
+
+  const handleAddNote = (visitId: string) => {
+    setShowEditModal({ visitId, type: 'note' })
+  }
+
+  const handleReschedule = (visitId: string) => {
+    setShowEditModal({ visitId, type: 'reschedule' })
+  }
+
+  const closeEditModal = () => {
+    setShowEditModal(null)
   }
 
   if (loading) {
@@ -444,7 +559,7 @@ export default function SubjectVisitTimelineTable({
                 <th className="px-4 py-3 text-left text-gray-300 font-medium">Actual Date</th>
                 <th className="px-4 py-3 text-left text-gray-300 font-medium">Window</th>
                 <th className="px-4 py-3 text-left text-gray-300 font-medium">Activities</th>
-                
+                <th className="px-4 py-3 text-center text-gray-300 font-medium">Not Needed</th>
                 <th className="px-4 py-3 text-left text-gray-300 font-medium">Status</th>
                 <th className="px-4 py-3 text-left text-gray-300 font-medium">Actions</th>
               </tr>
@@ -525,13 +640,32 @@ export default function SubjectVisitTimelineTable({
                         </div>
                       </td>
                       
-                      
+                      {/* Visit Not Needed Checkbox */}
+                      <td className="px-4 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={visit.visit_not_needed || false}
+                          onChange={(e) => handleVisitNotNeededToggle(visit.id, e.target.checked)}
+                          className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
+                          title={visit.id.startsWith('schedule-') 
+                            ? "Mark as not needed - will create visit record automatically" 
+                            : "Mark as not needed - excludes from visit metrics"
+                          }
+                        />
+                      </td>
                       
                       {/* Status */}
                       <td className="px-4 py-3">
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(visit)}`}>
-                          {getStatusLabel(visit)}
-                        </span>
+                        {!visit.visit_not_needed && (
+                          <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(visit)}`}>
+                            {getStatusLabel(visit)}
+                          </span>
+                        )}
+                        {visit.visit_not_needed && (
+                          <span className="px-2 py-1 text-xs font-medium rounded-full text-gray-400">
+                            NOT NEEDED
+                          </span>
+                        )}
                       </td>
                       
                       {/* Actions */}
@@ -555,7 +689,7 @@ export default function SubjectVisitTimelineTable({
                     {isExpanded && (
                       <tr className={`${rowBg} border-b border-gray-700/50`}>
                         <td></td>
-                        <td colSpan={8} className="px-4 py-4">
+                        <td colSpan={9} className="px-4 py-4">
                           <div className="bg-gray-800/50 rounded-lg p-4 space-y-4">
                             {/* All Activities */}
                             {visit.procedures && (
@@ -631,17 +765,28 @@ export default function SubjectVisitTimelineTable({
                             )}
                             
                             {/* Edit Actions */}
-                            <div className="flex space-x-2 pt-2 border-t border-gray-700">
-                              <button className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm transition-colors">
-                                Edit IP Data
-                              </button>
-                              <button className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm transition-colors">
-                                Add Note
-                              </button>
-                              <button className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm transition-colors">
-                                Reschedule
-                              </button>
-                            </div>
+                            {!visit.visit_not_needed && (
+                              <div className="flex space-x-2 pt-2 border-t border-gray-700">
+                                <button 
+                                  onClick={() => handleEditIP(visit.id)}
+                                  className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm transition-colors"
+                                >
+                                  Edit IP Data
+                                </button>
+                                <button 
+                                  onClick={() => handleAddNote(visit.id)}
+                                  className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm transition-colors"
+                                >
+                                  Add Note
+                                </button>
+                                <button 
+                                  onClick={() => handleReschedule(visit.id)}
+                                  className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm transition-colors"
+                                >
+                                  Reschedule
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -653,6 +798,38 @@ export default function SubjectVisitTimelineTable({
           </table>
         </div>
       </div>
+      
+      {/* Simple Modal/Alert for Edit Actions */}
+      {showEditModal && (
+        <div className="fixed inset-0 bg-gray-900/50 z-50 flex items-center justify-center">
+          <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-white font-medium mb-4">
+              {showEditModal.type === 'ip' && 'Edit IP Data'}
+              {showEditModal.type === 'note' && 'Add Note'}
+              {showEditModal.type === 'reschedule' && 'Reschedule Visit'}
+            </h3>
+            <p className="text-gray-400 mb-4">
+              {showEditModal.type === 'ip' && 'IP data editing functionality will be implemented here.'}
+              {showEditModal.type === 'note' && 'Note adding functionality will be implemented here.'}
+              {showEditModal.type === 'reschedule' && 'Visit rescheduling functionality will be implemented here.'}
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={closeEditModal}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors"
+              >
+                Close
+              </button>
+              <button
+                onClick={closeEditModal}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
