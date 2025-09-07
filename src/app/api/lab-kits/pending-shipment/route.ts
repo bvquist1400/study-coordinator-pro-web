@@ -23,7 +23,15 @@ export async function POST(request: NextRequest) {
           )
         )
       : []
-    const accessionNumbers: string[] = Array.isArray(body?.accessionNumbers) ? Array.from(new Set(body.accessionNumbers.map((s: string) => String(s).trim()))).filter(Boolean) : []
+    const accessionNumbers: string[] = Array.isArray(body?.accessionNumbers)
+      ? Array.from(
+          new Set(
+            (body.accessionNumbers as unknown[])
+              .map((s) => String(s).trim())
+              .filter(Boolean)
+          )
+        )
+      : []
 
     if (!studyId) return NextResponse.json({ error: 'studyId is required' }, { status: 400 })
     if (labKitIds.length === 0 && accessionNumbers.length === 0) {
