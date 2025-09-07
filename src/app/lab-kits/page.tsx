@@ -8,6 +8,7 @@ import LabKitInventory from '@/components/lab-kits/LabKitInventory'
 import ExpiredKitsView from '@/components/lab-kits/ExpiredKitsView'
 import AddLabKitModal from '@/components/lab-kits/AddLabKitModal'
 import InventoryForecast from '@/components/lab-kits/InventoryForecast'
+import ShipmentsList from '@/components/lab-kits/ShipmentsList'
 import { useSite } from '@/components/site/SiteProvider'
 
 interface Study {
@@ -16,7 +17,7 @@ interface Study {
   study_title: string
 }
 
-type ViewMode = 'inventory' | 'expired' | 'reports'
+type ViewMode = 'inventory' | 'expired' | 'shipments' | 'reports'
 
 export default function LabKitsPage() {
   const [studies, setStudies] = useState<Study[]>([])
@@ -136,7 +137,16 @@ export default function LabKitsPage() {
               >
                 Expired
               </button>
-              {/* Shipments tab temporarily disabled */}
+              <button
+                onClick={() => setViewMode('shipments')}
+                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                  viewMode === 'shipments'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                Shipments
+              </button>
               <button
                 onClick={() => setViewMode('reports')}
                 className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
@@ -207,7 +217,13 @@ export default function LabKitsPage() {
               />
             )}
 
-            {/* Shipments view temporarily removed */}
+            {viewMode === 'shipments' && (
+              <ShipmentsList
+                studyId={selectedStudyId}
+                refreshKey={refreshKey}
+                onRefresh={handleRefresh}
+              />
+            )}
 
             {viewMode === 'reports' && (
               <div className="bg-gray-800/50 rounded-lg border border-gray-700 p-8">
