@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase/client'
 
 interface ShipmentsListProps {
   studyId: string
@@ -21,9 +22,32 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh }: Shipme
   const [shipments, setShipments] = useState<Shipment[]>([])
 
   useEffect(() => {
-    // Minimal stubbed list to avoid build issues; wire to API later
-    setLoading(false)
-    setShipments([])
+    const load = async () => {
+      try {
+        setLoading(true)
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
+        if (!token) {
+          setShipments([])
+          setLoading(false)
+          return
+        }
+        const resp = await fetch(`/api/shipments?studyId=${studyId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        if (!resp.ok) {
+          setShipments([])
+        } else {
+          const json = await resp.json()
+          setShipments(json.shipments || [])
+        }
+      } catch {
+        setShipments([])
+      } finally {
+        setLoading(false)
+      }
+    }
+    if (studyId) load()
   }, [studyId, refreshKey])
 
   if (loading) {
@@ -51,7 +75,7 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh }: Shipme
       {shipments.length === 0 ? (
         <div className="bg-gray-800/50 rounded-lg border border-gray-700 p-8 text-center text-gray-400">
           <p>No shipments yet.</p>
-          <p className="text-sm mt-1">This view is a stub. We’ll rewire to APIs next.</p>
+          <p className="text-sm mt-1">Use bulk import or internal flow to add shipments.</p>
         </div>
       ) : (
         <div className="overflow-x-auto border border-gray-700 rounded-lg">
@@ -80,4 +104,3 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh }: Shipme
     </div>
   )
 }
-
