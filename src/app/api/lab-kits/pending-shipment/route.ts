@@ -14,7 +14,15 @@ export async function POST(request: NextRequest) {
     const supabase = createSupabaseAdmin()
     const body = await request.json().catch(() => ({}))
     const studyId: string | undefined = body?.studyId
-    const labKitIds: string[] = Array.isArray(body?.labKitIds) ? Array.from(new Set(body.labKitIds)).filter(Boolean) : []
+    const labKitIds: string[] = Array.isArray(body?.labKitIds)
+      ? Array.from(
+          new Set(
+            (body.labKitIds as unknown[])
+              .map((v) => String(v).trim())
+              .filter(Boolean)
+          )
+        )
+      : []
     const accessionNumbers: string[] = Array.isArray(body?.accessionNumbers) ? Array.from(new Set(body.accessionNumbers.map((s: string) => String(s).trim()))).filter(Boolean) : []
 
     if (!studyId) return NextResponse.json({ error: 'studyId is required' }, { status: 400 })
@@ -129,4 +137,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-
