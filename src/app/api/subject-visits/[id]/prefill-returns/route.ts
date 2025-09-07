@@ -44,15 +44,16 @@ export async function GET(
       logger.error('prefill-returns prev visit error', prevErr as any)
     }
     const prev = (prevVisits || [])[0]
+    const prevId: string | undefined = (prev as any)?.id
 
     // Prefer bottles dispensed at previous visit and not yet returned
     let candidates: Array<{ ip_id: string; dispensed_count: number | null }> = []
-    if (prev) {
+    if (prevId) {
       const { data: byPrev, error: byPrevErr } = await supabase
         .from('drug_compliance')
         .select('ip_id, dispensed_count')
         .eq('subject_id', (visit as any).subject_id)
-        .eq('dispensed_visit_id', prev.id)
+        .eq('dispensed_visit_id', prevId)
         .is('return_visit_id', null)
       if (byPrevErr) {
         logger.error('prefill-returns byPrev error', byPrevErr as any)
