@@ -9,6 +9,7 @@ import ExpiredKitsView from '@/components/lab-kits/ExpiredKitsView'
 import AddLabKitModal from '@/components/lab-kits/AddLabKitModal'
 import InventoryForecast from '@/components/lab-kits/InventoryForecast'
 import ShipmentsList from '@/components/lab-kits/ShipmentsList'
+import CreateShipmentModal from '@/components/lab-kits/CreateShipmentModal'
 import { useSite } from '@/components/site/SiteProvider'
 
 interface Study {
@@ -24,6 +25,7 @@ export default function LabKitsPage() {
   const [selectedStudyId, setSelectedStudyId] = useState<string>('')
   const [viewMode, setViewMode] = useState<ViewMode>('inventory')
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showCreateShipment, setShowCreateShipment] = useState(false)
   const [loading, setLoading] = useState(true)
   const [refreshKey, setRefreshKey] = useState(0)
   const [showExpiringOnly, setShowExpiringOnly] = useState(false)
@@ -170,6 +172,15 @@ export default function LabKitsPage() {
               </svg>
               <span>Add Inventory</span>
             </button>
+            {viewMode === 'shipments' && (
+              <button
+                onClick={() => setShowCreateShipment(true)}
+                disabled={!selectedStudyId}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Create Shipment
+              </button>
+            )}
           </div>
         </div>
 
@@ -245,6 +256,13 @@ export default function LabKitsPage() {
             studyId={selectedStudyId}
             onClose={() => setShowAddModal(false)}
             onAdd={handleAddComplete}
+          />
+        )}
+        {showCreateShipment && (
+          <CreateShipmentModal
+            studyId={selectedStudyId}
+            onClose={() => setShowCreateShipment(false)}
+            onSuccess={handleRefresh}
           />
         )}
       </div>
