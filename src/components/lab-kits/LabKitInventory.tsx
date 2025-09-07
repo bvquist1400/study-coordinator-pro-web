@@ -72,6 +72,8 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
         return `${baseClasses} bg-blue-900/50 text-blue-300 border border-blue-600`
       case 'used':
         return `${baseClasses} bg-purple-900/50 text-purple-300 border border-purple-600`
+      case 'pending_shipment':
+        return `${baseClasses} bg-orange-900/50 text-orange-300 border border-orange-600`
       case 'shipped':
         return `${baseClasses} bg-yellow-900/50 text-yellow-300 border border-yellow-600`
       case 'expired':

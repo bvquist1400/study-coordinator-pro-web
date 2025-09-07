@@ -19,7 +19,6 @@ interface VisitDetail {
   // Lab Kit Accountability
   lab_kit_required: boolean | null
   accession_number: string | null
-  airway_bill_number: string | null
   lab_kit_shipped_date: string | null
 
   // Drug Accountability - Legacy fields for backward compatibility
@@ -48,12 +47,12 @@ interface FormData {
   status: VisitStatus
   procedures_completed: string[]
   accession_number: string
-  airway_bill_number: string
   lab_kit_shipped_date: string
   dispensed_bottles: BottleEntry[]
   returned_bottles: BottleEntry[]
   local_labs_completed: boolean
   notes: string
+  period_last_dose_date: string
 }
 
 interface VisitDetailModalProps {
@@ -88,12 +87,12 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
     status: 'scheduled',
     procedures_completed: [],
     accession_number: '',
-    airway_bill_number: '',
     lab_kit_shipped_date: '',
     dispensed_bottles: [],
     returned_bottles: [],
     local_labs_completed: false,
-    notes: ''
+    notes: '',
+    period_last_dose_date: ''
   })
 
   const [inferredRequirements, setInferredRequirements] = useState({
@@ -146,12 +145,12 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
           status: visit.status as VisitStatus,
           procedures_completed: visit.procedures_completed || [],
           accession_number: visit.accession_number || '',
-          airway_bill_number: visit.airway_bill_number || '',
           lab_kit_shipped_date: visit.lab_kit_shipped_date?.split('T')[0] || '',
           dispensed_bottles: dispensedBottles,
           returned_bottles: returnedBottles,
           local_labs_completed: visit.local_labs_completed || false,
-          notes: visit.notes || ''
+          notes: visit.notes || '',
+          period_last_dose_date: visit.ip_last_dose_date?.split('T')[0] || ''
         })
 
         // Infer requirements from visit name
@@ -174,6 +173,35 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
   useEffect(() => {
     loadVisit()
   }, [loadVisit])
+
+  // Pre-populate candidate returns from previous visit via API (bypasses client RLS issues)
+  useEffect(() => {
+    const prefillReturns = async () => {
+      if (!visit || formData.returned_bottles.length > 0) return
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.access_token) return
+        const resp = await fetch(`/api/subject-visits/${visit.id}/prefill-returns`, {
+          headers: { 'Authorization': `Bearer ${session.access_token}` }
+        })
+        if (!resp.ok) return
+        const data = await resp.json()
+        const candidates = (data?.candidates || []) as Array<{ ip_id: string; suggested_return_count?: number }>
+        if (candidates.length === 0) return
+        const returnedBottles: BottleEntry[] = candidates.map((c, idx) => ({
+          id: `prefill-${idx}`,
+          ip_id: c.ip_id,
+          count: c.suggested_return_count ?? 0,
+          last_dose_date: ''
+        }))
+        setFormData(prevState => ({ ...prevState, returned_bottles: returnedBottles }))
+      } catch (e) {
+        console.error('Prefill returns error:', e)
+      }
+    }
+    prefillReturns()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visit])
 
   // Load available lab kits for autocomplete
   useEffect(() => {
@@ -225,8 +253,8 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
       if (bottle.count <= 0) {
         warnings.push(`Returned bottle ${index + 1}: Count must be greater than 0`)
       }
-      if (!bottle.last_dose_date) {
-        warnings.push(`Returned bottle ${index + 1}: Last dose date is required`)
+      if (!bottle.last_dose_date && !formData.period_last_dose_date) {
+        warnings.push(`Returned bottle ${index + 1}: Last dose date is required (or set the period last dose date above) `)
       }
     })
 
@@ -240,10 +268,23 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
 
   // Send multi-bottle data to API endpoint instead of direct database insertion
   const saveMultiBottleCompliance = async (token: string) => {
+    // Fill defaults for dates when missing
+    const returnedWithPeriod = formData.returned_bottles.map(b => ({
+      ...b,
+      last_dose_date: b.last_dose_date || formData.period_last_dose_date || ''
+    }))
+
+    const defaultVisitDate = visit?.visit_date?.split('T')[0] || ''
+    const dispensedWithDefaults = formData.dispensed_bottles.map(b => ({
+      ...b,
+      start_date: b.start_date || defaultVisitDate
+    }))
+
     // Send multi-bottle data to the existing IP accountability API
     const multiBottleData = {
-      dispensed_bottles: formData.dispensed_bottles,
-      returned_bottles: formData.returned_bottles
+      dispensed_bottles: dispensedWithDefaults,
+      returned_bottles: returnedWithPeriod,
+      period_last_dose_date: formData.period_last_dose_date || undefined
     }
 
     const response = await fetch(`/api/subject-visits/${visitId}/ip-accountability`, {
@@ -291,7 +332,6 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
         status: formData.status,
         procedures_completed: formData.procedures_completed,
         accession_number: formData.accession_number || null,
-        airway_bill_number: formData.airway_bill_number || null,
         lab_kit_shipped_date: formData.lab_kit_shipped_date || null,
         local_labs_completed: formData.local_labs_completed,
         notes: formData.notes || null,
@@ -482,20 +522,6 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
                   )}
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Airway Bill Number</label>
-                  {isEditing ? (
-                    <input
-                      type="text"
-                      value={formData.airway_bill_number}
-                      onChange={(e) => handleChange('airway_bill_number', e.target.value)}
-                      className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Tracking number"
-                    />
-                  ) : (
-                    <p className="text-gray-100">{visit.airway_bill_number || '-'}</p>
-                  )}
-                </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-1">Shipped Date</label>
@@ -514,32 +540,56 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
             </div>
           )}
 
-          {/* Multi-Bottle Drug Accountability Section */}
-          {(inferredRequirements.drug_dispensing_required || visit.drug_dispensing_required) && (
-            <div className="bg-gray-700/30 rounded-lg p-4 space-y-4">
-              <h3 className="text-lg font-semibold text-white">Investigational Product Accountability</h3>
-              
-              {/* Dispensed Bottles */}
-              <div>
-                <MultiBottleEntry
-                  bottles={formData.dispensed_bottles}
-                  onChange={(bottles) => handleChange('dispensed_bottles', bottles)}
-                  type="dispensing"
-                  disabled={!isEditing}
-                />
-              </div>
+          {/* Multi-Bottle Drug Accountability Section (always available for multi-drug support) */}
+          {(() => {
+            const ipSectionRequired = Boolean(inferredRequirements.drug_dispensing_required || visit.drug_dispensing_required)
+            return (
+              <div className="bg-gray-700/30 rounded-lg p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-white">Investigational Product Accountability</h3>
+                  {!ipSectionRequired && (
+                    <span className="text-xs text-gray-400">Optional for this visit</span>
+                  )}
+                </div>
 
-              {/* Returned Bottles */}
-              <div className="mt-6">
-                <MultiBottleEntry
-                  bottles={formData.returned_bottles}
-                  onChange={(bottles) => handleChange('returned_bottles', bottles)}
-                  type="returns"
-                  disabled={!isEditing}
-                />
+                {/* Period-level last dose date for returns */}
+                {isEditing && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Return period last dose date</label>
+                    <input
+                      type="date"
+                      value={formData.period_last_dose_date}
+                      onChange={(e) => handleChange('period_last_dose_date', e.target.value)}
+                      className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <p className="text-xs text-gray-400 mt-1">Applies to returned bottles without a date.</p>
+                  </div>
+                )}
+
+                {/* Dispensed Bottles */}
+                <div>
+                  <MultiBottleEntry
+                    bottles={formData.dispensed_bottles}
+                    onChange={(bottles) => handleChange('dispensed_bottles', bottles)}
+                    type="dispensing"
+                    disabled={!isEditing}
+                    defaultStartDate={visit.visit_date?.split('T')[0] || ''}
+                  />
+                </div>
+
+                {/* Returned Bottles */}
+                <div className="mt-6">
+                  <MultiBottleEntry
+                    bottles={formData.returned_bottles}
+                    onChange={(bottles) => handleChange('returned_bottles', bottles)}
+                    type="returns"
+                    disabled={!isEditing}
+                    defaultLastDoseDate={formData.period_last_dose_date}
+                  />
+                </div>
               </div>
-            </div>
-          )}
+            )
+          })()}
 
           {/* Local Labs */}
           {(inferredRequirements.local_labs_required || visit.local_labs_required) && (

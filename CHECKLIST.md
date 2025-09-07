@@ -6,6 +6,11 @@ Last updated: 2025-09-06
 - Scope: Consolidates items from `claude_checklist.md`, `codex_ENGINEERING_CHECKLIST.md`, `INSTRUCTIONS.md` (IP plan), and `IP_ACCOUNTABILITY_SYSTEM.md`.
 - Goal: Single, prioritized checklist with what’s done vs pending. Originals removed.
 
+## Upcoming: Multi-Arm Support
+- Plan document: `docs/multi-arm-timelines-plan.md`
+- Scope: multi-phase/arm timelines with arm-specific anchors; subject transitions that cancel/regenerate future visits per policy; arm-aware dosing and reporting.
+
+
 ## Quick Start
 - Install deps: `npm ci` (or `npm install`)
 - Env vars in `.env.local`:
@@ -38,6 +43,9 @@ Last updated: 2025-09-06
   - Do: Use `{ params: { id: string } }`; remove `await params` where present.
 
 ## 🟠 High — Next
+- [ ] Enable multi-drug (MVP)
+  - Do: Always show multi-bottle IP section in visit modal; use existing batch RPC to record multiple bottles per visit; set study dosing to BID for your test study.
+  - Docs: `docs/multi-drug-mvp.md`
 - [ ] Standardize error handling (no alert/console only)
   - Files: `src/app/members/page.tsx`, `src/app/visits/page.tsx`, others noted below
   - Do: Centralized error state + toast; consistent `NextResponse.json({ error }, { status })`.

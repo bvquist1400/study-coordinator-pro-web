@@ -1,6 +1,7 @@
--- Migration: add atomic IP save RPC and expected_taken trigger function
+-- Adds/ensures expected_taken trigger, visit linkage columns, indexes,
+-- and updates the atomic RPC for multi-bottle dispense/return pairing.
 
--- Trigger function for expected_taken
+-- 1) Trigger function to compute expected_taken (inclusive days × dose_per_day)
 create or replace function public.calculate_expected_taken()
 returns trigger
 language plpgsql
@@ -37,34 +38,40 @@ begin
 end;
 $$;
 
--- Schema: add visit linkage columns for bottle pairing across visits
+-- 5) Backfill linkage columns for existing data (best-effort, idempotent)
 do $$
+declare
+  r record;
 begin
-  if not exists (
-    select 1 from information_schema.columns 
-    where table_schema='public' and table_name='drug_compliance' and column_name='dispensed_visit_id'
-  ) then
-    alter table public.drug_compliance
-      add column dispensed_visit_id uuid references public.subject_visits(id) on delete set null;
-  end if;
+  -- Backfill dispensed_visit_id by exact date match to subject_visits.visit_date
+  update public.drug_compliance dc
+  set dispensed_visit_id = sv.id
+  from public.subject_visits sv
+  where dc.dispensed_visit_id is null
+    and dc.dispensing_date is not null
+    and sv.subject_id = dc.subject_id
+    and sv.visit_date = dc.dispensing_date;
 
-  if not exists (
-    select 1 from information_schema.columns 
-    where table_schema='public' and table_name='drug_compliance' and column_name='return_visit_id'
-  ) then
-    alter table public.drug_compliance
-      add column return_visit_id uuid references public.subject_visits(id) on delete set null;
-  end if;
+  -- Backfill return_visit_id from existing visit_id where returns already posted
+  update public.drug_compliance dc
+  set return_visit_id = dc.visit_id
+  where dc.return_visit_id is null
+    and dc.visit_id is not null
+    and coalesce(dc.returned_count, 0) > 0;
 
-  -- Helpful indexes
-  create index if not exists idx_drug_compliance_dispensed_visit on public.drug_compliance(dispensed_visit_id);
-  create index if not exists idx_drug_compliance_return_visit on public.drug_compliance(return_visit_id);
+  -- Fallback: set return_visit_id by exact date match to ip_last_dose_date
+  update public.drug_compliance dc
+  set return_visit_id = sv2.id
+  from public.subject_visits sv2
+  where dc.return_visit_id is null
+    and dc.ip_last_dose_date is not null
+    and sv2.subject_id = dc.subject_id
+    and sv2.visit_date = dc.ip_last_dose_date;
 end $$;
 
--- Ensure trigger hooks are present for expected_taken
+-- 2) Ensure the trigger is present (drop+create to avoid duplicates)
 do $$
 begin
-  -- Drop existing trigger if present to avoid duplicates during redeploys
   if exists (
     select 1 from pg_trigger t
     join pg_class c on c.oid = t.tgrelid
@@ -75,13 +82,39 @@ begin
   ) then
     execute 'drop trigger trg_calculate_expected_taken on public.drug_compliance';
   end if;
-  
+
   execute 'create trigger trg_calculate_expected_taken
-            before insert or update on public.drug_compliance
-            for each row execute function public.calculate_expected_taken()';
+           before insert or update on public.drug_compliance
+           for each row execute function public.calculate_expected_taken()';
 end $$;
 
--- RPC to save IP dispenses/returns in one transaction
+-- 3) Add visit linkage columns for pairing bottles between visits (+ indexes)
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema='public' and table_name='drug_compliance' and column_name='dispensed_visit_id'
+  ) then
+    alter table public.drug_compliance
+      add column dispensed_visit_id uuid references public.subject_visits(id) on delete set null;
+  end if;
+
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema='public' and table_name='drug_compliance' and column_name='return_visit_id'
+  ) then
+    alter table public.drug_compliance
+      add column return_visit_id uuid references public.subject_visits(id) on delete set null;
+  end if;
+
+  create index if not exists idx_drug_compliance_dispensed_visit on public.drug_compliance(dispensed_visit_id);
+  create index if not exists idx_drug_compliance_return_visit on public.drug_compliance(return_visit_id);
+end $$;
+
+-- 4) Atomic RPC to save multi-bottle dispenses/returns in one transaction
+-- Expects arrays of rows with keys:
+--   dispensed:  [{ ip_id, count, start_date }]
+--   returned:   [{ ip_id, count, last_dose_date }]
 create or replace function public.save_visit_ip_batch(
   p_subject_id uuid,
   p_user_id uuid,
@@ -98,6 +131,7 @@ declare
   v_existing_dispensed integer;
   v_dispensing_date date;
 begin
+  -- Dispensed bottles
   if p_dispensed is not null then
     for rec_d in (
       select * from jsonb_to_recordset(p_dispensed)
@@ -120,16 +154,17 @@ begin
         p_visit_id, now(), now()
       )
       on conflict (subject_id, ip_id) do update
-      set dispensed_count  = excluded.dispensed_count,
-          visit_id         = excluded.visit_id,
-          user_id          = excluded.user_id,
-          assessment_date  = excluded.assessment_date,
-          dispensing_date  = excluded.dispensing_date,
-          dispensed_visit_id = excluded.dispensed_visit_id,
-          updated_at       = now();
+      set dispensed_count     = excluded.dispensed_count,
+          visit_id            = excluded.visit_id,
+          user_id             = excluded.user_id,
+          assessment_date     = excluded.assessment_date,
+          dispensing_date     = excluded.dispensing_date,
+          dispensed_visit_id  = excluded.dispensed_visit_id,
+          updated_at          = now();
     end loop;
   end if;
 
+  -- Returned bottles
   if p_returned is not null then
     for rec_r in (
       select * from jsonb_to_recordset(p_returned)
@@ -171,7 +206,7 @@ begin
         set returned_count    = rec_r.count,
             assessment_date   = rec_r.last_dose_date,
             ip_last_dose_date = rec_r.last_dose_date,
-            expected_taken    = null,
+            expected_taken    = null,          -- trigger recalculates
             visit_id          = p_visit_id,
             return_visit_id   = p_visit_id,
             updated_at        = now()

@@ -15,6 +15,8 @@ interface MultiBottleEntryProps {
   type: 'dispensing' | 'returns'
   disabled?: boolean
   className?: string
+  defaultStartDate?: string
+  defaultLastDoseDate?: string
 }
 
 export default function MultiBottleEntry({ 
@@ -22,7 +24,9 @@ export default function MultiBottleEntry({
   onChange, 
   type, 
   disabled = false,
-  className = ''
+  className = '',
+  defaultStartDate,
+  defaultLastDoseDate
 }: MultiBottleEntryProps) {
   const isDispensing = type === 'dispensing'
   
@@ -31,7 +35,10 @@ export default function MultiBottleEntry({
       id: Date.now().toString(),
       ip_id: '',
       count: 0,
-      ...(isDispensing ? { start_date: '' } : { last_dose_date: '' })
+      ...(isDispensing 
+        ? { start_date: defaultStartDate || '' } 
+        : { last_dose_date: defaultLastDoseDate || '' }
+      )
     }
     onChange([...bottles, newBottle])
   }
