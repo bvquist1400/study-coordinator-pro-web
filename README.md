@@ -6,7 +6,7 @@ Links
 
 - INSTRUCTIONS: `INSTRUCTIONS.md`
 - Testing Guide: `TESTING.md`
-- Engineering Checklist: `codex_ENGINEERING_CHECKLIST.md`
+- Engineering Checklist: `CHECKLIST.md`
 
 Prerequisites
 

@@ -31,10 +31,12 @@ begin
 
       insert into public.drug_compliance (
         subject_id, user_id, assessment_date, dispensed_count, returned_count,
-        expected_taken, visit_id, ip_id, dispensing_date, ip_last_dose_date, notes, created_at, updated_at
+        expected_taken, visit_id, ip_id, dispensing_date, ip_last_dose_date, notes,
+        dispensed_visit_id, created_at, updated_at
       ) values (
         p_subject_id, p_user_id, rec_d.start_date, rec_d.count, 0,
-        null, p_visit_id, trim(rec_d.ip_id), rec_d.start_date, null, null, now(), now()
+        null, p_visit_id, trim(rec_d.ip_id), rec_d.start_date, null, null,
+        p_visit_id, now(), now()
       )
       on conflict (subject_id, ip_id) do update
       set dispensed_count  = excluded.dispensed_count,
@@ -42,6 +44,7 @@ begin
           user_id          = excluded.user_id,
           assessment_date  = excluded.assessment_date,
           dispensing_date  = excluded.dispensing_date,
+          dispensed_visit_id = excluded.dispensed_visit_id,
           updated_at       = now();
     end loop;
   end if;
@@ -70,10 +73,12 @@ begin
         -- Return-only record
         insert into public.drug_compliance (
           subject_id, user_id, assessment_date, dispensed_count, returned_count,
-          expected_taken, visit_id, ip_id, dispensing_date, ip_last_dose_date, notes, created_at, updated_at
+          expected_taken, visit_id, ip_id, dispensing_date, ip_last_dose_date, notes,
+          return_visit_id, created_at, updated_at
         ) values (
           p_subject_id, p_user_id, rec_r.last_dose_date, 0, rec_r.count,
-          null, p_visit_id, trim(rec_r.ip_id), null, rec_r.last_dose_date, null, now(), now()
+          null, p_visit_id, trim(rec_r.ip_id), null, rec_r.last_dose_date, null,
+          p_visit_id, now(), now()
         );
       else
         -- Validations
@@ -89,7 +94,8 @@ begin
             assessment_date   = rec_r.last_dose_date,
             ip_last_dose_date = rec_r.last_dose_date,
             expected_taken    = null,
-            visit_id          = p_visit_id,  -- associate compliance assessment with the return visit
+            visit_id          = p_visit_id,
+            return_visit_id   = p_visit_id,
             updated_at        = now()
         where id = v_existing_id;
       end if;

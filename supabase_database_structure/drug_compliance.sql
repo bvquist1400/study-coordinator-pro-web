@@ -33,6 +33,8 @@ create table public.drug_compliance (
     end
   ) STORED null,
   visit_id uuid null,
+  dispensed_visit_id uuid null,
+  return_visit_id uuid null,
   ip_id text not null,
   dispensing_date date null,
   ip_last_dose_date date null,
@@ -43,7 +45,9 @@ create table public.drug_compliance (
   constraint drug_compliance_subject_id_ip_id_key unique (subject_id, ip_id),
   constraint drug_compliance_subject_id_fkey foreign KEY (subject_id) references subjects (id) on delete CASCADE,
   constraint drug_compliance_user_id_fkey foreign KEY (user_id) references auth.users (id) on delete CASCADE,
-  constraint drug_compliance_visit_id_fkey foreign KEY (visit_id) references subject_visits (id) on delete CASCADE
+  constraint drug_compliance_visit_id_fkey foreign KEY (visit_id) references subject_visits (id) on delete CASCADE,
+  constraint drug_compliance_dispensed_visit_id_fkey foreign KEY (dispensed_visit_id) references subject_visits (id) on delete set null,
+  constraint drug_compliance_return_visit_id_fkey foreign KEY (return_visit_id) references subject_visits (id) on delete set null
 ) TABLESPACE pg_default;
 
 create index IF not exists idx_drug_compliance_subject_id on public.drug_compliance using btree (subject_id) TABLESPACE pg_default;
@@ -51,6 +55,10 @@ create index IF not exists idx_drug_compliance_subject_id on public.drug_complia
 create index IF not exists idx_drug_compliance_visit_id on public.drug_compliance using btree (visit_id) TABLESPACE pg_default;
 
 create index IF not exists idx_drug_compliance_ip_id on public.drug_compliance using btree (ip_id) TABLESPACE pg_default;
+
+create index IF not exists idx_drug_compliance_dispensed_visit on public.drug_compliance using btree (dispensed_visit_id) TABLESPACE pg_default;
+
+create index IF not exists idx_drug_compliance_return_visit on public.drug_compliance using btree (return_visit_id) TABLESPACE pg_default;
 
 create trigger fix_expected_taken BEFORE INSERT
 or
