@@ -131,9 +131,9 @@ export async function POST(request: NextRequest) {
           .maybeSingle()
         const visitId = (visit as any)?.id
         if (visitId) {
-          await supabase
+          await (supabase as any)
             .from('subject_visits')
-            .update({ lab_kit_shipped_date: null })
+            .update({ lab_kit_shipped_date: null } as any)
             .eq('id', visitId)
         }
       }
