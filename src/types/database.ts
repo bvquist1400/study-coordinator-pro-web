@@ -564,7 +564,7 @@ export interface Database {
           kit_type: string | null
           lot_number: string | null
           expiration_date: string | null
-          status: 'available' | 'assigned' | 'used' | 'shipped' | 'expired' | 'destroyed' | 'archived'
+          status: 'available' | 'assigned' | 'used' | 'pending_shipment' | 'shipped' | 'expired' | 'destroyed' | 'archived'
           received_date: string | null
           notes: string | null
           created_at: string
@@ -577,7 +577,7 @@ export interface Database {
           accession_number: string
           kit_type?: string | null
           expiration_date?: string | null
-          status?: 'available' | 'assigned' | 'used' | 'shipped' | 'expired' | 'destroyed' | 'archived'
+          status?: 'available' | 'assigned' | 'used' | 'pending_shipment' | 'shipped' | 'expired' | 'destroyed' | 'archived'
           received_date?: string | null
           notes?: string | null
           created_at?: string

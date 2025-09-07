@@ -22,6 +22,7 @@ create table public.lab_kits (
           'available'::text,
           'assigned'::text,
           'used'::text,
+          'pending_shipment'::text,
           'shipped'::text,
           'expired'::text
         ]

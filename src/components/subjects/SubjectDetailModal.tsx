@@ -387,36 +387,63 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
                       {/* Current Drug Status Overview */}
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {/* Current Compliance */}
-                        {metrics.drug_compliance && (
-                          <div className="bg-gray-800/30 rounded-lg p-6">
-                            <h4 className="text-white font-medium mb-4 flex items-center">
-                              <svg className="w-5 h-5 mr-2 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                              Current Compliance
-                            </h4>
-                            <div className="space-y-3">
-                              <div className="text-3xl font-bold text-white">
-                                {metrics.drug_compliance.percentage ? `${metrics.drug_compliance.percentage}%` : 'N/A'}
-                              </div>
-                              <div className="text-sm text-gray-400">
-                                {metrics.drug_compliance.dispensed_count - metrics.drug_compliance.returned_count} taken / {metrics.drug_compliance.expected_taken || 'N/A'} expected
-                              </div>
-                              {metrics.drug_compliance.percentage && (
-                                <div className="w-full bg-gray-700 rounded-full h-2">
-                                  <div
-                                    className={`h-2 rounded-full transition-all duration-500 ${
-                                      metrics.drug_compliance.percentage >= 90 ? 'bg-green-500' :
-                                      metrics.drug_compliance.percentage >= 75 ? 'bg-yellow-500' :
-                                      metrics.drug_compliance.percentage >= 50 ? 'bg-orange-500' : 'bg-red-500'
-                                    }`}
-                                    style={{ width: `${Math.min(100, Math.max(0, metrics.drug_compliance.percentage))}%` }}
-                                  />
+                        {(metrics.drug_compliance || (metrics.ip_dispensing_history && metrics.ip_dispensing_history.length > 0)) && (() => {
+                          // Calculate overall compliance as average of all recorded compliance percentages
+                          let overallCompliance: number | null = null;
+                          
+                          if (metrics.ip_dispensing_history && metrics.ip_dispensing_history.length > 0) {
+                            const validComplianceValues = metrics.ip_dispensing_history
+                              .filter((row: any) => row.compliance_percentage != null)
+                              .map((row: any) => row.compliance_percentage);
+                            
+                            if (validComplianceValues.length > 0) {
+                              overallCompliance = Math.round(
+                                validComplianceValues.reduce((sum: number, val: number) => sum + val, 0) / validComplianceValues.length
+                              );
+                            }
+                          }
+                          
+                          // Fallback to single compliance if no history available
+                          if (overallCompliance === null && metrics.drug_compliance?.percentage) {
+                            overallCompliance = metrics.drug_compliance.percentage;
+                          }
+
+                          return (
+                            <div className="bg-gray-800/30 rounded-lg p-6">
+                              <h4 className="text-white font-medium mb-4 flex items-center">
+                                <svg className="w-5 h-5 mr-2 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                Current Compliance
+                              </h4>
+                              <div className="space-y-3">
+                                <div className="text-3xl font-bold text-white">
+                                  {overallCompliance ? `${overallCompliance}%` : 'N/A'}
                                 </div>
-                              )}
+                                <div className="text-sm text-gray-400">
+                                  {metrics.ip_dispensing_history && metrics.ip_dispensing_history.length > 1
+                                    ? `Average of ${metrics.ip_dispensing_history.filter((row: any) => row.compliance_percentage != null).length} compliance assessments`
+                                    : metrics.drug_compliance
+                                    ? `${metrics.drug_compliance.dispensed_count - metrics.drug_compliance.returned_count} taken / ${metrics.drug_compliance.expected_taken || 'N/A'} expected`
+                                    : 'No compliance data available'
+                                  }
+                                </div>
+                                {overallCompliance && (
+                                  <div className="w-full bg-gray-700 rounded-full h-2">
+                                    <div
+                                      className={`h-2 rounded-full transition-all duration-500 ${
+                                        overallCompliance >= 90 ? 'bg-green-500' :
+                                        overallCompliance >= 75 ? 'bg-yellow-500' :
+                                        overallCompliance >= 50 ? 'bg-orange-500' : 'bg-red-500'
+                                      }`}
+                                      style={{ width: `${Math.min(100, Math.max(0, overallCompliance))}%` }}
+                                    />
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          );
+                        })()}
 
                         {/* Active Drug Bottle */}
                         {metrics.active_drug_bottle && (

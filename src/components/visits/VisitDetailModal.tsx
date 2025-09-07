@@ -324,7 +324,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
 
       // Update lab kit status if accession number is provided
       if (formData.accession_number && formData.status === 'completed') {
-        await updateLabKitStatus(formData.accession_number, 'used', session.access_token)
+        await updateLabKitStatus(formData.accession_number, 'pending_shipment', session.access_token)
       }
 
       // Update visit record with multi-bottle summary (for backward compatibility)

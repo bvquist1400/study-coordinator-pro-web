@@ -86,9 +86,9 @@ export async function POST(request: NextRequest) {
     if (!kits || kits.length !== labKitIds.length) {
       return NextResponse.json({ error: 'Some lab kits not found in this study' }, { status: 400 })
     }
-    const invalid = kits.filter((k: any) => k.status !== 'used')
+    const invalid = kits.filter((k: any) => k.status !== 'pending_shipment')
     if (invalid.length > 0) {
-      return NextResponse.json({ error: 'Only used lab kits can be shipped' }, { status: 400 })
+      return NextResponse.json({ error: 'Only pending_shipment lab kits can be shipped' }, { status: 400 })
     }
 
     // Insert shipments

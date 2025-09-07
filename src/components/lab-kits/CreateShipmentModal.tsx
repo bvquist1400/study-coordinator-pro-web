@@ -34,8 +34,8 @@ export default function CreateShipmentModal({ studyId, onClose, onSuccess }: Cre
         const { data: { session } } = await supabase.auth.getSession()
         const token = session?.access_token
         if (!token) return
-        // Fetch eligible kits (status = used)
-        const resp = await fetch(`/api/lab-kits?studyId=${studyId}&status=used`, {
+        // Fetch eligible kits (status = pending_shipment)
+        const resp = await fetch(`/api/lab-kits?studyId=${studyId}&status=pending_shipment`, {
           headers: { 'Authorization': `Bearer ${token}` }
         })
         if (!resp.ok) {
@@ -133,7 +133,7 @@ export default function CreateShipmentModal({ studyId, onClose, onSuccess }: Cre
           </div>
 
           <div>
-            <h3 className="text-md font-semibold text-white mb-2">Select Kits (status: used)</h3>
+            <h3 className="text-md font-semibold text-white mb-2">Select Kits (status: pending_shipment)</h3>
             <div className="border border-gray-700 rounded-lg overflow-hidden">
               <table className="w-full">
                 <thead className="bg-gray-700/50 text-gray-300">
@@ -177,4 +177,3 @@ export default function CreateShipmentModal({ studyId, onClose, onSuccess }: Cre
     </div>
   )
 }
-
