@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
     }
     const anchorOffset = anchorDay === 1 ? 1 : 0
 
-    const toInsert = (schedules || []).map((s) => ({
+    const toInsert = (schedules || []).map((s: any) => ({
       study_id: studyId,
       subject_id,
       subject_section_id: newSubjSec.id,
