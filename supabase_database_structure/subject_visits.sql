@@ -13,6 +13,8 @@ create table public.subject_visits (
   created_at timestamp with time zone null default now(),
   updated_at timestamp with time zone null default now(),
   study_id uuid null,
+  subject_section_id uuid null,
+  cycle_index integer null,
   lab_kit_required boolean null,
   accession_number text null,
   airway_bill_number text null,
@@ -32,6 +34,7 @@ create table public.subject_visits (
   constraint subject_visits_subject_id_fkey foreign KEY (subject_id) references subjects (id) on delete CASCADE,
   constraint subject_visits_user_id_fkey foreign KEY (user_id) references auth.users (id) on delete CASCADE,
   constraint subject_visits_visit_schedule_id_fkey foreign KEY (visit_schedule_id) references visit_schedules (id) on update CASCADE on delete set null,
+  constraint subject_visits_subject_section_id_fkey foreign KEY (subject_section_id) references subject_sections (id) on delete set null,
   constraint subject_visits_status_check check (
     (
       status = any (
@@ -53,6 +56,10 @@ create index IF not exists idx_subject_visits_scheduled_date on public.subject_v
 create index IF not exists idx_subject_visits_status on public.subject_visits using btree (status) TABLESPACE pg_default;
 
 create index IF not exists idx_subject_visits_visit_not_needed on public.subject_visits using btree (visit_not_needed) TABLESPACE pg_default;
+
+create index IF not exists idx_subject_visits_subject_section_id on public.subject_visits using btree (subject_section_id) TABLESPACE pg_default;
+
+create index IF not exists idx_subject_visits_cycle_index on public.subject_visits using btree (cycle_index) TABLESPACE pg_default;
 
 create trigger update_subject_visits_updated_at BEFORE
 update on subject_visits for EACH row

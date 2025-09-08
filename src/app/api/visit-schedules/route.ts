@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const studyId = searchParams.get('study_id')
+    const sectionId = searchParams.get('section_id')
     
     if (!studyId) {
       return NextResponse.json({ error: 'study_id parameter is required' }, { status: 400 })
@@ -21,12 +22,18 @@ export async function GET(request: NextRequest) {
     if (!membership.success) return NextResponse.json({ error: membership.error || 'Access denied' }, { status: membership.status || 403 })
 
     // Get visit schedules for the study - order by visit_day, then by window_before_days (desc) for same-day visits
-    const { data: visitSchedules, error } = await supabase
+    let query = (supabase as any)
       .from('visit_schedules')
       .select('*')
       .eq('study_id', studyId)
       .order('visit_day', { ascending: true })
       .order('window_before_days', { ascending: false })
+
+    if (sectionId) {
+      query = query.eq('section_id', sectionId)
+    }
+
+    const { data: visitSchedules, error } = await query
 
     if (error) {
       logger.error('Database error fetching visit schedules', error as any, { studyId })
@@ -81,7 +88,10 @@ export async function POST(request: NextRequest) {
     // The frontend sends visit schedules with their visit_number as text (e.g., "OLS", "V1", etc.)
     visit_schedules.forEach((schedule, index) => {
       const visitNumber = schedule.visit_number || `V${index + 1}` // Default to V1, V2, etc. for new visits
-      const existingSchedule = (existingSchedules as VisitSchedule[])?.find(s => s.visit_number === visitNumber)
+      const sectionKey = (schedule as any).section_id ?? null
+      const existingSchedule = (existingSchedules as VisitSchedule[])?.find(s => (
+        s.visit_number === visitNumber && (((s as any).section_id ?? null) === sectionKey)
+      ))
       
       logger.debug('Processing visit schedule', { visitNumber, incoming: schedule.visit_name, existing: existingSchedule?.visit_name, existingId: existingSchedule?.id })
       
@@ -109,25 +119,35 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Remove any existing schedules that are no longer needed
-    // Get visit numbers from the incoming schedules (now text values)
-    const incomingVisitNumbers = visit_schedules
-      .map(schedule => schedule.visit_number)
-      .filter(n => n && n.trim() !== '') // Filter out empty/null visit numbers
-    logger.debug('Incoming visit numbers', { incomingVisitNumbers })
-    
-    // Only delete schedules that aren't in the incoming list
-    const schedulesToDelete = (existingSchedules as VisitSchedule[])?.filter(s => 
-      !incomingVisitNumbers.includes(s.visit_number)
-    ) || []
-    
-    logger.debug('Schedules to delete', { toDelete: schedulesToDelete.map(s => ({ id: s.id, visit_number: s.visit_number, visit_name: s.visit_name })) })
-    
-    if (schedulesToDelete.length > 0) {
+    // Remove any existing schedules that are no longer needed — scoped per section_id
+    // Build map: section_id -> set of incoming visit_numbers
+    const incomingBySection = new Map<string | null, Set<string>>()
+    for (const schedule of visit_schedules) {
+      const key = (schedule as any).section_id ?? null
+      const vnum = schedule.visit_number
+      if (!vnum || !vnum.trim()) continue
+      if (!incomingBySection.has(key)) incomingBySection.set(key, new Set())
+      incomingBySection.get(key)!.add(vnum)
+    }
+    logger.debug('Incoming visit numbers by section', {
+      sections: Array.from(incomingBySection.entries()).map(([k, set]) => ({ section_id: k, count: set.size }))
+    })
+
+    // For each section present in incoming payload, compute deletions only within that section
+    const toDeleteIds: string[] = []
+    for (const [key, set] of incomingBySection.entries()) {
+      const candidates = (existingSchedules as VisitSchedule[]).filter(s => ((s as any).section_id ?? null) === key)
+      for (const s of candidates) {
+        if (!set.has(s.visit_number)) toDeleteIds.push(s.id as any)
+      }
+    }
+    logger.debug('Schedules to delete', { count: toDeleteIds.length })
+
+    if (toDeleteIds.length > 0) {
       const { error: deleteError } = await supabase
         .from('visit_schedules')
         .delete()
-        .in('id', schedulesToDelete.map(s => s.id))
+        .in('id', toDeleteIds)
 
       if (deleteError) {
         logger.error('Delete error removing unused visit schedules', deleteError)

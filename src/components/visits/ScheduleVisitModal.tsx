@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { calculateVisitDate } from '@/lib/visit-calculator'
 import { formatDateUTC, parseDateUTC } from '@/lib/date-utils'
-import type { VisitSchedule as DbVisitSchedule, LabKit } from '@/types/database'
+import type { VisitSchedule as DbVisitSchedule, LabKit, StudySection } from '@/types/database'
 
 interface Subject {
   id: string
@@ -55,6 +55,11 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
   const [showLabKitDropdown, setShowLabKitDropdown] = useState(false)
   const [labKitRequired, setLabKitRequired] = useState(false)
 
+  // Sections
+  const [sections, setSections] = useState<StudySection[]>([])
+  const [selectedSectionId, setSelectedSectionId] = useState<string>('')
+  const [activeSubjectSectionId, setActiveSubjectSectionId] = useState<string | null>(null)
+
   const loadData = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -80,12 +85,26 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
       const targetStudyId = allowStudySelection ? currentStudyId : studyId
       if (!targetStudyId) return
 
+      // Load sections first
+      const secRes = await fetch(`/api/study-sections?study_id=${targetStudyId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (secRes.ok) {
+        const { sections } = await secRes.json()
+        setSections(sections || [])
+        if (!selectedSectionId && sections && sections.length > 0) {
+          setSelectedSectionId(sections[0].id)
+        }
+      }
+
+      const sectionQuery = selectedSectionId ? `&section_id=${selectedSectionId}` : ''
+
       // Load subjects, visit schedules, study data, and available lab kits in parallel
       const [subjectsRes, schedulesRes, studyRes, labKitsRes] = await Promise.all([
         fetch(`/api/subjects?study_id=${targetStudyId}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         }),
-        fetch(`/api/visit-schedules?study_id=${targetStudyId}`, {
+        fetch(`/api/visit-schedules?study_id=${targetStudyId}${sectionQuery}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         }),
         fetch(`/api/studies/${targetStudyId}`, {
@@ -103,6 +122,23 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
         const filteredSubjects = data.subjects || []
         console.warn('Filtered subjects:', filteredSubjects)
         setSubjects(filteredSubjects)
+        // If a subject is preselected or first subject exists, check active subject section
+        const subjId = preSelectedSubjectId || filteredSubjects[0]?.id
+        if (subjId) {
+          const { data: subjSecs } = await supabase
+            .from('subject_sections')
+            .select('id, study_section_id, ended_at')
+            .eq('subject_id', subjId)
+            .is('ended_at', null)
+            .limit(1)
+          if (subjSecs && subjSecs.length > 0) {
+            setActiveSubjectSectionId(subjSecs[0].id)
+            const ssid = (subjSecs[0] as any).study_section_id as string
+            if (ssid) setSelectedSectionId(ssid)
+          } else {
+            setActiveSubjectSectionId(null)
+          }
+        }
       } else {
         console.error('Failed to fetch subjects:', subjectsRes.status, await subjectsRes.text())
       }
@@ -158,6 +194,26 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
   const handleSubjectChange = (subjectId: string) => {
     setSelectedSubjectId(subjectId)
     setScheduledDate('') // Reset date when subject changes
+    // Load active section for this subject
+    ;(async () => {
+      try {
+        const { data: subjSecs } = await supabase
+          .from('subject_sections')
+          .select('id, study_section_id, ended_at')
+          .eq('subject_id', subjectId)
+          .is('ended_at', null)
+          .limit(1)
+        if (subjSecs && subjSecs.length > 0) {
+          setActiveSubjectSectionId(subjSecs[0].id)
+          const ssid = (subjSecs[0] as any).study_section_id as string
+          if (ssid) setSelectedSectionId(ssid)
+        } else {
+          setActiveSubjectSectionId(null)
+        }
+      } catch {
+        // ignore
+      }
+    })()
   }
 
   const handleVisitScheduleChange = (scheduleId: string) => {
@@ -272,6 +328,7 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
         visit_name: visitName,
         visit_date: scheduledDate,
         status: 'scheduled',
+        subject_section_id: activeSubjectSectionId || undefined,
         // Pre-populate required flags based on schedule
         lab_kit_required: labKitRequired || undefined,
         drug_dispensing_required: drugDispensingRequired || undefined,
@@ -302,6 +359,27 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
       setScheduling(false)
     }
   }
+
+  // When section changes manually, reload visit schedules for that section
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
+        const targetStudyId = allowStudySelection ? currentStudyId : studyId
+        if (!token || !targetStudyId) return
+        const resp = await fetch(`/api/visit-schedules?study_id=${targetStudyId}${selectedSectionId ? `&section_id=${selectedSectionId}` : ''}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        if (resp.ok) {
+          const { visitSchedules } = await resp.json()
+          setVisitSchedules(visitSchedules || [])
+        }
+      } catch {
+        // ignore
+      }
+    })()
+  }, [selectedSectionId])
 
   const getVisitWindow = () => {
     // Window MUST be anchored to the target date (anchor + visit_day), not the chosen scheduled date
@@ -398,6 +476,30 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
                 ))}
               </select>
             </div>
+
+            {/* Section Selection */}
+            {sections.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Section
+                </label>
+                <select
+                  value={selectedSectionId}
+                  onChange={(e) => setSelectedSectionId(e.target.value)}
+                  disabled={!!activeSubjectSectionId}
+                  className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {sections.map((sec) => (
+                    <option key={sec.id} value={sec.id}>
+                      {sec.code}{sec.name ? ` — ${sec.name}` : ''}
+                    </option>
+                  ))}
+                </select>
+                {activeSubjectSectionId && (
+                  <p className="text-xs text-gray-400 mt-1">Subject has an active section assignment; section is locked for scheduling.</p>
+                )}
+              </div>
+            )}
 
             {/* Visit Type Toggle */}
             <div>

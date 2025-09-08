@@ -55,6 +55,7 @@ interface SubjectCardProps {
   metrics: SubjectMetrics
   onClick: () => void
   onScheduleVisit?: (subjectId: string) => void
+  onTransition?: () => void
 }
 
 const statusColors = {
@@ -73,7 +74,7 @@ const statusLabels = {
   withdrawn: 'Withdrawn'
 }
 
-export default function SubjectCard({ subject, metrics, onClick, onScheduleVisit }: SubjectCardProps) {
+export default function SubjectCard({ subject, metrics, onClick, onScheduleVisit, onTransition }: SubjectCardProps) {
   const getComplianceColor = (rate: number) => {
     if (rate >= 90) return 'text-green-400'
     if (rate >= 75) return 'text-yellow-400'
@@ -243,6 +244,18 @@ export default function SubjectCard({ subject, metrics, onClick, onScheduleVisit
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
               </svg>
               <span>Schedule</span>
+            </button>
+          )}
+          {onTransition && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onTransition() }}
+              className="px-3 py-1.5 bg-purple-700 hover:bg-purple-600 text-white text-xs font-medium rounded-lg transition-colors flex items-center space-x-1"
+              title="Transition to next section"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5-5 5M6 7l5 5-5 5" />
+              </svg>
+              <span>Transition</span>
             </button>
           )}
           <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

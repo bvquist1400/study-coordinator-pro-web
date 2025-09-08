@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import SubjectCard from './SubjectCard'
+import SubjectSectionTransitionModal from './SubjectSectionTransitionModal'
 
 interface SubjectMetrics {
   total_visits: number
@@ -81,6 +82,7 @@ export default function SubjectList({ studyId, onSubjectClick, onScheduleVisit, 
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [searchTerm, setSearchTerm] = useState('')
+  const [transitionSubjectId, setTransitionSubjectId] = useState<string | null>(null)
 
   const loadSubjects = useCallback(async () => {
     try {
@@ -166,6 +168,7 @@ export default function SubjectList({ studyId, onSubjectClick, onScheduleVisit, 
   }
 
   return (
+    <>
     <div className="p-6 space-y-6">
       {/* Filters and Search */}
       <div className="flex flex-col sm:flex-row gap-4">
@@ -239,6 +242,7 @@ export default function SubjectList({ studyId, onSubjectClick, onScheduleVisit, 
               }}
               onClick={() => onSubjectClick(subject.id)}
               onScheduleVisit={onScheduleVisit}
+              onTransition={() => setTransitionSubjectId(subject.id)}
             />
           ))}
         </div>
@@ -257,5 +261,15 @@ export default function SubjectList({ studyId, onSubjectClick, onScheduleVisit, 
         </div>
       )}
     </div>
+
+    {transitionSubjectId && (
+      <SubjectSectionTransitionModal
+        studyId={studyId}
+        subjectId={transitionSubjectId}
+        onClose={() => setTransitionSubjectId(null)}
+        onDone={() => { setTransitionSubjectId(null); loadSubjects() }}
+      />
+    )}
+    </>
   )
 }

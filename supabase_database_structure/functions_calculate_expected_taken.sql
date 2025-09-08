@@ -1,5 +1,5 @@
--- Trigger function to compute expected_taken using inclusive days and per-study dosing
--- Assumes single-drug QD by default; looks up study.dosing_frequency when visit_id is present
+-- Trigger function to compute expected_taken using inclusive days and per-study/section dosing
+-- Assumes single-drug QD by default; prefers section.dosing_frequency when present, otherwise study-level
 
 create or replace function public.calculate_expected_taken()
 returns trigger
@@ -9,11 +9,13 @@ declare
   l_dose_per_day numeric := 1;
   l_freq text;
 begin
-  -- Determine dose_per_day from study if available
+  -- Determine dose_per_day from section override or study if available
   if new.visit_id is not null then
-    select s.dosing_frequency
+    select coalesce(sec.dosing_frequency, s.dosing_frequency)
       into l_freq
     from subject_visits v
+    left join subject_sections ss on ss.id = v.subject_section_id
+    left join study_sections sec on sec.id = ss.study_section_id
     join studies s on s.id = v.study_id
     where v.id = new.visit_id;
 
@@ -39,4 +41,3 @@ begin
   return new;
 end;
 $$;
-

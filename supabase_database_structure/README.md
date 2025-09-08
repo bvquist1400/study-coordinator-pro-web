@@ -5,6 +5,12 @@ Purpose
 - This folder contains the current source-of-truth SQL definitions for our Supabase schema: tables, indexes, triggers, generated columns, policies, and helper functions.
 - Files here are human-maintained snapshots meant to reflect the latest agreed design. They should always match what migrations produce in each environment.
 
+Sections/Arms
+- Studies may define multiple sections (e.g., multi-part protocols). See `study_sections.sql` and `subject_sections.sql`.
+- `visit_schedules.sql` now includes `section_id` and is unique on `(section_id, visit_number)`; existing studies default to a single section `S1`.
+- `subject_visits.sql` includes `subject_section_id` (and optional `cycle_index`) for section-aware scheduling.
+- `functions_calculate_expected_taken.sql` prefers section-level `dosing_frequency` when present.
+
 Workflow for Database Changes
 - Propose: Before changing the DB, review the relevant SQL file(s) here and propose your change in chat (include rationale and the exact SQL/DDL you intend to apply).
 - Approve: Wait for sign-off. Clarify RLS, backfill, and migration impacts as needed.
@@ -35,4 +41,3 @@ Environment Notes
 
 Questions
 - Not sure which file to edit or how a change impacts RLS or analytics? Ask in chat before editing. We’ll outline the change, get approval, then update both the migration and this folder.
-

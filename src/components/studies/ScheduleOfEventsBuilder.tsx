@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase/client'
-import type { VisitSchedule, Study } from '@/types/database'
+import type { VisitSchedule, Study, StudySection } from '@/types/database'
 
 interface ScheduleOfEventsBuilderProps {
   study: Study
@@ -57,13 +57,38 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
   const [editingCell, setEditingCell] = useState<{ type: string; id: string; field?: string } | null>(null)
   const [showNotes, setShowNotes] = useState(false)
   const [notes, setNotes] = useState('')
+  const [sections, setSections] = useState<StudySection[]>([])
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null)
+  const [showAddSection, setShowAddSection] = useState(false)
+  const [newSectionCode, setNewSectionCode] = useState('')
+  const [newSectionName, setNewSectionName] = useState('')
 
   // Initialize with default data
   useEffect(() => {
-    loadScheduleData()
+    const loadSectionsAndSchedule = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('study_sections')
+          .select('*')
+          .eq('study_id', study.id)
+          .order('order_index', { ascending: true })
+        if (error) throw error
+        const list = (data || []) as StudySection[]
+        setSections(list)
+        const initial = list[0]?.id || null
+        setSelectedSectionId(initial)
+        await loadScheduleData(initial)
+      } catch (e) {
+        console.warn('Unable to load sections; loading schedules without section filter', e)
+        setSections([])
+        setSelectedSectionId(null)
+        await loadScheduleData(null)
+      }
+    }
+    loadSectionsAndSchedule()
   }, [study.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadScheduleData = async () => {
+  const loadScheduleData = async (sectionId: string | null) => {
     try {
       // Use API route instead of direct Supabase call to handle RLS properly
       const { data: { session } } = await supabase.auth.getSession()
@@ -73,7 +98,9 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
       
       if (token) {
         try {
-          const response = await fetch(`/api/visit-schedules?study_id=${study.id}`, {
+          const params = new URLSearchParams({ study_id: study.id })
+          if (sectionId) params.set('section_id', sectionId)
+          const response = await fetch(`/api/visit-schedules?${params.toString()}`, {
             headers: {
               'Authorization': `Bearer ${token}`
             }
@@ -90,11 +117,17 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
       
       // Fallback to direct Supabase call if API fails
       if (!existingSchedules) {
-        const { data, error } = await supabase
+        let q = supabase
           .from('visit_schedules')
           .select('*')
           .eq('study_id', study.id)
           .order('visit_number')
+
+        if (sectionId) {
+          q = q.eq('section_id', sectionId)
+        }
+
+        const { data, error } = await q
         
         if (error) throw error
         existingSchedules = data
@@ -327,7 +360,7 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
         },
         body: JSON.stringify({
           study_id: study.id,
-          visit_schedules: visitSchedulesToSave
+          visit_schedules: visitSchedulesToSave.map(s => ({ ...s, section_id: selectedSectionId }))
         })
       })
       
@@ -382,6 +415,14 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
         </div>
         <div className="flex items-center space-x-3">
           <button
+            type="button"
+            onClick={() => setShowAddSection(v => !v)}
+            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm border border-gray-600"
+            title="Add a new section for this study"
+          >
+            + Add Section
+          </button>
+          <button
             onClick={() => setShowNotes(!showNotes)}
             className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
           >
@@ -397,12 +438,122 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
         </div>
       </div>
 
+      {showAddSection && (
+        <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
+          <div className="flex items-end gap-3 flex-wrap">
+            <div>
+              <label className="block text-gray-300 text-xs mb-1">Code</label>
+              <input
+                value={newSectionCode}
+                onChange={e => setNewSectionCode(e.target.value.toUpperCase())}
+                placeholder="S2"
+                className="bg-gray-700 text-white px-2 py-1 rounded border border-gray-600"
+              />
+            </div>
+            <div className="min-w-[200px]">
+              <label className="block text-gray-300 text-xs mb-1">Name (optional)</label>
+              <input
+                value={newSectionName}
+                onChange={e => setNewSectionName(e.target.value)}
+                placeholder="Open Label Extension"
+                className="bg-gray-700 text-white px-2 py-1 rounded border border-gray-600 w-full"
+              />
+            </div>
+            <div className="ml-auto flex gap-2">
+              <button
+                type="button"
+                className="px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded border border-gray-600"
+                onClick={() => { setShowAddSection(false); setNewSectionCode(''); setNewSectionName('') }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-500 text-white rounded"
+                onClick={async () => {
+                  try {
+                    const code = (newSectionCode || '').trim()
+                    if (!code) {
+                      alert('Please enter a section code (e.g., S2)')
+                      return
+                    }
+                    const { data: { session } } = await supabase.auth.getSession()
+                    const token = session?.access_token
+                    if (!token) throw new Error('Authentication required')
+                    const resp = await fetch('/api/study-sections', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                      body: JSON.stringify({ study_id: study.id, code, name: newSectionName })
+                    })
+                    if (!resp.ok) {
+                      const err = await resp.json().catch(() => ({}))
+                      throw new Error(err.details || err.error || 'Failed to create section')
+                    }
+                    // Reload sections and switch to the new one
+                    const resp2 = await fetch(`/api/study-sections?study_id=${study.id}`, {
+                      headers: { 'Authorization': `Bearer ${token}` }
+                    })
+                    if (!resp2.ok) throw new Error('Failed to reload sections')
+                    const data2 = await resp2.json()
+                    const reloaded = (data2?.sections || []) as StudySection[]
+                    setSections(reloaded)
+                    const created = reloaded.find((s: any) => s.code === code)
+                    const newId = created?.id || null
+                    setSelectedSectionId(newId)
+                    setShowAddSection(false)
+                    setNewSectionCode('')
+                    setNewSectionName('')
+                    setIsLoading(true)
+                    await loadScheduleData(newId)
+                  } catch (e) {
+                    console.error(e)
+                    alert((e as Error).message || 'Unable to add section')
+                  } finally {
+                    setIsLoading(false)
+                  }
+                }}
+              >
+                Save Section
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Schedule Table */}
       <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             {/* Header Rows */}
             <thead>
+              {sections.length > 1 && (
+                <tr className="bg-gray-900/50 border-b border-gray-700">
+                  <th colSpan={2} className="text-left px-4 py-2 font-semibold text-gray-300 border-r border-gray-700">Section</th>
+                  <th colSpan={visits.length} className="px-2 py-2 text-left">
+                    <select
+                      value={selectedSectionId || ''}
+                      onChange={async (e) => {
+                        const newId = e.target.value || null
+                        setSelectedSectionId(newId)
+                        setIsLoading(true)
+                        await loadScheduleData(newId)
+                        setIsLoading(false)
+                      }}
+                      className="bg-gray-800 text-gray-200 px-2 py-1 rounded border border-gray-700"
+                    >
+                      {sections
+                        .slice()
+                        .sort((a, b) => (a.order_index || 0) - (b.order_index || 0))
+                        .map(sec => (
+                          <option key={sec.id} value={sec.id}>
+                            {sec.code}{sec.name ? ` — ${sec.name}` : ''}
+                          </option>
+                        ))}
+                    </select>
+                  </th>
+                  <th></th>
+                </tr>
+              )}
               
               {/* Visit Number Row */}
               <tr className="bg-gray-900/30 border-b border-gray-700">

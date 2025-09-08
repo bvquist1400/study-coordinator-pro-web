@@ -1,6 +1,7 @@
 create table public.visit_schedules (
   id uuid not null default extensions.uuid_generate_v4 (),
   study_id uuid not null,
+  section_id uuid null,
   visit_name text not null,
   visit_number text not null,
   visit_day integer not null,
@@ -13,7 +14,8 @@ create table public.visit_schedules (
   created_at timestamp with time zone null default now(),
   updated_at timestamp with time zone null default now(),
   constraint visit_schedules_pkey primary key (id),
-  constraint visit_schedules_study_id_visit_number_key unique (study_id, visit_number),
+  constraint visit_schedules_section_id_fkey foreign KEY (section_id) references study_sections (id) on delete CASCADE,
+  constraint uniq_visit_schedules_section_visit_number unique (section_id, visit_number),
   constraint visit_schedules_visit_type_check check (
     (
       visit_type = any (
@@ -28,6 +30,8 @@ create table public.visit_schedules (
     )
   )
 ) TABLESPACE pg_default;
+
+create index IF not exists idx_visit_schedules_section_id on public.visit_schedules using btree (section_id) TABLESPACE pg_default;
 
 create trigger prevent_soe_orphans BEFORE DELETE
 or

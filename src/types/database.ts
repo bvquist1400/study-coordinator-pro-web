@@ -319,6 +319,7 @@ export interface Database {
         Row: {
           id: string
           study_id: string
+          section_id: string | null
           visit_name: string
           visit_number: string
           visit_day: number
@@ -334,6 +335,7 @@ export interface Database {
         Insert: {
           id?: string
           study_id: string
+          section_id?: string | null
           visit_name: string
           visit_number: string
           visit_day: number
@@ -349,6 +351,7 @@ export interface Database {
         Update: {
           id?: string
           study_id?: string
+          section_id?: string | null
           visit_name?: string
           visit_number?: string
           visit_day?: number
@@ -375,6 +378,8 @@ export interface Database {
           is_within_window: boolean | null
           days_from_scheduled: number | null
           procedures_completed: string[]
+          subject_section_id: string | null
+          cycle_index: number | null
           
           // Lab Kit Accountability
           lab_kit_required: boolean | null
@@ -414,6 +419,8 @@ export interface Database {
           is_within_window?: boolean | null
           days_from_scheduled?: number | null
           procedures_completed?: string[]
+          subject_section_id?: string | null
+          cycle_index?: number | null
           
           // Lab Kit Accountability
           lab_kit_required?: boolean | null
@@ -453,6 +460,8 @@ export interface Database {
           is_within_window?: boolean | null
           days_from_scheduled?: number | null
           procedures_completed?: string[]
+          subject_section_id?: string | null
+          cycle_index?: number | null
           
           // Lab Kit Accountability
           lab_kit_required?: boolean | null
@@ -477,6 +486,94 @@ export interface Database {
           local_labs_completed?: boolean | null
           
           notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      study_sections: {
+        Row: {
+          id: string
+          study_id: string
+          code: string
+          name: string | null
+          order_index: number | null
+          anchor_type: 'enrollment_date' | 'randomization_date' | 'first_dose_date' | 'section_anchor_date' | 'previous_section_end_date' | 'custom_event_date'
+          anchor_offset_days: number | null
+          dosing_frequency: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom' | null
+          compliance_threshold: number | null
+          is_active: boolean | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          study_id: string
+          code: string
+          name?: string | null
+          order_index?: number | null
+          anchor_type?: 'enrollment_date' | 'randomization_date' | 'first_dose_date' | 'section_anchor_date' | 'previous_section_end_date' | 'custom_event_date'
+          anchor_offset_days?: number | null
+          dosing_frequency?: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom' | null
+          compliance_threshold?: number | null
+          is_active?: boolean | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          study_id?: string
+          code?: string
+          name?: string | null
+          order_index?: number | null
+          anchor_type?: 'enrollment_date' | 'randomization_date' | 'first_dose_date' | 'section_anchor_date' | 'previous_section_end_date' | 'custom_event_date'
+          anchor_offset_days?: number | null
+          dosing_frequency?: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom' | null
+          compliance_threshold?: number | null
+          is_active?: boolean | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      subject_sections: {
+        Row: {
+          id: string
+          subject_id: string
+          study_section_id: string
+          anchor_date: string
+          started_at: string | null
+          ended_at: string | null
+          status: 'planned' | 'active' | 'completed' | 'terminated'
+          transition_reason: string | null
+          notes: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          subject_id: string
+          study_section_id: string
+          anchor_date: string
+          started_at?: string | null
+          ended_at?: string | null
+          status?: 'planned' | 'active' | 'completed' | 'terminated'
+          transition_reason?: string | null
+          notes?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          subject_id?: string
+          study_section_id?: string
+          anchor_date?: string
+          started_at?: string | null
+          ended_at?: string | null
+          status?: 'planned' | 'active' | 'completed' | 'terminated'
+          transition_reason?: string | null
+          notes?: string | null
+          created_by?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -720,6 +817,14 @@ export type VisitScheduleUpdate = Database['public']['Tables']['visit_schedules'
 export type SubjectVisit = Database['public']['Tables']['subject_visits']['Row']
 export type SubjectVisitInsert = Database['public']['Tables']['subject_visits']['Insert']
 export type SubjectVisitUpdate = Database['public']['Tables']['subject_visits']['Update']
+
+export type StudySection = Database['public']['Tables']['study_sections']['Row']
+export type StudySectionInsert = Database['public']['Tables']['study_sections']['Insert']
+export type StudySectionUpdate = Database['public']['Tables']['study_sections']['Update']
+
+export type SubjectSection = Database['public']['Tables']['subject_sections']['Row']
+export type SubjectSectionInsert = Database['public']['Tables']['subject_sections']['Insert']
+export type SubjectSectionUpdate = Database['public']['Tables']['subject_sections']['Update']
 
 export type LabKit = Database['public']['Tables']['lab_kits']['Row']
 export type LabKitInsert = Database['public']['Tables']['lab_kits']['Insert']

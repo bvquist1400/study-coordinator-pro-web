@@ -26,6 +26,9 @@ interface StudyFormData {
   compliance_threshold: string
   anchor_day: '0' | '1'
   notes: string
+  enable_sections: boolean
+  section_code: string
+  section_name: string
 }
 
 export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) {
@@ -49,7 +52,10 @@ export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) 
     dosing_frequency: 'QD',
     compliance_threshold: '80',
     anchor_day: '0',
-    notes: ''
+    notes: '',
+    enable_sections: false,
+    section_code: 'S1',
+    section_name: ''
   })
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -189,6 +195,33 @@ export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) 
       }
 
       console.warn('Study created successfully:', data)
+
+      // Optionally create default section for this new study
+      if (formData.enable_sections && data && data[0]?.id) {
+        try {
+          const { data: sessionData } = await supabase.auth.getSession()
+          const token = sessionData?.session?.access_token
+          if (token) {
+            const resp = await fetch('/api/study-sections', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({
+                study_id: data[0].id,
+                code: (formData.section_code || 'S1').toUpperCase(),
+                name: formData.section_name || null,
+                order_index: 1,
+                anchor_type: 'section_anchor_date'
+              })
+            })
+            if (!resp.ok) {
+              const err = await resp.json().catch(() => ({}))
+              console.warn('Failed to create initial section:', err)
+            }
+          }
+        } catch (e) {
+          console.warn('Error creating initial section', e)
+        }
+      }
       onSuccess()
       onClose()
       
@@ -221,7 +254,49 @@ export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) 
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Enable Sections */}
+            <div className="bg-gray-800/40 border border-gray-700 rounded-lg p-4">
+              <label className="inline-flex items-center gap-3 text-gray-200">
+                <input
+                  type="checkbox"
+                  name="enable_sections"
+                  checked={formData.enable_sections}
+                  onChange={(e) => setFormData(prev => ({ ...prev, enable_sections: e.target.checked }))}
+                  className="accent-blue-600"
+                  disabled={isSubmitting}
+                />
+                <span>Enable sections for this study</span>
+              </label>
+              {formData.enable_sections && (
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Initial Section Code</label>
+                    <input
+                      type="text"
+                      name="section_code"
+                      value={formData.section_code}
+                      onChange={(e) => setFormData(prev => ({ ...prev, section_code: e.target.value.toUpperCase() }))}
+                      className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="S1"
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Initial Section Name (optional)</label>
+                    <input
+                      type="text"
+                      name="section_name"
+                      value={formData.section_name}
+                      onChange={handleInputChange}
+                      className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Open Label"
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
             {/* Protocol Number & Study Title */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>

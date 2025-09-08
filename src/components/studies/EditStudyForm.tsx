@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
-import type { Study } from '@/types/database'
+import type { Study, StudySection } from '@/types/database'
 
 interface EditStudyFormProps {
   study: Study
@@ -30,6 +30,11 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
     anchor_day: '0',
     notes: ''
   })
+  const [sections, setSections] = useState<StudySection[]>([])
+  const [secLoading, setSecLoading] = useState(false)
+  const [newSecCode, setNewSecCode] = useState('')
+  const [newSecName, setNewSecName] = useState('')
+  const [secError, setSecError] = useState('')
 
   useEffect(() => {
     if (study) {
@@ -51,6 +56,24 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
         notes: study.notes || ''
       })
     }
+    // Load sections
+    ;(async () => {
+      try {
+        setSecLoading(true)
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
+        if (!token) return
+        const resp = await fetch(`/api/study-sections?study_id=${study.id}`, { headers: { Authorization: `Bearer ${token}` } })
+        if (resp.ok) {
+          const { sections } = await resp.json()
+          setSections(sections || [])
+        }
+      } catch (e) {
+        // ignore
+      } finally {
+        setSecLoading(false)
+      }
+    })()
   }, [study])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -208,6 +231,158 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Sections Management */}
+            <div className="bg-gray-800/40 border border-gray-700 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-white font-semibold">Sections</h3>
+                {secLoading && <span className="text-xs text-gray-400">Loading…</span>}
+              </div>
+              {secError && (
+                <div className="mb-2 p-2 bg-red-500/10 border border-red-500/30 rounded text-sm text-red-300">{secError}</div>
+              )}
+              <div className="space-y-2">
+                {sections.length === 0 && (
+                  <p className="text-gray-400 text-sm">No sections yet. Add one below.</p>
+                )}
+                {sections
+                  .slice()
+                  .sort((a, b) => (a.order_index || 0) - (b.order_index || 0))
+                  .map((sec) => (
+                    <div key={sec.id} className="grid grid-cols-12 gap-2 items-center">
+                      <input
+                        className="col-span-2 bg-gray-700/50 border border-gray-600 text-gray-100 rounded px-2 py-1"
+                        value={sec.code}
+                        onChange={(e) => setSections(prev => prev.map(s => s.id === sec.id ? { ...s, code: e.target.value.toUpperCase() } : s))}
+                      />
+                      <input
+                        className="col-span-5 bg-gray-700/50 border border-gray-600 text-gray-100 rounded px-2 py-1"
+                        value={sec.name || ''}
+                        onChange={(e) => setSections(prev => prev.map(s => s.id === sec.id ? { ...s, name: e.target.value } : s))}
+                        placeholder="Name (optional)"
+                      />
+                      <input
+                        type="number"
+                        className="col-span-2 bg-gray-700/50 border border-gray-600 text-gray-100 rounded px-2 py-1"
+                        value={sec.order_index || 0}
+                        onChange={(e) => setSections(prev => prev.map(s => s.id === sec.id ? { ...s, order_index: Number(e.target.value) } : s))}
+                        placeholder="Order"
+                      />
+                      <label className="col-span-2 inline-flex items-center gap-2 text-gray-200">
+                        <input
+                          type="checkbox"
+                          checked={!!sec.is_active}
+                          onChange={(e) => setSections(prev => prev.map(s => s.id === sec.id ? { ...s, is_active: e.target.checked } : s))}
+                          className="accent-blue-600"
+                        />
+                        Active
+                      </label>
+                      <div className="col-span-1 flex justify-end gap-2">
+                        <button
+                          type="button"
+                          className="text-sm px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded border border-gray-600"
+                          onClick={async () => {
+                            try {
+                              setSecError('')
+                              const { data: { session } } = await supabase.auth.getSession()
+                              const token = session?.access_token
+                              if (!token) throw new Error('Auth required')
+                              const resp = await fetch(`/api/study-sections/${sec.id}`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                body: JSON.stringify({
+                                  code: (sec.code || '').toUpperCase(),
+                                  name: sec.name || null,
+                                  order_index: sec.order_index || 0,
+                                  is_active: !!sec.is_active
+                                })
+                              })
+                              if (!resp.ok) {
+                                const err = await resp.json().catch(() => ({}))
+                                throw new Error(err.error || 'Failed to save section')
+                              }
+                            } catch (e) {
+                              setSecError((e as Error).message)
+                            }
+                          }}
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          className="text-sm px-2 py-1 bg-red-700/70 hover:bg-red-700 rounded border border-red-600"
+                          onClick={async () => {
+                            if (!confirm('Delete this section? This does not delete existing visits.')) return
+                            try {
+                              setSecError('')
+                              const { data: { session } } = await supabase.auth.getSession()
+                              const token = session?.access_token
+                              if (!token) throw new Error('Auth required')
+                              const resp = await fetch(`/api/study-sections/${sec.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+                              if (!resp.ok) {
+                                const err = await resp.json().catch(() => ({}))
+                                throw new Error(err.error || 'Failed to delete')
+                              }
+                              setSections(prev => prev.filter(s => s.id !== sec.id))
+                            } catch (e) {
+                              setSecError((e as Error).message)
+                            }
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+              {/* Add new section */}
+              <div className="mt-4 grid grid-cols-12 gap-2 items-end">
+                <div className="col-span-2">
+                  <label className="block text-xs text-gray-400 mb-1">Code</label>
+                  <input value={newSecCode} onChange={e => setNewSecCode(e.target.value.toUpperCase())} placeholder="S2" className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded px-2 py-1" />
+                </div>
+                <div className="col-span-6">
+                  <label className="block text-xs text-gray-400 mb-1">Name</label>
+                  <input value={newSecName} onChange={e => setNewSecName(e.target.value)} placeholder="Open Label Extension" className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded px-2 py-1" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs text-gray-400 mb-1">Order</label>
+                  <input type="number" value={(sections.length + 1)} readOnly className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded px-2 py-1" />
+                </div>
+                <div className="col-span-2 flex justify-end">
+                  <button
+                    type="button"
+                    className="px-3 py-2 bg-green-600 hover:bg-green-500 text-white rounded"
+                    onClick={async () => {
+                      try {
+                        setSecError('')
+                        const code = (newSecCode || '').trim().toUpperCase()
+                        if (!code) throw new Error('Enter a section code (e.g., S2)')
+                        const { data: { session } } = await supabase.auth.getSession()
+                        const token = session?.access_token
+                        if (!token) throw new Error('Auth required')
+                        const resp = await fetch('/api/study-sections', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                          body: JSON.stringify({ study_id: study.id, code, name: newSecName || null, order_index: (sections.length + 1) })
+                        })
+                        if (!resp.ok) {
+                          const err = await resp.json().catch(() => ({}))
+                          throw new Error(err.error || 'Failed to add section')
+                        }
+                        const { sections: reloaded } = await fetch(`/api/study-sections?study_id=${study.id}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json())
+                        setSections(reloaded || [])
+                        setNewSecCode('')
+                        setNewSecName('')
+                      } catch (e) {
+                        setSecError((e as Error).message)
+                      }
+                    }}
+                  >
+                    Add Section
+                  </button>
+                </div>
+              </div>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Protocol Number *</label>
