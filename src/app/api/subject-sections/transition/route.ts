@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
   try {
     const { user, error: authError, status: authStatus } = await authenticateUser(request)
     if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
-    const supabase = createSupabaseAdmin()
+    const supabase = createSupabaseAdmin() as any
 
     const { subject_id, to_section_id, anchor_date, end_reason, cancel_policy } = await request.json()
     if (!subject_id || !to_section_id || !anchor_date) {
@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Resolve study_id via subject and verify membership
-    const { data: subjectRow, error: subjErr } = await supabase
+    const { data: subjectRow, error: subjErr } = await (supabase as any)
       .from('subjects')
       .select('id, study_id')
       .eq('id', subject_id)
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     if (!membership.success) return NextResponse.json({ error: membership.error || 'Access denied' }, { status: membership.status || 403 })
 
     // Get study anchor_day for date calc
-    const { data: studyRow } = await supabase
+    const { data: studyRow } = await (supabase as any)
       .from('studies')
       .select('anchor_day')
       .eq('id', studyId)
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     const anchorDay: number = (studyRow?.anchor_day ?? 0) as number
 
     // Find current active subject_section
-    const { data: activeSec } = await supabase
+    const { data: activeSec } = await (supabase as any)
       .from('subject_sections')
       .select('id')
       .eq('subject_id', subject_id)
@@ -47,14 +47,14 @@ export async function POST(request: NextRequest) {
 
     // Close current active section, if any
     if (activeSec?.id) {
-      await supabase
+      await (supabase as any)
         .from('subject_sections')
         .update({ ended_at: new Date().toISOString(), status: 'completed', transition_reason: end_reason || null })
         .eq('id', activeSec.id)
 
       // Cancel remaining scheduled visits in previous section (simple policy)
       if ((cancel_policy ?? 'cancel_all') === 'cancel_all') {
-        await supabase
+        await (supabase as any)
           .from('subject_visits')
           .update({ status: 'cancelled' })
           .eq('subject_id', subject_id)
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create new subject_section
-    const { data: newSubjSec, error: newSecErr } = await supabase
+    const { data: newSubjSec, error: newSecErr } = await (supabase as any)
       .from('subject_sections')
       .insert({
         subject_id,
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate planned visits from visit_schedules for the target section
-    const { data: schedules, error: schErr } = await supabase
+    const { data: schedules, error: schErr } = await (supabase as any)
       .from('visit_schedules')
       .select('id, visit_name, visit_day, window_before_days, window_after_days')
       .eq('study_id', studyId)
@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
     }))
 
     if (toInsert.length > 0) {
-      const { error: insErr } = await supabase.from('subject_visits').insert(toInsert)
+      const { error: insErr } = await (supabase as any).from('subject_visits').insert(toInsert)
       if (insErr) logger.error('Failed inserting generated visits', insErr)
     }
 
@@ -124,4 +124,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-
