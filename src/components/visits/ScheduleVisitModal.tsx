@@ -59,6 +59,7 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
   const [sections, setSections] = useState<StudySection[]>([])
   const [selectedSectionId, setSelectedSectionId] = useState<string>('')
   const [activeSubjectSectionId, setActiveSubjectSectionId] = useState<string | null>(null)
+  const [activeAnchorDate, setActiveAnchorDate] = useState<string | null>(null)
 
   const loadData = useCallback(async () => {
     try {
@@ -127,7 +128,7 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
         if (subjId) {
           const { data: subjSecs } = await supabase
             .from('subject_sections')
-            .select('id, study_section_id, ended_at')
+            .select('id, study_section_id, anchor_date, ended_at')
             .eq('subject_id', subjId)
             .is('ended_at', null)
             .limit(1)
@@ -135,8 +136,10 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
             setActiveSubjectSectionId(subjSecs[0].id)
             const ssid = (subjSecs[0] as any).study_section_id as string
             if (ssid) setSelectedSectionId(ssid)
+            (setActiveAnchorDate as any)?.(subjSecs[0].anchor_date || null)
           } else {
             setActiveSubjectSectionId(null)
+            setActiveAnchorDate(null)
           }
         }
       } else {
@@ -199,7 +202,7 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
       try {
         const { data: subjSecs } = await supabase
           .from('subject_sections')
-          .select('id, study_section_id, ended_at')
+          .select('id, study_section_id, anchor_date, ended_at')
           .eq('subject_id', subjectId)
           .is('ended_at', null)
           .limit(1)
@@ -207,8 +210,10 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
           setActiveSubjectSectionId(subjSecs[0].id)
           const ssid = (subjSecs[0] as any).study_section_id as string
           if (ssid) setSelectedSectionId(ssid)
+          setActiveAnchorDate((subjSecs[0] as any).anchor_date || null)
         } else {
           setActiveSubjectSectionId(null)
+          setActiveAnchorDate(null)
         }
       } catch {
         // ignore
@@ -387,10 +392,12 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
     const schedule = visitSchedules.find(s => s.id === selectedVisitScheduleId)
     if (!schedule) return null
     const subject = subjects.find(s => s.id === selectedSubjectId)
-    if (!subject || !subject.randomization_date || !study) return null
+    if (!study || !subject) return null
+    const anchorStr = activeAnchorDate || subject.randomization_date
+    if (!anchorStr) return null
 
     const calc = calculateVisitDate(
-      (parseDateUTC(subject.randomization_date) || new Date(subject.randomization_date)) as Date,
+      (parseDateUTC(anchorStr) || new Date(anchorStr)) as Date,
       schedule.visit_day,
       'days',
       study.anchor_day,

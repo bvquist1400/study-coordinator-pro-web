@@ -31,7 +31,8 @@ export async function GET(request: NextRequest) {
       .select(`
         *,
         subjects!inner(subject_number, randomization_date),
-        visit_schedules(visit_day, window_before_days, window_after_days)
+        visit_schedules(visit_day, window_before_days, window_after_days),
+        subject_sections(anchor_date)
       `)
       .eq('study_id', studyId)
       .order('visit_date', { ascending: true })
@@ -63,6 +64,7 @@ export async function GET(request: NextRequest) {
       subject_number: v.subjects.subject_number,
       subjects: { randomization_date: v.subjects.randomization_date },
       visit_schedules: v.visit_schedules,
+      subject_sections: v.subject_sections || null,
     }))
 
     return NextResponse.json({ subjectVisits })

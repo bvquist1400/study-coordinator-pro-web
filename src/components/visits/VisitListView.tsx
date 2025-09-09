@@ -15,10 +15,14 @@ interface Visit {
   subject_id: string
   procedures_completed: string[]
   visit_schedule_id: string | null
+  subject_section_id?: string | null
   // We'll need these to calculate window
   subjects?: {
     randomization_date: string | null
   }
+  subject_sections?: {
+    anchor_date: string | null
+  } | null
   visit_schedules?: {
     visit_day: number
     window_before_days: number | null
@@ -137,7 +141,7 @@ export default function VisitListView({ studyId, onVisitClick, refreshKey }: Vis
   const formatDate = (dateString: string) => formatDateUTC(dateString, 'en-US')
 
   const getVisitWindow = (visit: Visit) => {
-    if (!visit.subjects?.randomization_date || !visit.visit_schedules) {
+    if (!visit.visit_schedules) {
       return visit.days_from_scheduled !== null ? (
         <span className={visit.days_from_scheduled === 0 ? 'text-green-300' : 
           Math.abs(visit.days_from_scheduled) <= 3 ? 'text-yellow-300' : 'text-red-300'}>
@@ -147,10 +151,18 @@ export default function VisitListView({ studyId, onVisitClick, refreshKey }: Vis
     }
 
     try {
-      // Calculate target date (randomization + visit_day)
-      const randomDate = parseDateUTC(visit.subjects.randomization_date) || new Date(visit.subjects.randomization_date)
-      const targetDate = new Date(randomDate)
-      targetDate.setDate(randomDate.getDate() + visit.visit_schedules.visit_day)
+      // Prefer section anchor_date if present; else randomization_date
+      let anchorDateStr: string | null = null
+      if (visit.subject_sections?.anchor_date) anchorDateStr = visit.subject_sections.anchor_date
+      else if (visit.subjects?.randomization_date) anchorDateStr = visit.subjects.randomization_date
+
+      if (!anchorDateStr) {
+        return '-'
+      }
+
+      const anchorDate = parseDateUTC(anchorDateStr) || new Date(anchorDateStr)
+      const targetDate = new Date(anchorDate)
+      targetDate.setDate(anchorDate.getDate() + visit.visit_schedules.visit_day)
 
       // Calculate window
       const windowBefore = visit.visit_schedules.window_before_days || 7
