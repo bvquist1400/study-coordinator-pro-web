@@ -284,7 +284,9 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
         await updateLabKitStatus(formData.accession_number, 'pending_shipment', session.access_token)
       }
 
-      // Update visit record with multi-bottle summary (for backward compatibility)
+      // Update visit record with summary (for backward compatibility)
+      const firstCycle = formData.cycles[0]
+      const firstReturn = formData.cycles.find(c => (c.tablets_returned || 0) > 0)
       const updatePayload = {
         status: formData.status,
         procedures_completed: formData.procedures_completed,
@@ -292,13 +294,13 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
         lab_kit_shipped_date: formData.lab_kit_shipped_date || null,
         local_labs_completed: formData.local_labs_completed,
         notes: formData.notes || null,
-        // Legacy fields - use first bottle for backward compatibility
-        ip_dispensed: formData.dispensed_bottles[0]?.count || null,
-        ip_returned: formData.returned_bottles[0]?.count || null,
-        ip_id: formData.dispensed_bottles[0]?.ip_id || null,
-        return_ip_id: formData.returned_bottles[0]?.ip_id || null,
-        ip_start_date: formData.dispensed_bottles[0]?.start_date || null,
-        ip_last_dose_date: formData.returned_bottles[0]?.last_dose_date || null
+        // Legacy fields - approximate using first cycle
+        ip_dispensed: firstCycle ? (firstCycle.tablets_dispensed ?? ((firstCycle.bottles || 0) * (firstCycle.tablets_per_bottle || 0))) : null,
+        ip_returned: firstReturn?.tablets_returned ?? null,
+        ip_id: null,
+        return_ip_id: null,
+        ip_start_date: firstCycle?.start_date || null,
+        ip_last_dose_date: firstReturn?.last_dose_date || null
       }
 
       const response = await fetch(`/api/subject-visits/${visitId}`, {
