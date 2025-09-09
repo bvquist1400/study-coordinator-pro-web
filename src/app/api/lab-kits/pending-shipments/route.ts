@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
       `)
       .eq('status', 'pending_shipment')
       .in('study_id', studyIds)
-      .order('expiration_date', { ascending: true, nullsLast: true })
+      .order('expiration_date', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: false })
 
     if (kitsErr) {
