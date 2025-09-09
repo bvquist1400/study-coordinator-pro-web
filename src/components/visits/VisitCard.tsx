@@ -258,7 +258,7 @@ export default function VisitCard({
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-gray-900/95 backdrop-blur-sm border border-gray-700 rounded-2xl w-full max-w-2xl my-8">
+      <div className="bg-gray-900/95 backdrop-blur-sm border border-gray-700 rounded-2xl w-full max-w-4xl my-8">
         <div className="p-6">
           <div className="flex justify-between items-center mb-6">
             <div>

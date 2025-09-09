@@ -46,8 +46,151 @@ export async function PUT(
 
   const requestData = await request.json()
   
-  // Handle multi-bottle data if present
-  if (requestData.dispensed_bottles || requestData.returned_bottles) {
+  // New aggregated per-drug cycles path
+  if (requestData.cycles || requestData.adjustments) {
+      const cycles = (requestData.cycles || []) as Array<any>
+      const adjustments = (requestData.adjustments || []) as Array<any>
+
+      // Helper: resolve drug_id by label (code or name) within study
+      const resolveDrugId = async (label?: string, directId?: string): Promise<string | null> => {
+        if (directId) return directId
+        if (!label) return null
+        const { data } = await supabase
+          .from('study_drugs')
+          .select('id, code, name')
+          .eq('study_id', vAny.study_id)
+          .or(`code.ilike.%${label}%,name.ilike.%${label}%`)
+          .limit(1)
+          .maybeSingle()
+        return (data as any)?.id || null
+      }
+
+      // Upsert cycles per drug for this visit
+      for (const c of cycles) {
+        const drugId = await resolveDrugId(c.drug_label || c.drug_code || c.drug_name, c.drug_id)
+        if (!drugId) {
+          return NextResponse.json({ error: `Unknown drug: ${c.drug_label || c.drug_code || c.drug_name || c.drug_id}` }, { status: 400 })
+        }
+        const tabletsDispensed = c.tablets_dispensed ?? ((c.bottles || 0) * (c.tablets_per_bottle || 0))
+        if (!tabletsDispensed || tabletsDispensed <= 0) {
+          return NextResponse.json({ error: 'tablets_dispensed must be > 0 (or provide bottles and tablets_per_bottle)' }, { status: 400 })
+        }
+        const row = {
+          subject_id: vAny.subject_id,
+          visit_id: resolvedParams.id,
+          drug_id: drugId,
+          dispensing_date: c.start_date,
+          last_dose_date: c.last_dose_date || null,
+          tablets_dispensed: tabletsDispensed,
+          tablets_returned: c.tablets_returned || 0,
+          notes: c.notes || null,
+          updated_at: new Date().toISOString()
+        } as any
+        const { error: upsertErr } = await supabase
+          .from('subject_drug_cycles')
+          .upsert(row, { onConflict: 'subject_id,visit_id,drug_id' } as any)
+        if (upsertErr) {
+          logger.error('subject_drug_cycles upsert failed', upsertErr as any)
+          return NextResponse.json({ error: 'Failed to save drug cycles', detail: upsertErr.message }, { status: 500 })
+        }
+      }
+
+      // Adjustments (optional): create or update a cycle and insert adjustment
+      for (const a of adjustments) {
+        const drugId = await resolveDrugId(a.drug_label || a.drug_code || a.drug_name, a.drug_id)
+        if (!drugId) {
+          return NextResponse.json({ error: `Unknown drug in adjustment: ${a.drug_label || a.drug_code || a.drug_name || a.drug_id}` }, { status: 400 })
+        }
+        const delta = Number(a.delta_tablets || 0)
+        if (!delta) continue
+        const targetVisitId = a.visit_id || resolvedParams.id || null
+        const { data: existing } = await supabase
+          .from('subject_drug_cycles')
+          .select('id, tablets_dispensed, tablets_returned')
+          .eq('subject_id', vAny.subject_id)
+          .eq('drug_id', drugId)
+          .eq('visit_id', targetVisitId)
+          .maybeSingle()
+        let cycleId = (existing as any)?.id
+        if (!cycleId) {
+          const { data: inserted, error: insErr } = await supabase
+            .from('subject_drug_cycles')
+            .insert({
+              subject_id: vAny.subject_id,
+              visit_id: targetVisitId,
+              drug_id: drugId,
+              tablets_dispensed: 0,
+              tablets_returned: 0,
+              dispensing_date: null,
+              last_dose_date: null
+            } as any)
+            .select('id')
+            .single()
+          if (insErr) {
+            logger.error('Create cycle for adjustment failed', insErr as any)
+            return NextResponse.json({ error: 'Failed to create cycle for adjustment', detail: insErr.message }, { status: 500 })
+          }
+          cycleId = (inserted as any).id
+        }
+
+        const eventDate = a.event_date || new Date().toISOString().slice(0, 10)
+        const { error: adjErr } = await supabase
+          .from('drug_cycle_adjustments')
+          .insert({
+            cycle_id: cycleId,
+            event_type: a.type || (delta > 0 ? 'return' : 'correction'),
+            delta_tablets: delta,
+            event_date: eventDate,
+            reason: a.reason || null,
+            user_id: user.id
+          } as any)
+        if (adjErr) {
+          logger.error('Insert adjustment failed', adjErr as any)
+          return NextResponse.json({ error: 'Failed to save adjustment', detail: adjErr.message }, { status: 500 })
+        }
+
+        // Simple roll-up into cycle totals
+        if ((a.type === 'return') || delta > 0) {
+          const { error: updErr } = await supabase
+            .from('subject_drug_cycles')
+            .update({
+              tablets_returned: ((existing as any)?.tablets_returned || 0) + delta,
+              last_dose_date: eventDate
+            } as any)
+            .eq('id', cycleId)
+          if (updErr) logger.warn?.('Cycle roll-up (return) failed', updErr as any)
+        } else if (a.type === 'dispense') {
+          const { error: updErr } = await supabase
+            .from('subject_drug_cycles')
+            .update({ tablets_dispensed: ((existing as any)?.tablets_dispensed || 0) + Math.abs(delta) } as any)
+            .eq('id', cycleId)
+          if (updErr) logger.warn?.('Cycle roll-up (dispense) failed', updErr as any)
+        }
+      }
+
+      // Update visit record (status + light snapshot)
+      const updateData: any = { status: requestData.status || 'completed' }
+      if (cycles.length > 0) {
+        const first = cycles[0]
+        updateData.ip_dispensed = first.tablets_dispensed ?? ((first.bottles || 0) * (first.tablets_per_bottle || 0))
+        updateData.ip_start_date = first.start_date || null
+      }
+      const firstReturn = cycles.find((c: any) => (c.tablets_returned || 0) > 0)
+      if (firstReturn) {
+        updateData.ip_returned = firstReturn.tablets_returned
+        updateData.ip_last_dose_date = firstReturn.last_dose_date || null
+      }
+      const { error: visitError } = await (supabase
+        .from('subject_visits') as any)
+        .update(updateData as SubjectVisitUpdate)
+        .eq('id', resolvedParams.id)
+      if (visitError) {
+        logger.error('Error updating visit (cycles)', visitError as any)
+        return NextResponse.json({ error: 'Failed to update visit record', detail: visitError.message }, { status: 500 })
+      }
+
+    // Handle multi-bottle data if present
+    } else if (requestData.dispensed_bottles || requestData.returned_bottles) {
       // Multi-bottle format: validate and call atomic RPC (mandatory)
       const dispensedBottles = (requestData.dispensed_bottles || []).filter((b: any) => b && b.ip_id && b.count > 0 && b.start_date)
       const returnedBottles = (requestData.returned_bottles || []).filter((b: any) => b && b.ip_id && b.count > 0 && b.last_dose_date)

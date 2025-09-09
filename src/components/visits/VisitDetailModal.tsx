@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { formatDateUTC } from '@/lib/date-utils'
-import MultiBottleEntry, { type BottleEntry } from './MultiBottleEntry'
+import PerDrugEntry, { type DrugCycleEntry } from './PerDrugEntry'
 
 interface VisitDetail {
   id: string
@@ -48,11 +48,9 @@ interface FormData {
   procedures_completed: string[]
   accession_number: string
   lab_kit_shipped_date: string
-  dispensed_bottles: BottleEntry[]
-  returned_bottles: BottleEntry[]
+  cycles: DrugCycleEntry[]
   local_labs_completed: boolean
   notes: string
-  period_last_dose_date: string
 }
 
 interface VisitDetailModalProps {
@@ -80,6 +78,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
   const [saving, setSaving] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [availableLabKits, setAvailableLabKits] = useState<Array<{ id: string; accession_number: string; kit_type: string; expiration_date: string }>>([])
+  const [studyDrugs, setStudyDrugs] = useState<Array<{ id: string; code: string; name: string }>>([])
   const [showAccessionDropdown, setShowAccessionDropdown] = useState(false)
   const [_dosingFactor, _setDosingFactor] = useState(1)
 
@@ -88,11 +87,9 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
     procedures_completed: [],
     accession_number: '',
     lab_kit_shipped_date: '',
-    dispensed_bottles: [],
-    returned_bottles: [],
+    cycles: [],
     local_labs_completed: false,
-    notes: '',
-    period_last_dose_date: ''
+    notes: ''
   })
 
   const [inferredRequirements, setInferredRequirements] = useState({
@@ -118,25 +115,17 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
         const { visit } = await response.json()
         setVisit(visit)
 
-        // Convert single bottle data to multi-bottle format for backward compatibility
-        const dispensedBottles: BottleEntry[] = []
-        const returnedBottles: BottleEntry[] = []
-
-        // If there's existing single bottle data, convert it to multi-bottle format
-        if (visit.ip_dispensed && visit.ip_dispensed > 0 && visit.ip_id) {
-          dispensedBottles.push({
-            id: 'existing-dispensed',
-            ip_id: visit.ip_id,
-            count: visit.ip_dispensed,
-            start_date: visit.ip_start_date?.split('T')[0] || ''
-          })
-        }
-
-        if (visit.ip_returned && visit.ip_returned > 0 && visit.return_ip_id) {
-          returnedBottles.push({
-            id: 'existing-returned',
-            ip_id: visit.return_ip_id,
-            count: visit.ip_returned,
+        // Seed a single aggregated cycle when legacy data exists (best-effort)
+        const cycles: DrugCycleEntry[] = []
+        if ((visit.ip_dispensed || visit.ip_returned)) {
+          cycles.push({
+            id: 'existing-cycle',
+            drug_label: '',
+            bottles: undefined,
+            tablets_per_bottle: undefined,
+            tablets_dispensed: visit.ip_dispensed || undefined,
+            start_date: visit.ip_start_date?.split('T')[0] || '',
+            tablets_returned: visit.ip_returned || 0,
             last_dose_date: visit.ip_last_dose_date?.split('T')[0] || ''
           })
         }
@@ -146,11 +135,9 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
           procedures_completed: visit.procedures_completed || [],
           accession_number: visit.accession_number || '',
           lab_kit_shipped_date: visit.lab_kit_shipped_date?.split('T')[0] || '',
-          dispensed_bottles: dispensedBottles,
-          returned_bottles: returnedBottles,
+          cycles,
           local_labs_completed: visit.local_labs_completed || false,
-          notes: visit.notes || '',
-          period_last_dose_date: visit.ip_last_dose_date?.split('T')[0] || ''
+          notes: visit.notes || ''
         })
 
         // Infer requirements from visit name
@@ -174,34 +161,28 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
     loadVisit()
   }, [loadVisit])
 
-  // Pre-populate candidate returns from previous visit via API (bypasses client RLS issues)
+  // Load study drugs for the visit's study to populate dropdown
   useEffect(() => {
-    const prefillReturns = async () => {
-      if (!visit || formData.returned_bottles.length > 0) return
+    const loadStudyDrugs = async () => {
+      if (!visit?.study_id) return
       try {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session?.access_token) return
-        const resp = await fetch(`/api/subject-visits/${visit.id}/prefill-returns`, {
+        const resp = await fetch(`/api/study-drugs?studyId=${visit.study_id}`, {
           headers: { 'Authorization': `Bearer ${session.access_token}` }
         })
         if (!resp.ok) return
-        const data = await resp.json()
-        const candidates = (data?.candidates || []) as Array<{ ip_id: string; suggested_return_count?: number }>
-        if (candidates.length === 0) return
-        const returnedBottles: BottleEntry[] = candidates.map((c, idx) => ({
-          id: `prefill-${idx}`,
-          ip_id: c.ip_id,
-          count: c.suggested_return_count ?? 0,
-          last_dose_date: ''
-        }))
-        setFormData(prevState => ({ ...prevState, returned_bottles: returnedBottles }))
+        const json = await resp.json()
+        setStudyDrugs(json.drugs || [])
       } catch (e) {
-        console.error('Prefill returns error:', e)
+        console.error('Error loading study drugs', e)
       }
     }
-    prefillReturns()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visit])
+    loadStudyDrugs()
+  }, [visit?.study_id])
+
+  // Pre-populate candidate returns from previous visit via API (bypasses client RLS issues)
+  // Prefill logic for legacy bottles is removed in aggregated UI
 
   // Load available lab kits for autocomplete
   useEffect(() => {
@@ -232,30 +213,14 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
   const validateForm = () => {
     const warnings: string[] = []
 
-    // Validate dispensed bottles
-    formData.dispensed_bottles.forEach((bottle, index) => {
-      if (!bottle.ip_id.trim()) {
-        warnings.push(`Dispensed bottle ${index + 1}: IP ID is required`)
-      }
-      if (bottle.count <= 0) {
-        warnings.push(`Dispensed bottle ${index + 1}: Count must be greater than 0`)
-      }
-      if (!bottle.start_date) {
-        warnings.push(`Dispensed bottle ${index + 1}: Start date is required`)
-      }
-    })
-
-    // Validate returned bottles
-    formData.returned_bottles.forEach((bottle, index) => {
-      if (!bottle.ip_id.trim()) {
-        warnings.push(`Returned bottle ${index + 1}: IP ID is required`)
-      }
-      if (bottle.count <= 0) {
-        warnings.push(`Returned bottle ${index + 1}: Count must be greater than 0`)
-      }
-      if (!bottle.last_dose_date && !formData.period_last_dose_date) {
-        warnings.push(`Returned bottle ${index + 1}: Last dose date is required (or set the period last dose date above) `)
-      }
+    // Validate aggregated cycles (dispense and return in same visit supported)
+    formData.cycles.forEach((c, index) => {
+      if (!c.drug_label.trim()) warnings.push(`Drug entry ${index + 1}: Drug is required`)
+      const total = c.tablets_dispensed ?? ((c.bottles || 0) * (c.tablets_per_bottle || 0))
+      if (!total || total <= 0) warnings.push(`Drug entry ${index + 1}: Total tablets dispensed must be > 0`)
+      if (!c.start_date) warnings.push(`Drug entry ${index + 1}: Start date is required`)
+      if ((c.tablets_returned || 0) > total) warnings.push(`Drug entry ${index + 1}: Returned exceeds dispensed`)
+      if (c.last_dose_date && c.start_date && c.last_dose_date < c.start_date) warnings.push(`Drug entry ${index + 1}: Last dose date before start date`)
     })
 
     // Lab kit validation
@@ -267,25 +232,18 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
   }
 
   // Send multi-bottle data to API endpoint instead of direct database insertion
-  const saveMultiBottleCompliance = async (token: string) => {
-    // Fill defaults for dates when missing
-    const returnedWithPeriod = formData.returned_bottles.map(b => ({
-      ...b,
-      last_dose_date: b.last_dose_date || formData.period_last_dose_date || ''
-    }))
-
+  const saveAggregatedCompliance = async (token: string) => {
     const defaultVisitDate = visit?.visit_date?.split('T')[0] || ''
-    const dispensedWithDefaults = formData.dispensed_bottles.map(b => ({
-      ...b,
-      start_date: b.start_date || defaultVisitDate
+    const cyclesPayload = formData.cycles.map(c => ({
+      drug_label: c.drug_label,
+      drug_id: c.drug_id,
+      bottles: c.bottles,
+      tablets_per_bottle: c.tablets_per_bottle,
+      tablets_dispensed: c.tablets_dispensed ?? ((c.bottles || 0) * (c.tablets_per_bottle || 0)),
+      start_date: c.start_date || defaultVisitDate,
+      tablets_returned: c.tablets_returned || 0,
+      last_dose_date: c.last_dose_date || null
     }))
-
-    // Send multi-bottle data to the existing IP accountability API
-    const multiBottleData = {
-      dispensed_bottles: dispensedWithDefaults,
-      returned_bottles: returnedWithPeriod,
-      period_last_dose_date: formData.period_last_dose_date || undefined
-    }
 
     const response = await fetch(`/api/subject-visits/${visitId}/ip-accountability`, {
       method: 'PUT',
@@ -293,9 +251,8 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify(multiBottleData)
+      body: JSON.stringify({ cycles: cyclesPayload, status: formData.status })
     })
-
     if (!response.ok) {
       const errorData = await response.json()
       throw new Error(errorData.error || 'Failed to save IP accountability data')
@@ -317,9 +274,9 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
         throw new Error('Not authenticated')
       }
 
-      // Save multi-bottle drug compliance data via API
-      if (formData.dispensed_bottles.length > 0 || formData.returned_bottles.length > 0) {
-        await saveMultiBottleCompliance(session.access_token)
+      // Save aggregated per-drug compliance data via API
+      if (formData.cycles.length > 0) {
+        await saveAggregatedCompliance(session.access_token)
       }
 
       // Update lab kit status if accession number is provided
@@ -436,7 +393,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-800 rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-gray-800 rounded-lg shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-700">
           <div>
@@ -552,41 +509,14 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
                   )}
                 </div>
 
-                {/* Period-level last dose date for returns */}
-                {isEditing && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1">Return period last dose date</label>
-                    <input
-                      type="date"
-                      value={formData.period_last_dose_date}
-                      onChange={(e) => handleChange('period_last_dose_date', e.target.value)}
-                      className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <p className="text-xs text-gray-400 mt-1">Applies to returned bottles without a date.</p>
-                  </div>
-                )}
-
-                {/* Dispensed Bottles */}
-                <div>
-                  <MultiBottleEntry
-                    bottles={formData.dispensed_bottles}
-                    onChange={(bottles) => handleChange('dispensed_bottles', bottles)}
-                    type="dispensing"
-                    disabled={!isEditing}
-                    defaultStartDate={visit.visit_date?.split('T')[0] || ''}
-                  />
-                </div>
-
-                {/* Returned Bottles */}
-                <div className="mt-6">
-                  <MultiBottleEntry
-                    bottles={formData.returned_bottles}
-                    onChange={(bottles) => handleChange('returned_bottles', bottles)}
-                    type="returns"
-                    disabled={!isEditing}
-                    defaultLastDoseDate={formData.period_last_dose_date}
-                  />
-                </div>
+                {/* Aggregated per-drug entry */}
+                <PerDrugEntry
+                  cycles={formData.cycles}
+                  onChange={(cycles) => handleChange('cycles', cycles)}
+                  disabled={!isEditing}
+                  defaultStartDate={visit.visit_date?.split('T')[0] || ''}
+                  drugOptions={studyDrugs}
+                />
               </div>
             )
           })()}

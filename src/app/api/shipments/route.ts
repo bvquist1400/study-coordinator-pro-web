@@ -108,36 +108,52 @@ export async function POST(request: NextRequest) {
     if (!airwayBillNumber || !String(airwayBillNumber).trim()) {
       return NextResponse.json({ error: 'airwayBillNumber is required' }, { status: 400 })
     }
-    if (!studyId) {
-      return NextResponse.json({ error: 'studyId is required' }, { status: 400 })
-    }
+    // studyId is optional for cross-study shipments
 
-    // Verify access to study
-    const membership = await verifyStudyMembership(studyId, user.id)
-    if (!membership.success) return NextResponse.json({ error: membership.error || 'Access denied' }, { status: membership.status || 403 })
+    // Verify access to study (skip for cross-study shipments)
+    if (studyId) {
+      const membership = await verifyStudyMembership(studyId, user.id)
+      if (!membership.success) return NextResponse.json({ error: membership.error || 'Access denied' }, { status: membership.status || 403 })
+    }
 
     const supabase = createSupabaseAdmin()
 
     const kitIds = Array.isArray(labKitIds) ? labKitIds : []
     const accNums = Array.isArray(accessionNumbers) ? accessionNumbers.map((s: string) => String(s).trim()).filter(Boolean) : []
 
-    // Ensure lab kits by ID belong to the study and are eligible
-    const { data: kits, error: kitsErr } = await supabase
+    // Ensure lab kits by ID are eligible (and belong to study if specified)
+    let kitsQuery = supabase
       .from('lab_kits')
       .select('id, study_id, status, accession_number')
       .in('id', kitIds.length > 0 ? kitIds : ['00000000-0000-0000-0000-000000000000'])
-      .eq('study_id', studyId)
+    
+    if (studyId) {
+      kitsQuery = kitsQuery.eq('study_id', studyId)
+    }
+    
+    const { data: kits, error: kitsErr } = await kitsQuery
     if (kitsErr) {
       logger.error('Verify kits error', kitsErr as any)
       return NextResponse.json({ error: 'Failed to verify lab kits' }, { status: 500 })
     }
     if (kitIds.length > 0) {
       if (!kits || kits.length !== kitIds.length) {
-        return NextResponse.json({ error: 'Some lab kits not found in this study' }, { status: 400 })
+        return NextResponse.json({ error: studyId ? 'Some lab kits not found in this study' : 'Some lab kits not found' }, { status: 400 })
       }
       const invalid = kits.filter((k: any) => k.status !== 'pending_shipment')
       if (invalid.length > 0) {
         return NextResponse.json({ error: 'Only pending_shipment lab kits can be shipped' }, { status: 400 })
+      }
+      
+      // For cross-study shipments, verify user has access to all involved studies
+      if (!studyId) {
+        const involvedStudyIds = [...new Set(kits.map((k: any) => k.study_id))]
+        for (const sid of involvedStudyIds) {
+          const membership = await verifyStudyMembership(sid, user.id)
+          if (!membership.success) {
+            return NextResponse.json({ error: `Access denied to study involved in this shipment` }, { status: 403 })
+          }
+        }
       }
     }
 

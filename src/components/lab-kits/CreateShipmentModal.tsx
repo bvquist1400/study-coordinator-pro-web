@@ -5,7 +5,8 @@ import { supabase } from '@/lib/supabase/client'
 import { todayLocalISODate } from '@/lib/date-utils'
 
 interface CreateShipmentModalProps {
-  studyId: string
+  studyId: string // Can be empty string for cross-study shipments
+  selectedKitIds?: string[] // Pre-selected kit IDs for cross-study shipments
   onClose: () => void
   onSuccess: () => void
 }
@@ -17,9 +18,9 @@ type LabKit = {
   status: string
 }
 
-export default function CreateShipmentModal({ studyId, onClose, onSuccess }: CreateShipmentModalProps) {
+export default function CreateShipmentModal({ studyId, selectedKitIds = [], onClose, onSuccess }: CreateShipmentModalProps) {
   const [kits, setKits] = useState<LabKit[]>([])
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [selected, setSelected] = useState<Set<string>>(new Set(selectedKitIds))
   const [manualAccession, setManualAccession] = useState('')
   const [manualAccessionList, setManualAccessionList] = useState<Set<string>>(new Set())
   const [airwayBill, setAirwayBill] = useState('')
@@ -36,15 +37,21 @@ export default function CreateShipmentModal({ studyId, onClose, onSuccess }: Cre
         const { data: { session } } = await supabase.auth.getSession()
         const token = session?.access_token
         if (!token) return
-        // Fetch eligible kits (status = pending_shipment)
-        const resp = await fetch(`/api/lab-kits?studyId=${studyId}&status=pending_shipment`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        })
-        if (!resp.ok) {
-          setKits([])
+        // For cross-study shipments, don't fetch kits (they're pre-selected)
+        // For single-study shipments, fetch eligible kits (status = pending_shipment)
+        if (studyId) {
+          const resp = await fetch(`/api/lab-kits?studyId=${studyId}&status=pending_shipment`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          })
+          if (!resp.ok) {
+            setKits([])
+          } else {
+            const { labKits } = await resp.json()
+            setKits(labKits || [])
+          }
         } else {
-          const { labKits } = await resp.json()
-          setKits(labKits || [])
+          // Cross-study mode - no kits to display in table
+          setKits([])
         }
       } catch (_e) {
         setKits([])
@@ -86,12 +93,13 @@ export default function CreateShipmentModal({ studyId, onClose, onSuccess }: Cre
           airwayBillNumber: airwayBill.trim(),
           carrier,
           shippedDate: shippedDate || null,
-          studyId
+          studyId: studyId || null // Allow null for cross-study shipments
         })
       })
       if (!resp.ok) {
         const e = await resp.json().catch(() => ({ error: 'Failed to create shipments' }))
-        setErrorMsg(e.error)
+        console.error('Shipment creation failed:', resp.status, e)
+        setErrorMsg(e.error || `HTTP ${resp.status}: ${resp.statusText}`)
         return
       }
       onSuccess()
@@ -173,39 +181,53 @@ export default function CreateShipmentModal({ studyId, onClose, onSuccess }: Cre
             )}
           </div>
 
-          <div>
-            <h3 className="text-md font-semibold text-white mb-2">Select Kits (status: pending_shipment)</h3>
-            <div className="border border-gray-700 rounded-lg overflow-hidden">
-              <table className="w-full">
-                <thead className="bg-gray-700/50 text-gray-300">
-                  <tr>
-                    <th className="px-3 py-2 w-12"></th>
-                    <th className="px-3 py-2 text-left">Accession #</th>
-                    <th className="px-3 py-2 text-left">Kit Type</th>
-                    <th className="px-3 py-2 text-left">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-700">
-                  {loading ? (
-                    <tr><td colSpan={4} className="px-3 py-4 text-gray-400">Loading kits...</td></tr>
-                  ) : kits.length === 0 ? (
-                    <tr><td colSpan={4} className="px-3 py-4 text-gray-400">No eligible kits</td></tr>
-                  ) : (
-                    kits.map(kit => (
-                      <tr key={kit.id} className="text-gray-100">
-                        <td className="px-3 py-2">
-                          <input type="checkbox" checked={selected.has(kit.id)} onChange={e => toggle(kit.id, e.target.checked)} />
-                        </td>
-                        <td className="px-3 py-2 font-mono">{kit.accession_number}</td>
-                        <td className="px-3 py-2">{kit.kit_type || '-'}</td>
-                        <td className="px-3 py-2">{kit.status}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+          {studyId ? (
+            <div>
+              <h3 className="text-md font-semibold text-white mb-2">Select Kits (status: pending_shipment)</h3>
+              <div className="border border-gray-700 rounded-lg overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-gray-700/50 text-gray-300">
+                    <tr>
+                      <th className="px-3 py-2 w-12"></th>
+                      <th className="px-3 py-2 text-left">Accession #</th>
+                      <th className="px-3 py-2 text-left">Kit Type</th>
+                      <th className="px-3 py-2 text-left">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-700">
+                    {loading ? (
+                      <tr><td colSpan={4} className="px-3 py-4 text-gray-400">Loading kits...</td></tr>
+                    ) : kits.length === 0 ? (
+                      <tr><td colSpan={4} className="px-3 py-4 text-gray-400">No eligible kits</td></tr>
+                    ) : (
+                      kits.map(kit => (
+                        <tr key={kit.id} className="text-gray-100">
+                          <td className="px-3 py-2">
+                            <input type="checkbox" checked={selected.has(kit.id)} onChange={e => toggle(kit.id, e.target.checked)} />
+                          </td>
+                          <td className="px-3 py-2 font-mono">{kit.accession_number}</td>
+                          <td className="px-3 py-2">{kit.kit_type || '-'}</td>
+                          <td className="px-3 py-2">{kit.status}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div>
+              <h3 className="text-md font-semibold text-white mb-2">Selected Kits ({selected.size})</h3>
+              <div className="bg-gray-700/30 border border-gray-600 rounded-lg p-4">
+                <p className="text-gray-300 text-sm">
+                  {selected.size} kit{selected.size !== 1 ? 's' : ''} selected for shipment across multiple studies.
+                </p>
+                <p className="text-gray-400 text-xs mt-1">
+                  Kit details will be validated when creating the shipment.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center justify-end space-x-3 p-6 border-t border-gray-700">

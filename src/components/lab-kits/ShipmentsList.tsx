@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 
 interface ShipmentsListProps {
-  studyId: string
+  studyId: string | null // null means show all studies
   refreshKey: number
   onRefresh: () => void
 }
@@ -15,6 +15,9 @@ type Shipment = {
   carrier: string
   shipped_date: string | null
   tracking_status: string | null
+  accession_number?: string | null
+  study_protocol?: string
+  study_title?: string
 }
 
 export default function ShipmentsList({ studyId, refreshKey, onRefresh }: ShipmentsListProps) {
@@ -32,7 +35,8 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh }: Shipme
           setLoading(false)
           return
         }
-        const resp = await fetch(`/api/shipments?studyId=${studyId}`, {
+        const url = studyId ? `/api/shipments?studyId=${studyId}` : '/api/shipments/all'
+        const resp = await fetch(url, {
           headers: { 'Authorization': `Bearer ${token}` }
         })
         if (!resp.ok) {
@@ -47,7 +51,7 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh }: Shipme
         setLoading(false)
       }
     }
-    if (studyId) load()
+    load() // Always load, whether studyId is provided or not
   }, [studyId, refreshKey])
 
   if (loading) {
@@ -83,6 +87,8 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh }: Shipme
             <thead className="bg-gray-700/50 text-gray-300">
               <tr>
                 <th className="text-left px-4 py-2">Airway Bill</th>
+                {!studyId && <th className="text-left px-4 py-2">Study</th>}
+                <th className="text-left px-4 py-2">Accession</th>
                 <th className="text-left px-4 py-2">Carrier</th>
                 <th className="text-left px-4 py-2">Shipped</th>
                 <th className="text-left px-4 py-2">Status</th>
@@ -92,9 +98,28 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh }: Shipme
               {shipments.map(s => (
                 <tr key={s.id} className="text-gray-100">
                   <td className="px-4 py-2 font-mono">{s.airway_bill_number}</td>
+                  {!studyId && (
+                    <td className="px-4 py-2">
+                      <div className="text-sm">
+                        <div className="font-medium">{s.study_protocol || 'Unknown'}</div>
+                        <div className="text-gray-400 text-xs truncate max-w-xs" title={s.study_title}>
+                          {s.study_title || 'Unknown Study'}
+                        </div>
+                      </div>
+                    </td>
+                  )}
+                  <td className="px-4 py-2 font-mono text-sm">{s.accession_number || '-'}</td>
                   <td className="px-4 py-2">{s.carrier}</td>
                   <td className="px-4 py-2">{s.shipped_date || '-'}</td>
-                  <td className="px-4 py-2">{s.tracking_status || '-'}</td>
+                  <td className="px-4 py-2">
+                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                      s.tracking_status === 'shipped' ? 'bg-blue-900/20 border border-blue-700 text-blue-300' :
+                      s.tracking_status === 'delivered' ? 'bg-green-900/20 border border-green-700 text-green-300' :
+                      'bg-gray-900/20 border border-gray-700 text-gray-300'
+                    }`}>
+                      {s.tracking_status || 'pending'}
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>

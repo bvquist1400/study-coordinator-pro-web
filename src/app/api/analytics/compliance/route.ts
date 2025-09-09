@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch visits' }, { status: 500 })
     }
 
-    // Get drug compliance data
+    // Get drug compliance data (legacy table)
     const { data: drugCompliance, error: drugError } = await supabase
       .from('drug_compliance')
       .select(`
@@ -145,6 +145,34 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch drug compliance' }, { status: 500 })
     }
 
+    // Get new aggregated compliance data from cycles view
+    const { data: cycleCompliance, error: cycleError } = await supabase
+      .from('v_subject_drug_compliance')
+      .select(`
+        id,
+        visit_id,
+        dispensed_count,
+        returned_count,
+        expected_taken,
+        compliance_percentage,
+        ip_last_dose_date,
+        updated_at,
+        subjects:subject_id!inner (
+          id,
+          subject_number,
+          study_id,
+          studies!inner (
+            id,
+            protocol_number,
+            study_title
+          )
+        )
+      `)
+      .in('subjects.study_id', allowedStudyIds)
+    if (cycleError) {
+      logger.error('Error fetching cycle compliance view', cycleError)
+    }
+
     // Calculate monthly trends
     const monthlyData: { [key: string]: { visitTiming: number[], drugCompliance: number[] } } = {}
     
@@ -172,9 +200,13 @@ export async function GET(request: NextRequest) {
     })
 
     // Process drug compliance
-    const drugRows = (drugCompliance || []) as any[]
+    const drugRows = [
+      ...(((drugCompliance || []) as any[]) || []),
+      ...(((cycleCompliance || []) as any[]) || [])
+    ]
     drugRows.forEach(record => {
-      const month = record.assessment_date.substring(0, 7)
+      const assess = (record as any).assessment_date || (record as any).ip_last_dose_date || ((record as any).updated_at || '').substring(0,10)
+      const month = (assess || '').substring(0, 7)
       if (monthlyData[month]) {
         const drugRecord = record as any
         const compliance = drugRecord.compliance_percentage
@@ -234,7 +266,7 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    drugCompliance?.forEach(record => {
+    drugRows.forEach(record => {
       const drugRecord = record as any
       const study = drugRecord.subjects.studies
       
@@ -298,7 +330,7 @@ export async function GET(request: NextRequest) {
     })
 
     // Drug compliance alerts (low compliance or overuse > 100%)
-    const lowDrugCompliance = drugCompliance?.filter(record => {
+    const lowDrugCompliance = drugRows.filter(record => {
       const drugRecord = record as any
       const compliance = drugRecord.compliance_percentage
       
@@ -329,7 +361,7 @@ export async function GET(request: NextRequest) {
     const withinWindowVisits = timingEligibleVisits.filter(v => (v as any).is_within_window === true).length
     const overallTimingRate = totalVisits > 0 ? Math.round((withinWindowVisits / totalVisits) * 100) : 0
 
-    const allDrugCompliance = drugCompliance?.filter(record => {
+    const allDrugCompliance = drugRows.filter(record => {
       const drugRecord = record as any
       return drugRecord.compliance_percentage !== null && drugRecord.compliance_percentage !== undefined
     }).map(record => {
@@ -351,7 +383,7 @@ export async function GET(request: NextRequest) {
         overallTimingRate,
         overallDrugRate,
         totalVisits,
-        totalDrugRecords: drugCompliance?.length || 0,
+        totalDrugRecords: drugRows.length || 0,
         activeAlerts: alerts.length
       }
     })
