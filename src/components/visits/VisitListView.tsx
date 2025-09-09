@@ -16,6 +16,8 @@ interface Visit {
   procedures_completed: string[]
   visit_schedule_id: string | null
   subject_section_id?: string | null
+  study_protocol_number?: string | null
+  study_title?: string | null
   // We'll need these to calculate window
   subjects?: {
     // anchor not used; anchor comes from subject_sections
@@ -196,7 +198,9 @@ export default function VisitListView({ studyId, onVisitClick, refreshKey }: Vis
       const matchesStatus = statusFilter === 'all' || visit.status === statusFilter
       const matchesSearch = searchTerm === '' || 
         visit.subject_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        visit.visit_name.toLowerCase().includes(searchTerm.toLowerCase())
+        visit.visit_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (visit.study_protocol_number && visit.study_protocol_number.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (visit.study_title && visit.study_title.toLowerCase().includes(searchTerm.toLowerCase()))
       return matchesStatus && matchesSearch
     })
     .sort((a, b) => {
@@ -261,6 +265,21 @@ export default function VisitListView({ studyId, onVisitClick, refreshKey }: Vis
           <table className="w-full">
             <thead className="bg-gray-700/50">
               <tr>
+                {studyId === 'all' && (
+                  <th className="px-6 py-3 text-left">
+                    <button
+                      onClick={() => handleSort('study_protocol_number')}
+                      className="flex items-center space-x-1 text-xs font-medium text-gray-300 uppercase tracking-wider hover:text-white"
+                    >
+                      <span>Study</span>
+                      {sortField === 'study_protocol_number' && (
+                        <svg className={`w-4 h-4 ${sortDirection === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
+                        </svg>
+                      )}
+                    </button>
+                  </th>
+                )}
                 <th className="px-6 py-3 text-left">
                   <button
                     onClick={() => handleSort('subject_number')}
@@ -329,6 +348,16 @@ export default function VisitListView({ studyId, onVisitClick, refreshKey }: Vis
                   className="hover:bg-gray-700/30 transition-colors cursor-pointer"
                   onClick={() => onVisitClick(visit.id)}
                 >
+                  {studyId === 'all' && (
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-300">
+                        <div className="font-medium text-white">{visit.study_protocol_number}</div>
+                        <div className="text-xs text-gray-400 truncate max-w-32" title={visit.study_title}>
+                          {visit.study_title}
+                        </div>
+                      </div>
+                    </td>
+                  )}
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-white">
                       {visit.subject_number}

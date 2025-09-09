@@ -189,12 +189,17 @@ export default function SubjectVisitTimeline({
         return
       }
 
-      // Load subject section assignments
-      const { data: assignments } = await supabase
-        .from('subject_sections')
-        .select('id, study_section_id, anchor_date, study_sections(code, name, order_index)')
-        .eq('subject_id', subjectId)
-        .order('started_at', { ascending: true })
+      // Load subject section assignments via API (avoids client RLS issues)
+      let assignments: any[] | null = null
+      try {
+        const assnRes = await fetch(`/api/subject-sections?subject_id=${subjectId}&study_id=${studyId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        if (assnRes.ok) {
+          const json = await assnRes.json()
+          assignments = json.sections || []
+        }
+      } catch {}
 
       // Build the complete timeline per section assignment
       let timeline: TimelineVisit[] = []

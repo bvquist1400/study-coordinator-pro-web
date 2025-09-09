@@ -126,20 +126,21 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
         // If a subject is preselected or first subject exists, check active subject section
         const subjId = preSelectedSubjectId || filteredSubjects[0]?.id
         if (subjId) {
-          const { data: subjSecs } = await supabase
-            .from('subject_sections')
-            .select('id, study_section_id, anchor_date, ended_at')
-            .eq('subject_id', subjId)
-            .is('ended_at', null)
-            .limit(1)
-          if (subjSecs && subjSecs.length > 0) {
-            setActiveSubjectSectionId(subjSecs[0].id)
-            const ssid = (subjSecs[0] as any).study_section_id as string
-            if (ssid) setSelectedSectionId(ssid)
-            (setActiveAnchorDate as any)?.(subjSecs[0].anchor_date || null)
-          } else {
-            setActiveSubjectSectionId(null)
-            setActiveAnchorDate(null)
+          // Fetch via API to avoid RLS
+          const assnRes = await fetch(`/api/subject-sections?subject_id=${subjId}&study_id=${targetStudyId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          })
+          if (assnRes.ok) {
+            const { sections: subjSecs } = await assnRes.json()
+            const active = (subjSecs || []).find((s: any) => s.ended_at === null) || (subjSecs || [])[subjSecs.length - 1]
+            if (active) {
+              setActiveSubjectSectionId(active.id)
+              if (active.study_section_id) setSelectedSectionId(active.study_section_id)
+              setActiveAnchorDate(active.anchor_date || null)
+            } else {
+              setActiveSubjectSectionId(null)
+              setActiveAnchorDate(null)
+            }
           }
         }
       } else {
@@ -200,20 +201,24 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
     // Load active section for this subject
     ;(async () => {
       try {
-        const { data: subjSecs } = await supabase
-          .from('subject_sections')
-          .select('id, study_section_id, anchor_date, ended_at')
-          .eq('subject_id', subjectId)
-          .is('ended_at', null)
-          .limit(1)
-        if (subjSecs && subjSecs.length > 0) {
-          setActiveSubjectSectionId(subjSecs[0].id)
-          const ssid = (subjSecs[0] as any).study_section_id as string
-          if (ssid) setSelectedSectionId(ssid)
-          setActiveAnchorDate((subjSecs[0] as any).anchor_date || null)
-        } else {
-          setActiveSubjectSectionId(null)
-          setActiveAnchorDate(null)
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
+        const targetStudyId = allowStudySelection ? currentStudyId : studyId
+        if (!token || !targetStudyId) return
+        const assnRes = await fetch(`/api/subject-sections?subject_id=${subjectId}&study_id=${targetStudyId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        if (assnRes.ok) {
+          const { sections: subjSecs } = await assnRes.json()
+          const active = (subjSecs || []).find((s: any) => s.ended_at === null) || (subjSecs || [])[subjSecs.length - 1]
+          if (active) {
+            setActiveSubjectSectionId(active.id)
+            if (active.study_section_id) setSelectedSectionId(active.study_section_id)
+            setActiveAnchorDate(active.anchor_date || null)
+          } else {
+            setActiveSubjectSectionId(null)
+            setActiveAnchorDate(null)
+          }
         }
       } catch {
         // ignore
@@ -393,7 +398,8 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
     if (!schedule) return null
     const subject = subjects.find(s => s.id === selectedSubjectId)
     if (!study || !subject) return null
-    const anchorStr = activeAnchorDate || subject.randomization_date
+    // Require section anchor to compute
+    const anchorStr = activeAnchorDate
     if (!anchorStr) return null
 
     const calc = calculateVisitDate(

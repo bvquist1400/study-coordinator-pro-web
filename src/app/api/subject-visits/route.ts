@@ -18,12 +18,16 @@ export async function GET(request: NextRequest) {
     // Accept but do not use summary param for now
     searchParams.get('summary')
     
-    if (!studyId) {
+    // If studyId is 'all', we'll fetch from all studies the user has access to
+    if (studyId !== 'all' && !studyId) {
       return NextResponse.json({ error: 'studyId parameter is required' }, { status: 400 })
     }
 
-    const membership = await verifyStudyMembership(studyId, user.id)
-    if (!membership.success) return NextResponse.json({ error: membership.error || 'Access denied' }, { status: membership.status || 403 })
+    // If not 'all', verify study membership as before
+    if (studyId && studyId !== 'all') {
+      const membership = await verifyStudyMembership(studyId, user.id)
+      if (!membership.success) return NextResponse.json({ error: membership.error || 'Access denied' }, { status: membership.status || 403 })
+    }
 
     // Build query with join to get subject information and visit schedules (order by visit_date if available)
     let query = supabase
@@ -32,10 +36,30 @@ export async function GET(request: NextRequest) {
         *,
         subjects!inner(subject_number),
         visit_schedules(visit_day, window_before_days, window_after_days),
-        subject_sections(id, anchor_date, study_section_id, study_sections(code, name))
+        subject_sections(id, anchor_date, study_section_id, study_sections(code, name)),
+        studies(protocol_number, study_title)
       `)
-      .eq('study_id', studyId)
-      .order('visit_date', { ascending: true })
+
+    // If studyId is 'all', get all studies the user has access to, otherwise filter by studyId
+    if (studyId === 'all') {
+      // Get all studies the user has access to
+      const { data: userStudies } = await supabase
+        .from('study_memberships')
+        .select('study_id')
+        .eq('user_id', user.id)
+      
+      const studyIds = (userStudies || []).map(m => m.study_id)
+      if (studyIds.length > 0) {
+        query = query.in('study_id', studyIds)
+      } else {
+        // User has no study access, return empty results
+        return NextResponse.json({ subjectVisits: [] })
+      }
+    } else {
+      query = query.eq('study_id', studyId)
+    }
+
+    query = query.order('visit_date', { ascending: true })
 
     // Filter by subject if provided
     if (subjectId) {
@@ -63,7 +87,9 @@ export async function GET(request: NextRequest) {
       ...v,
       subject_number: v.subjects.subject_number,
       visit_schedules: v.visit_schedules,
-      subject_sections: v.subject_sections || null
+      subject_sections: v.subject_sections || null,
+      study_protocol_number: v.studies?.protocol_number || null,
+      study_title: v.studies?.study_title || null
     }))
 
     return NextResponse.json({ subjectVisits })
