@@ -62,9 +62,10 @@ export function calculateVisitDate(
       daysFromBaseline = timingValue
   }
 
-  // Apply anchor day offset
-  // For Day 1 studies, add 1 day to all calculations (baseline is Day 1, not Day 0)
-  const anchorOffset = anchorDay === 1 ? 1 : 0
+  // Apply anchor day offset consistently
+  // Day 0 studies: baseline = Day 0 → offset 0
+  // Day 1 studies: baseline = Day 1 → Day 1 maps to anchor date, so offset -1
+  const anchorOffset = anchorDay === 1 ? -1 : 0
   const totalDaysFromBaseline = daysFromBaseline + anchorOffset
 
   // Calculate scheduled date

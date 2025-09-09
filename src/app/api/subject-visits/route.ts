@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
         .select('study_id')
         .eq('user_id', user.id)
       
-      const studyIds = (userStudies || []).map(m => m.study_id)
+      const studyIds = (userStudies || []).map((m: any) => m.study_id)
       if (studyIds.length > 0) {
         query = query.in('study_id', studyIds)
       } else {

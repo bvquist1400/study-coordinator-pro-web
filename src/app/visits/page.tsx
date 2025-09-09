@@ -227,7 +227,7 @@ function VisitsContent() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M8 7V3a2 2 0 012-2h4a2 2 0 012 2v4m-6 4l6 6m0-6l-6 6" />
               </svg>
               <p className="text-lg">Select a study to view visits</p>
-              <p className="text-sm mt-2">Choose a study from the dropdown above or select "All Studies" to start managing visits</p>
+              <p className="text-sm mt-2">Choose a study from the dropdown above or select &quot;All Studies&quot; to start managing visits</p>
             </div>
           </div>
         ) : (

@@ -20,7 +20,7 @@ interface Visit {
   study_title?: string | null
   // We'll need these to calculate window
   subjects?: {
-    // anchor not used; anchor comes from subject_sections
+    randomization_date?: string
   }
   subject_sections?: {
     anchor_date: string | null
@@ -48,6 +48,7 @@ export default function VisitListView({ studyId, onVisitClick, refreshKey }: Vis
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [userId, setUserId] = useState<string | null>(null)
+  const [anchorDay, setAnchorDay] = useState<number>(0)
 
   const loadVisits = useCallback(async () => {
     try {
@@ -56,16 +57,23 @@ export default function VisitListView({ studyId, onVisitClick, refreshKey }: Vis
       
       if (!token) return
 
-      const response = await fetch(`/api/subject-visits?study_id=${studyId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
+      // Fetch study anchorDay and visits in parallel
+      const [studyRes, visitsRes] = await Promise.all([
+        fetch(`/api/studies/${studyId}`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`/api/subject-visits?study_id=${studyId}`, { headers: { 'Authorization': `Bearer ${token}` } })
+      ])
 
-      if (response.ok) {
-        const data = await response.json()
+      if (studyRes.ok) {
+        const { study } = await studyRes.json()
+        if (study && typeof study.anchor_day === 'number') setAnchorDay(study.anchor_day)
+      }
+
+      if (visitsRes.ok) {
+        const data = await visitsRes.json()
         setVisits(data.subjectVisits || [])
       } else {
-        const err = await response.json().catch(() => ({}))
-        console.error('Failed loading visits:', response.status, err)
+        const err = await visitsRes.json().catch(() => ({}))
+        console.error('Failed loading visits:', visitsRes.status, err)
         setVisits([])
       }
     } catch (e) {
@@ -158,15 +166,14 @@ export default function VisitListView({ studyId, onVisitClick, refreshKey }: Vis
       // Prefer section anchor_date if present; else randomization_date
       let anchorDateStr: string | null = null
       if (visit.subject_sections?.anchor_date) anchorDateStr = visit.subject_sections.anchor_date
-      else if (visit.subjects?.randomization_date) anchorDateStr = visit.subjects.randomization_date
-
       if (!anchorDateStr) {
         return '-'
       }
 
       const anchorDate = parseDateUTC(anchorDateStr) || new Date(anchorDateStr)
       const targetDate = new Date(anchorDate)
-      targetDate.setDate(anchorDate.getDate() + visit.visit_schedules.visit_day)
+      const dayOffset = visit.visit_schedules.visit_day - (anchorDay === 1 ? 1 : 0)
+      targetDate.setDate(anchorDate.getDate() + dayOffset)
 
       // Calculate window
       const windowBefore = visit.visit_schedules.window_before_days || 7
@@ -237,7 +244,7 @@ export default function VisitListView({ studyId, onVisitClick, refreshKey }: Vis
           <div className="flex-1">
             <input
               type="text"
-              placeholder="Search by subject number or visit name..."
+              placeholder={studyId === 'all' ? "Search by study, subject number, or visit name..." : "Search by subject number or visit name..."}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full px-3 py-2 bg-gray-700/50 border border-gray-600 text-gray-100 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
@@ -352,7 +359,7 @@ export default function VisitListView({ studyId, onVisitClick, refreshKey }: Vis
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-300">
                         <div className="font-medium text-white">{visit.study_protocol_number}</div>
-                        <div className="text-xs text-gray-400 truncate max-w-32" title={visit.study_title}>
+                        <div className="text-xs text-gray-400 truncate max-w-32" title={visit.study_title || undefined}>
                           {visit.study_title}
                         </div>
                       </div>

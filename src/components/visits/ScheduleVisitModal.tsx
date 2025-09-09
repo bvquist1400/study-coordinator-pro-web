@@ -242,9 +242,10 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
       // Auto-calculate visit date based on subject's anchor date
       const subject = subjects.find(s => s.id === selectedSubjectId)
       
-      if (subject?.randomization_date && schedule) {
+      const anchorStr = activeAnchorDate // require section anchor
+      if (anchorStr && schedule) {
         const calc = calculateVisitDate(
-          new Date(subject.randomization_date),
+          new Date(anchorStr),
           schedule.visit_day,
           'days',
           study.anchor_day,
