@@ -67,13 +67,35 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
   useEffect(() => {
     const loadSectionsAndSchedule = async () => {
       try {
-        const { data, error } = await supabase
-          .from('study_sections')
-          .select('*')
-          .eq('study_id', study.id)
-          .order('order_index', { ascending: true })
-        if (error) throw error
-        const list = (data || []) as StudySection[]
+        const { data: sessionData } = await supabase.auth.getSession()
+        const token = sessionData?.session?.access_token
+        let list: StudySection[] = []
+        if (token) {
+          try {
+            const resp = await fetch(`/api/study-sections?study_id=${study.id}`, {
+              headers: { Authorization: `Bearer ${token}` }
+            })
+            if (resp.ok) {
+              const json = await resp.json()
+              list = (json?.sections || []) as StudySection[]
+            }
+          } catch (apiErr) {
+            console.warn('API error loading sections, falling back to direct DB:', apiErr)
+          }
+        }
+
+        if (list.length === 0) {
+          // Fallback to direct DB (may be blocked by RLS)
+          const { data, error } = await supabase
+            .from('study_sections')
+            .select('*')
+            .eq('study_id', study.id)
+            .order('order_index', { ascending: true })
+          if (!error && data) {
+            list = data as StudySection[]
+          }
+        }
+
         setSections(list)
         const initial = list[0]?.id || null
         setSelectedSectionId(initial)
@@ -121,14 +143,13 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
           .from('visit_schedules')
           .select('*')
           .eq('study_id', study.id)
-          .order('visit_number')
+          .order('visit_day')
 
         if (sectionId) {
           q = q.eq('section_id', sectionId)
         }
 
         const { data, error } = await q
-        
         if (error) throw error
         existingSchedules = data
       }
