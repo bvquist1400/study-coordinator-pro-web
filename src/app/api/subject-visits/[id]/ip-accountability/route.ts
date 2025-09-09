@@ -151,8 +151,8 @@ export async function PUT(
 
         // Simple roll-up into cycle totals
         if ((a.type === 'return') || delta > 0) {
-          const { error: updErr } = await supabase
-            .from('subject_drug_cycles')
+          const { error: updErr } = await (supabase
+            .from('subject_drug_cycles') as any)
             .update({
               tablets_returned: ((existing as any)?.tablets_returned || 0) + delta,
               last_dose_date: eventDate
@@ -160,8 +160,8 @@ export async function PUT(
             .eq('id', cycleId)
           if (updErr) logger.warn?.('Cycle roll-up (return) failed', updErr as any)
         } else if (a.type === 'dispense') {
-          const { error: updErr } = await supabase
-            .from('subject_drug_cycles')
+          const { error: updErr } = await (supabase
+            .from('subject_drug_cycles') as any)
             .update({ tablets_dispensed: ((existing as any)?.tablets_dispensed || 0) + Math.abs(delta) } as any)
             .eq('id', cycleId)
           if (updErr) logger.warn?.('Cycle roll-up (dispense) failed', updErr as any)
