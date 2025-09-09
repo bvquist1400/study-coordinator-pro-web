@@ -32,7 +32,7 @@ export default function VisitSummaryCards({ studyId, refreshKey }: VisitSummaryC
       
       if (!token) return
 
-      const response = await fetch(`/api/subject-visits?study_id=${studyId}&summary=true`, {
+      const response = await fetch(`/api/subject-visits?studyId=${studyId}&summary=true`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
 

@@ -57,7 +57,7 @@ export default function VisitListView({ studyId, onVisitClick, refreshKey }: Vis
       
       if (!token) return
 
-      const visitsRes = await fetch(`/api/subject-visits?study_id=${studyId}`, { headers: { 'Authorization': `Bearer ${token}` } })
+      const visitsRes = await fetch(`/api/subject-visits?studyId=${studyId}`, { headers: { 'Authorization': `Bearer ${token}` } })
       if (visitsRes.ok) {
         const data = await visitsRes.json()
         setVisits(data.subjectVisits || [])

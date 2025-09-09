@@ -126,6 +126,37 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
   const [activeTab, setActiveTab] = useState<'timeline' | 'drug-compliance' | 'notes'>('timeline')
   const [showEditForm, setShowEditForm] = useState(false)
 
+  const handleDeleteSubject = useCallback(async () => {
+    if (!subject) return
+    const confirm = window.confirm(`Delete subject ${subject.subject_number}? This will remove related data via cascade. This action cannot be undone.`)
+    if (!confirm) return
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) {
+        alert('Authentication error. Please refresh and try again.')
+        return
+      }
+      const resp = await fetch(`/api/subjects/${subject.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      const json = await resp.json()
+      if (!resp.ok) {
+        console.error('Delete failed:', json)
+        alert(json.error || 'Failed to delete subject')
+        return
+      }
+      alert('Subject deleted successfully')
+      // Close modal and notify parent to refresh
+      onClose()
+      if (onSubjectUpdated) onSubjectUpdated()
+    } catch (e) {
+      console.error('Error deleting subject', e)
+      alert('Failed to delete subject')
+    }
+  }, [subject, onClose, onSubjectUpdated])
+
   const loadSubjectDetail = useCallback(async () => {
     try {
       setLoading(true)
@@ -290,6 +321,16 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
                 </svg>
                 <span>Edit Subject</span>
               </button>
+              <button
+                onClick={handleDeleteSubject}
+                className="flex items-center space-x-2 px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded-lg font-medium transition-colors"
+                title="Delete subject and related records"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m2 0H7m3-3h4a2 2 0 012 2v1H7V6a2 2 0 012-2z" />
+                </svg>
+                <span>Delete</span>
+              </button>
               
               {metrics && !loading && (
                 <div className="flex space-x-6">
@@ -362,8 +403,8 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
                         <div>
                           <h4 className="text-yellow-300 font-medium">Using Enrollment Date as Anchor</h4>
                           <p className="text-yellow-200 text-sm">
-                            Subject has no randomization date. Timeline calculated from enrollment date ({formatDateUTC(subject.enrollment_date)}).
-                            Set randomization date for accurate visit scheduling.
+                            Subject has no Anchor Date set. Timeline calculated from enrollment date ({formatDateUTC(subject.enrollment_date)}).
+                            Set an Anchor Date for accurate visit scheduling.
                           </p>
                         </div>
                       </div>
@@ -815,7 +856,7 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
                       </div>
                       {subject?.randomization_date && (
                         <div>
-                          <div className="text-sm text-gray-400 mb-1">Randomization Date</div>
+                          <div className="text-sm text-gray-400 mb-1">Anchor Date</div>
                           <div className="text-white">{formatDate(subject.randomization_date)}</div>
                         </div>
                       )}

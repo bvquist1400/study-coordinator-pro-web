@@ -199,23 +199,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
     }
 
-    // Check if subject has any visits before deleting
-    const { data: visits, error: visitsError } = await supabase
-      .from('subject_visits')
-      .select('id')
-      .eq('subject_id', resolvedParams.id)
-      .limit(1)
-
-    if (visitsError) {
-      logger.error('Error checking subject visits before delete', visitsError as any)
-      return NextResponse.json({ error: 'Failed to verify subject deletion' }, { status: 500 })
-    }
-
-    if (visits && visits.length > 0) {
-      return NextResponse.json({ 
-        error: 'Cannot delete subject with existing visits. Please remove visits first.' 
-      }, { status: 409 })
-    }
+    // Perform cascaded delete (FKs handle related records)
 
     // Verify membership before delete
     const { data: subRow, error: subErr } = await supabase

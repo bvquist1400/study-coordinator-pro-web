@@ -12,6 +12,8 @@ interface VisitSchedule {
   window_before_days: number | null
   window_after_days: number | null
   procedures: string[] | null
+  // Optional: section to which this schedule belongs
+  section_id?: string | null
 }
 
 interface SubjectVisit {
@@ -28,6 +30,8 @@ interface SubjectVisit {
   return_ip_id?: string | null
   visit_not_needed?: boolean | null
   visit_schedules: VisitSchedule | null
+  // Section assignment (if any) of the actual visit
+  subject_section_id?: string | null
 }
 
 interface TimelineVisit {
@@ -52,6 +56,9 @@ interface TimelineVisit {
   compliance_percentage: number | null
   is_compliant: boolean | null
   visit_not_needed: boolean | null
+  // Section grouping/ordering
+  section_code?: string | null
+  section_order?: number | null
 }
 
 interface SubjectVisitTimelineTableProps {
@@ -111,6 +118,7 @@ export default function SubjectVisitTimelineTable({
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
   const [_editingCell, setEditingCell] = useState<{visitId: string, field: string} | null>(null)
   const [showEditModal, setShowEditModal] = useState<{visitId: string, type: 'ip' | 'note' | 'reschedule'} | null>(null)
+  const [sectionAnchors, setSectionAnchors] = useState<Array<{ id: string; study_section_id: string | null; anchor_date: string; section_code: string | null; section_order: number | null }>>([])
 
   const loadTimelineData = useCallback(async () => {
     try {
@@ -124,7 +132,7 @@ export default function SubjectVisitTimelineTable({
         return
       }
 
-      // Day 1 default: no dynamic anchor_day used
+      // Day 1 default: use provided main anchor (aka anchor_date_1) when no sections
 
       // Fetch visit schedules via API
       let schedules = null
@@ -139,6 +147,29 @@ export default function SubjectVisitTimelineTable({
         }
       } catch (apiError) {
         console.log('API error:', apiError)
+      }
+
+      // Fetch subject section assignments (to get per-section anchor dates)
+      let assignments: any[] | null = null
+      try {
+        const assnRes = await fetch(`/api/subject-sections?subject_id=${subjectId}&study_id=${studyId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        if (assnRes.ok) {
+          const json = await assnRes.json()
+          assignments = json.sections || []
+          setSectionAnchors(
+            (assignments as any[]).map(a => ({
+              id: a.id,
+              study_section_id: a.study_section_id || null,
+              anchor_date: a.anchor_date,
+              section_code: a.study_sections?.code || null,
+              section_order: a.study_sections?.order_index ?? null
+            }))
+          )
+        }
+      } catch (e) {
+        console.warn('Failed to fetch subject sections', e)
       }
 
       // Fetch actual subject visits
@@ -157,7 +188,21 @@ export default function SubjectVisitTimelineTable({
       }
 
       // Build the complete timeline
-      let timeline = buildCompleteTimeline(schedules || [], visits || [], anchorDate, anchorDay)
+      // If subject has section assignments, build per section using its anchor; otherwise fallback to main anchorDate
+      let timeline: TimelineVisit[] = []
+      if (assignments && assignments.length > 0) {
+        (assignments as any[]).forEach((assn: any) => {
+          let secSchedules = (schedules || []).filter((s: any) => (s as any).section_id === assn.study_section_id)
+          const secVisits = (visits || []).filter((v: any) => (v as any).subject_section_id === assn.id)
+          if (secSchedules.length === 0) secSchedules = (schedules || [])
+          const seg = buildCompleteTimeline(secSchedules, secVisits, assn.anchor_date)
+            .map(v => ({ ...v, section_code: assn.study_sections?.code || null, section_order: assn.study_sections?.order_index ?? null }))
+          timeline.push(...seg)
+        })
+      } else {
+        // Fallback single segment using provided anchorDate (aka anchor_date_1)
+        timeline = buildCompleteTimeline(schedules || [], visits || [], anchorDate)
+      }
 
       // Fetch drug compliance for this subject and map to visits by visit_id
       const { data: dcRows, error: dcError } = await supabase
@@ -223,6 +268,9 @@ export default function SubjectVisitTimelineTable({
         }
       }
 
+      // Final sort: by scheduled date only (oldest first)
+      timeline.sort((a, b) => new Date(a.scheduled_date).getTime() - new Date(b.scheduled_date).getTime())
+
       setTimelineVisits(timeline)
 
     } catch (error) {
@@ -262,7 +310,9 @@ export default function SubjectVisitTimelineTable({
     // Process each scheduled visit
     schedules.forEach((schedule, _index) => {
       const scheduledDate = new Date(anchorDateObj)
-      const dayOffset = (schedule.visit_day ?? 0) - 1
+      // Align SOE days so that Day 0 maps to the anchor date,
+      // Day 1 = anchor + 1, etc. (no -1 offset)
+      const dayOffset = (schedule.visit_day ?? 0)
       scheduledDate.setDate(scheduledDate.getDate() + dayOffset)
       
 
@@ -507,6 +557,8 @@ export default function SubjectVisitTimelineTable({
     )
   }
 
+  // Removed section icons for a cleaner look per request
+
   return (
     <div className="space-y-6">
       {/* Summary Stats */}
@@ -536,9 +588,9 @@ export default function SubjectVisitTimelineTable({
         </div>
       )}
 
-      {/* Excel-Style Table */}
+      {/* Single, taller Excel-Style Table with section icons */}
       <div className="bg-gray-800/30 rounded-lg overflow-hidden">
-        <div className="overflow-x-auto max-h-96">
+        <div className="overflow-x-auto max-h-[80vh]">
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10">
               <tr className="bg-gray-700 border-b border-gray-600 shadow-sm">
@@ -582,8 +634,15 @@ export default function SubjectVisitTimelineTable({
                       
                       {/* Visit */}
                       <td className="px-4 py-3">
-                        <div className="font-medium text-white">
-                          {visit.visit_number ? `${visit.visit_number} - ` : ''}{visit.visit_name}
+                        <div className="font-medium text-white flex items-center gap-2">
+                          <span>
+                            {visit.visit_number ? `${visit.visit_number} - ` : ''}{visit.visit_name}
+                          </span>
+                          {visit.section_code && (
+                            <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-100 border border-gray-600">
+                              {visit.section_code}
+                            </span>
+                          )}
                         </div>
                       </td>
                       

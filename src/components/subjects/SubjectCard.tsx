@@ -227,7 +227,7 @@ export default function SubjectCard({ subject, metrics, onClick, onScheduleVisit
             <span>{subject.gender === 'M' ? 'Male' : subject.gender === 'F' ? 'Female' : subject.gender}</span>
           )}
           {subject.randomization_date && (
-            <span>Randomized {formatDate(subject.randomization_date)}</span>
+            <span>Anchor Date {formatDate(subject.randomization_date)}</span>
           )}
         </div>
         

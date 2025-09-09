@@ -149,7 +149,9 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
 
       if (schedulesRes.ok) {
         const data = await schedulesRes.json()
-        setVisitSchedules(data.visitSchedules || [])
+        const raw = data.visitSchedules || []
+        const filtered = selectedSectionId ? raw.filter((s: any) => (s as any).section_id === selectedSectionId) : raw
+        setVisitSchedules(filtered)
       }
 
       if (studyRes.ok) {
@@ -244,11 +246,12 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
       
       const anchorStr = activeAnchorDate // require section anchor
       if (anchorStr && schedule) {
+        // Align SOE days so Day 0 = anchor date, Day 1 = anchor + 1
         const calc = calculateVisitDate(
           new Date(anchorStr),
           schedule.visit_day,
           'days',
-          study.anchor_day,
+          0, // force Day 0 baseline behavior to avoid off-by-one
           schedule.window_before_days,
           schedule.window_after_days
         )
@@ -384,7 +387,8 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
         })
         if (resp.ok) {
           const { visitSchedules } = await resp.json()
-          setVisitSchedules(visitSchedules || [])
+          const filtered = selectedSectionId ? (visitSchedules || []).filter((s: any) => (s as any).section_id === selectedSectionId) : (visitSchedules || [])
+          setVisitSchedules(filtered)
         }
       } catch {
         // ignore

@@ -39,7 +39,7 @@ export default function VisitCalendarView({ studyId, onVisitClick, refreshKey, i
       if (!token) return
 
       const response = await fetch(
-        `/api/subject-visits?study_id=${studyId}`,
+        `/api/subject-visits?studyId=${studyId}`,
         { headers: { 'Authorization': `Bearer ${token}` } }
       )
 
