@@ -28,13 +28,7 @@ export async function POST(request: NextRequest) {
     const membership = await verifyStudyMembership(studyId, user.id)
     if (!membership.success) return NextResponse.json({ error: membership.error || 'Access denied' }, { status: membership.status || 403 })
 
-    // Get study anchor_day for date calc
-    const { data: studyRow } = await (supabase as any)
-      .from('studies')
-      .select('anchor_day')
-      .eq('id', studyId)
-      .single()
-    const anchorDay: number = (studyRow?.anchor_day ?? 0) as number
+    // Day 1 default: no dynamic anchor_day used
 
     // Find current active subject_section
     const { data: activeSec } = await (supabase as any)
@@ -99,15 +93,13 @@ export async function POST(request: NextRequest) {
       dt.setUTCDate(dt.getUTCDate() + d)
       return dt.toISOString().slice(0, 10)
     }
-    const anchorOffset = anchorDay === 1 ? 1 : 0
-
     const toInsert = (schedules || []).map((s: any) => ({
       study_id: studyId,
       subject_id,
       subject_section_id: newSubjSec.id,
       visit_schedule_id: s.id,
       visit_name: s.visit_name,
-      visit_date: addDays((s.visit_day ?? 0) + anchorOffset),
+      visit_date: addDays((s.visit_day ?? 0) - 1),
       status: 'scheduled' as const,
       is_within_window: null,
       days_from_scheduled: null

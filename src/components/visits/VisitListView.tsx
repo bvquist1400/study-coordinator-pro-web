@@ -48,7 +48,7 @@ export default function VisitListView({ studyId, onVisitClick, refreshKey }: Vis
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [userId, setUserId] = useState<string | null>(null)
-  const [anchorDay, setAnchorDay] = useState<number>(0)
+  // Day 1 default: no dynamic anchor_day used
 
   const loadVisits = useCallback(async () => {
     try {
@@ -57,17 +57,7 @@ export default function VisitListView({ studyId, onVisitClick, refreshKey }: Vis
       
       if (!token) return
 
-      // Fetch study anchorDay and visits in parallel
-      const [studyRes, visitsRes] = await Promise.all([
-        fetch(`/api/studies/${studyId}`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`/api/subject-visits?study_id=${studyId}`, { headers: { 'Authorization': `Bearer ${token}` } })
-      ])
-
-      if (studyRes.ok) {
-        const { study } = await studyRes.json()
-        if (study && typeof study.anchor_day === 'number') setAnchorDay(study.anchor_day)
-      }
-
+      const visitsRes = await fetch(`/api/subject-visits?study_id=${studyId}`, { headers: { 'Authorization': `Bearer ${token}` } })
       if (visitsRes.ok) {
         const data = await visitsRes.json()
         setVisits(data.subjectVisits || [])
@@ -172,7 +162,7 @@ export default function VisitListView({ studyId, onVisitClick, refreshKey }: Vis
 
       const anchorDate = parseDateUTC(anchorDateStr) || new Date(anchorDateStr)
       const targetDate = new Date(anchorDate)
-      const dayOffset = visit.visit_schedules.visit_day - (anchorDay === 1 ? 1 : 0)
+      const dayOffset = (visit.visit_schedules.visit_day ?? 0) - 1
       targetDate.setDate(anchorDate.getDate() + dayOffset)
 
       // Calculate window

@@ -167,7 +167,7 @@ export async function PUT(
           let windowBefore = 7
           let windowAfter = 7
 
-          // Schedule windows and day offset
+          // Schedule windows and day offset (Day 1 default)
           const vi: any = visitInfo
           if (vi.visit_schedule_id) {
             const { data: vs } = await supabase
@@ -180,19 +180,29 @@ export async function PUT(
               windowBefore = vsAny.window_before_days ?? windowBefore
               windowAfter = vsAny.window_after_days ?? windowAfter
 
-              // Subject anchor date (use randomization_date as anchor) and study anchor_day (0 or 1)
-              const [{ data: subjectRow }, { data: studyRow }] = await Promise.all([
-                supabase.from('subjects').select('randomization_date').eq('id', vi.subject_id).single(),
-                supabase.from('studies').select('anchor_day').eq('id', vi.study_id).single(),
-              ])
-              const subj: any = subjectRow
-              const stAny: any = studyRow
-              if (subj?.randomization_date) {
-                const anchor = new Date(subj.randomization_date)
-                const anchorOffset = (stAny?.anchor_day ?? 0) === 1 ? 1 : 0
+              // Subject anchor date: prefer the visit's subject_section anchor; else active assignment
+              let anchorStr: string | null = null
+              if (vi.subject_section_id) {
+                const { data: assn } = await supabase
+                  .from('subject_sections')
+                  .select('anchor_date')
+                  .eq('id', vi.subject_section_id)
+                  .single()
+                anchorStr = (assn as any)?.anchor_date || null
+              } else {
+                const { data: assn } = await supabase
+                  .from('subject_sections')
+                  .select('anchor_date')
+                  .eq('subject_id', vi.subject_id)
+                  .is('ended_at', null)
+                  .maybeSingle()
+                anchorStr = (assn as any)?.anchor_date || null
+              }
+
+              if (anchorStr) {
+                const anchor = new Date(anchorStr)
                 const t = new Date(anchor)
-                // For Day 1 studies, Day 1 = anchor date; subtract 1 from visit_day when anchor_day=1
-                const dayOffset = (vsAny.visit_day ?? 0) - anchorOffset
+                const dayOffset = (vsAny.visit_day ?? 0) - 1
                 t.setDate(t.getDate() + dayOffset)
                 targetDate = t
               }

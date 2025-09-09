@@ -126,16 +126,7 @@ export default function SubjectVisitTimeline({
       console.warn('🔍 Can access visit_schedules table?', allSchedulesError ? 'NO' : 'YES')
       console.warn('🔍 Sample schedules in DB:', allSchedules)
       
-      // Load study anchor day for correct Day 0/Day 1 offsets
-      let anchorDay = 0
-      try {
-        const { data: studyRow } = await supabase
-          .from('studies')
-          .select('anchor_day')
-          .eq('id', studyId)
-          .single()
-        anchorDay = (studyRow as any)?.anchor_day ?? 0
-      } catch {}
+      // Day 1 default: anchor date is Day 1; no dynamic anchor_day used
 
       // Try API route first (might bypass RLS issues)
       let schedules = null
@@ -201,19 +192,19 @@ export default function SubjectVisitTimeline({
         }
       } catch {}
 
-      // Build the complete timeline per section assignment
+      // Build the complete timeline per section assignment (Day 1 default)
       let timeline: TimelineVisit[] = []
       if (assignments && assignments.length > 0) {
         assignments.forEach((assn: any) => {
           const secSchedules = (schedules || []).filter((s: any) => (s as any).section_id === assn.study_section_id)
           const secVisits = (visits || []).filter((v: any) => (v as any).subject_section_id === assn.id)
-          const seg = buildCompleteTimeline(secSchedules, secVisits, assn.anchor_date, anchorDay)
+          const seg = buildCompleteTimeline(secSchedules, secVisits, assn.anchor_date)
             .map(v => ({ ...v, section_code: assn.study_sections?.code || null }))
           timeline.push(...seg)
         })
       } else {
         // Fallback: single segment using provided enrollmentDate
-        timeline = buildCompleteTimeline(schedules || [], visits || [], enrollmentDate, anchorDay)
+        timeline = buildCompleteTimeline(schedules || [], visits || [], enrollmentDate)
       }
       // If no schedules but we have visits, show them anyway
       if ((!schedules || schedules.length === 0) && visits && visits.length > 0) {
@@ -252,8 +243,7 @@ export default function SubjectVisitTimeline({
   const buildCompleteTimeline = (
     schedules: VisitSchedule[], 
     visits: SubjectVisit[], 
-    anchorDate: string,
-    anchorDay: number = 0
+    anchorDate: string
   ): TimelineVisit[] => {
     const timeline: TimelineVisit[] = []
     const anchorDateObj = parseDateUTC(anchorDate) || new Date(anchorDate)
@@ -271,7 +261,7 @@ export default function SubjectVisitTimeline({
     // Process each scheduled visit
     schedules.forEach(schedule => {
       const scheduledDate = new Date(anchorDateObj)
-      const dayOffset = schedule.visit_day - (anchorDay === 1 ? 1 : 0)
+      const dayOffset = (schedule.visit_day ?? 0) - 1
       scheduledDate.setDate(scheduledDate.getDate() + dayOffset)
 
       // Calculate window dates
