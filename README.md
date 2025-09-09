@@ -61,6 +61,15 @@ Key App Areas
 - Lib: `src/lib/**` (`supabase` clients, date utils, logger with redaction)
 - Components/Pages: `src/app/**`, `src/components/**`
 
+Sections (Multi‑part Studies)
+
+- SOE is section-aware. In the SOE builder, use the Section dropdown to switch and maintain separate visit templates per section.
+- Create sections when adding a study (Enable Sections) or later in Study Settings → Sections block.
+- Subject transitions: use the Transition action on a subject to close current section, set a new anchor date, and generate the next section’s visits.
+- Endpoints:
+  - `GET/POST /api/study-sections`, `PUT/DELETE /api/study-sections/[id]`
+  - `POST /api/subject-sections/transition`
+
 Auth
 
 - Server routes use a Supabase Admin client and verify either:
@@ -72,6 +81,7 @@ IP Accountability
 - Endpoints under:
   - `src/app/api/subject-visits/[id]/ip-accountability/route.ts`
   - Data model: `drug_compliance`, fields on `subject_visits`
+- Multi-drug MVP supported: record multiple bottles per visit (by `ip_id`), compute per-bottle compliance; see `docs/multi-drug-mvp.md`.
 
 Deployment
 

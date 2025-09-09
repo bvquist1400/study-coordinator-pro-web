@@ -36,6 +36,11 @@ Examples:
 - Dosing logic: `calculate_expected_taken()` prefers section‑level `dosing_frequency`; falls back to study‑level.
 - Enabling: by default a study has a single section (S1). Additional sections are added when creating the study if needed.
 - UI: the SOE builder shows a section dropdown (ordered by `order_index`, labeled `code — name`) when a study has more than one section.
+- API endpoints:
+  - `GET/POST /api/study-sections`, `PUT/DELETE /api/study-sections/[id]`
+  - `GET /api/visit-schedules?study_id=...&section_id=...`
+  - `POST /api/visit-schedules` accepts `section_id` per row
+  - `POST /api/subject-sections/transition` (close current, generate next section visits)
 
 ## Auth and RLS
 - All API routes must call `authenticateUser(request)`.
