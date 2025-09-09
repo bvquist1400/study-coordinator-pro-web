@@ -83,6 +83,7 @@ export default function SubjectList({ studyId, onSubjectClick, onScheduleVisit, 
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [transitionSubjectId, setTransitionSubjectId] = useState<string | null>(null)
+  const [sectionsCount, setSectionsCount] = useState(0)
 
   const loadSubjects = useCallback(async () => {
     try {
@@ -143,6 +144,26 @@ export default function SubjectList({ studyId, onSubjectClick, onScheduleVisit, 
       loadSubjects()
     }
   }, [studyId, refreshKey, loadSubjects])
+
+  // Load sections count to control visibility of Transition action
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
+        if (!token) return setSectionsCount(0)
+        const resp = await fetch(`/api/study-sections?study_id=${studyId}`, { headers: { Authorization: `Bearer ${token}` } })
+        if (resp.ok) {
+          const { sections } = await resp.json()
+          setSectionsCount((sections || []).length || 0)
+        } else {
+          setSectionsCount(0)
+        }
+      } catch {
+        setSectionsCount(0)
+      }
+    })()
+  }, [studyId])
 
 
   const filteredSubjects = subjects.filter(subject => {
@@ -242,7 +263,7 @@ export default function SubjectList({ studyId, onSubjectClick, onScheduleVisit, 
               }}
               onClick={() => onSubjectClick(subject.id)}
               onScheduleVisit={onScheduleVisit}
-              onTransition={() => setTransitionSubjectId(subject.id)}
+              onTransition={sectionsCount > 1 ? () => setTransitionSubjectId(subject.id) : undefined}
             />
           ))}
         </div>

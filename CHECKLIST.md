@@ -6,9 +6,17 @@ Last updated: 2025-09-06
 - Scope: Consolidates items from `claude_checklist.md`, `codex_ENGINEERING_CHECKLIST.md`, `INSTRUCTIONS.md` (IP plan), and `IP_ACCOUNTABILITY_SYSTEM.md`.
 - Goal: Single, prioritized checklist with what’s done vs pending. Originals removed.
 
-## Upcoming: Multi-Arm Support
-- Plan document: `docs/multi-arm-timelines-plan.md`
-- Scope: multi-phase/arm timelines with arm-specific anchors; subject transitions that cancel/regenerate future visits per policy; arm-aware dosing and reporting.
+## Sections (Multi‑part Studies) — Implemented
+- Docs: `docs/sections-quickstart.md`
+- Schema: `study_sections`, `subject_sections`; `section_id` on `visit_schedules`; `subject_section_id` on `subject_visits`.
+- API: `GET/POST /api/study-sections`, `PUT/DELETE /api/study-sections/[id]`; `GET/POST /api/visit-schedules` (section-aware); `POST /api/subject-sections/transition`.
+- UI: SOE builder section dropdown + add; Study Settings → Sections management; Subject transition modal.
+- Dosing: `calculate_expected_taken()` prefers section dosing frequency.
+- Guardrails: hide/disable transition when study has a single section.
+
+## Upcoming: Multi-Arm Support (superset)
+- Plan: `docs/multi-arm-timelines-plan.md`
+- Scope: arm templates, per-arm anchors, transitions, and reporting (maps cleanly to Sections).
 
 
 ## Quick Start
@@ -46,6 +54,7 @@ Last updated: 2025-09-06
 - [ ] Enable multi-drug (MVP)
   - Do: Always show multi-bottle IP section in visit modal; use existing batch RPC to record multiple bottles per visit; set study dosing to BID for your test study.
   - Docs: `docs/multi-drug-mvp.md`
+  - Status: MVP supported; section-level dosing override now respected.
 - [ ] Standardize error handling (no alert/console only)
   - Files: `src/app/members/page.tsx`, `src/app/visits/page.tsx`, others noted below
   - Do: Centralized error state + toast; consistent `NextResponse.json({ error }, { status })`.
@@ -136,6 +145,7 @@ Note: Re-validated via file presence and references; spot-checks confirmed usage
 - [ ] Dev sanity pass (auth flow + key screens)
 - [ ] No secrets in code/logs; logs redacted
 - [ ] Migrations idempotent; structure parity maintained
+ - [ ] SOE builder shows section dropdown only when >1 section; Subject card shows Transition only when >1 section in study
 
 ## Notes
 - Schema “source of truth” is in `supabase_database_structure/`. Keep migrations in sync.
