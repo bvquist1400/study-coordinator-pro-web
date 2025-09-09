@@ -18,10 +18,12 @@ interface Visit {
   subject_section_id?: string | null
   // We'll need these to calculate window
   subjects?: {
-    randomization_date: string | null
+    // anchor not used; anchor comes from subject_sections
   }
   subject_sections?: {
     anchor_date: string | null
+    study_section_id?: string | null
+    study_sections?: { code?: string | null; name?: string | null } | null
   } | null
   visit_schedules?: {
     visit_day: number
@@ -333,8 +335,13 @@ export default function VisitListView({ studyId, onVisitClick, refreshKey }: Vis
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="text-sm text-gray-300">
-                      {visit.visit_name}
+                    <div className="text-sm text-gray-300 flex items-center gap-2">
+                      <span>{visit.visit_name}</span>
+                      {visit.subject_sections?.study_sections?.code && (
+                        <span className="px-2 py-0.5 rounded-full text-xs bg-gray-700 border border-gray-600 text-gray-200">
+                          {visit.subject_sections.study_sections.code}
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">

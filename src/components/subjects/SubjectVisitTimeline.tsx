@@ -40,6 +40,7 @@ interface TimelineVisit {
   notes: string | null
   is_overdue: boolean
   is_within_window: boolean
+  section_code?: string | null
 }
 
 interface SubjectVisitTimelineProps {
@@ -188,8 +189,27 @@ export default function SubjectVisitTimeline({
         return
       }
 
-      // Build the complete timeline
-      const timeline = buildCompleteTimeline(schedules || [], visits || [], enrollmentDate, anchorDay)
+      // Load subject section assignments
+      const { data: assignments } = await supabase
+        .from('subject_sections')
+        .select('id, study_section_id, anchor_date, study_sections(code, name, order_index)')
+        .eq('subject_id', subjectId)
+        .order('started_at', { ascending: true })
+
+      // Build the complete timeline per section assignment
+      let timeline: TimelineVisit[] = []
+      if (assignments && assignments.length > 0) {
+        assignments.forEach((assn: any) => {
+          const secSchedules = (schedules || []).filter((s: any) => (s as any).section_id === assn.study_section_id)
+          const secVisits = (visits || []).filter((v: any) => (v as any).subject_section_id === assn.id)
+          const seg = buildCompleteTimeline(secSchedules, secVisits, assn.anchor_date, anchorDay)
+            .map(v => ({ ...v, section_code: assn.study_sections?.code || null }))
+          timeline.push(...seg)
+        })
+      } else {
+        // Fallback: single segment using provided enrollmentDate
+        timeline = buildCompleteTimeline(schedules || [], visits || [], enrollmentDate, anchorDay)
+      }
       // If no schedules but we have visits, show them anyway
       if ((!schedules || schedules.length === 0) && visits && visits.length > 0) {
         const visitTimeline = visits.map((visit, _index) => ({
@@ -452,6 +472,11 @@ export default function SubjectVisitTimeline({
                           <span className={`px-2 py-1 text-xs font-medium rounded-full text-white ${getStatusBadgeColor(visit)}`}>
                             {getStatusLabel(visit)}
                           </span>
+                          {visit.section_code && (
+                            <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-700 text-gray-100 border border-gray-600">
+                              {visit.section_code}
+                            </span>
+                          )}
                           {!visit.is_within_window && visit.status === 'completed' && (
                             <span className="px-2 py-1 text-xs font-medium rounded-full bg-orange-600 text-white">
                               OUT OF WINDOW

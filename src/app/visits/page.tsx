@@ -173,6 +173,7 @@ function VisitsContent() {
               disabled={studies.length === 0}
             >
               <option value="">Select Study...</option>
+              <option value="all">All Studies</option>
               {studies.map((study) => (
                 <option key={study.id} value={study.id}>
                   {study.protocol_number} - {study.study_title}
