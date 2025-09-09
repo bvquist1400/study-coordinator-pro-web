@@ -58,8 +58,8 @@ export async function GET(request: NextRequest) {
     try {
       const today = new Date(); today.setUTCHours(0,0,0,0)
       const todayISO = today.toISOString().slice(0,10)
-      await supabase
-        .from('lab_kits')
+      await (supabase
+        .from('lab_kits') as any)
         .update({ status: 'expired' } as any)
         .lt('expiration_date', todayISO)
         .in('status', ['available','assigned','used','pending_shipment'])
@@ -132,4 +132,3 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-
