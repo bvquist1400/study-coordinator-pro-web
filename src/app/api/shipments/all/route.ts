@@ -22,17 +22,23 @@ export async function GET(request: NextRequest) {
       const rows = (memberships || []) as StudyMemberRow[]
       studyIds = rows.map(r => r.study_id)
     } catch (_e) {
-      // study_members missing; derive from sites
+      // ignore - fall back below
+    }
+
+    if (!studyIds || studyIds.length === 0) {
+      // Fallback: derive from site membership
       const { data: siteMembers } = await supabase
         .from('site_members')
         .select('site_id')
         .eq('user_id', user.id)
       const siteIds = ((siteMembers || []) as Array<{ site_id: string | null }>).map(r => r.site_id).filter((v): v is string => !!v)
-      const { data: siteStudies } = await supabase
-        .from('studies')
-        .select('id')
-        .in('site_id', siteIds)
-      studyIds = ((siteStudies || []) as Array<{ id: string }>).map(r => r.id)
+      if (siteIds.length > 0) {
+        const { data: siteStudies } = await supabase
+          .from('studies')
+          .select('id')
+          .in('site_id', siteIds)
+        studyIds = ((siteStudies || []) as Array<{ id: string }>).map(r => r.id)
+      }
     }
 
     if (studyIds.length === 0) return NextResponse.json({ shipments: [] })
@@ -114,4 +120,3 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

@@ -182,6 +182,7 @@ export async function POST(request: NextRequest) {
     // Insert shipments
     const rowsFromIds = kitIds.map((id: string) => ({
       lab_kit_id: id,
+      accession_number: null,
       airway_bill_number: String(airwayBillNumber).trim(),
       carrier,
       shipped_date: shippedDate || null,
@@ -191,6 +192,7 @@ export async function POST(request: NextRequest) {
       const k = kitsByAcc.get(acc)
       return {
         lab_kit_id: (k?.id as string),
+        accession_number: acc,
         airway_bill_number: String(airwayBillNumber).trim(),
         carrier,
         shipped_date: shippedDate || null,
@@ -202,7 +204,7 @@ export async function POST(request: NextRequest) {
       .from('lab_kit_shipments')
       // @ts-expect-error dynamic insert array
       .insert(rows)
-      .select('id, lab_kit_id, airway_bill_number, carrier, shipped_date, tracking_status')
+      .select('id, lab_kit_id, accession_number, airway_bill_number, carrier, shipped_date, tracking_status')
     if (insErr) {
       logger.error('Insert shipments error', insErr as any)
       return NextResponse.json({ error: 'Failed to create shipments', detail: (insErr as any).message || String(insErr) }, { status: 500 })
@@ -223,7 +225,7 @@ export async function POST(request: NextRequest) {
     // Link to visits by accession number and set visit shipped date
     const shipDateToSet = shippedDate || new Date().toISOString().slice(0,10)
     for (const s of inserted || []) {
-      const acc = (kitsByAcc as any).get((s as any).lab_kit_id)?.accession_number
+      const acc = (s as any).accession_number || (kitsByAcc as any).get((s as any).lab_kit_id)?.accession_number
       if (!acc) continue
       const { data: visit } = await supabase
         .from('subject_visits')
