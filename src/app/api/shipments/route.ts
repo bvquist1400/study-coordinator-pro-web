@@ -201,7 +201,7 @@ export async function POST(request: NextRequest) {
       .select('id, lab_kit_id, accession_number, airway_bill_number, carrier, shipped_date, tracking_status')
     if (insErr) {
       logger.error('Insert shipments error', insErr as any)
-      return NextResponse.json({ error: 'Failed to create shipments' }, { status: 500 })
+      return NextResponse.json({ error: 'Failed to create shipments', detail: (insErr as any).message || String(insErr) }, { status: 500 })
     }
 
     // Update lab kits to shipped for ID-based entries
