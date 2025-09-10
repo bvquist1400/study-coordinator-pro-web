@@ -171,12 +171,17 @@ export async function POST(request: NextRequest) {
       }
       accLookup = foundByAcc || []
       for (const k of accLookup) kitsByAcc.set(k.accession_number as string, k)
+
+      // Ensure all provided accession numbers map to known lab kits for backward-compatible schema
+      const missing = accNums.filter(acc => !kitsByAcc.has(acc))
+      if (missing.length > 0) {
+        return NextResponse.json({ error: `Unknown accession numbers: ${missing.join(', ')}` }, { status: 400 })
+      }
     }
 
     // Insert shipments
     const rowsFromIds = kitIds.map((id: string) => ({
       lab_kit_id: id,
-      accession_number: null,
       airway_bill_number: String(airwayBillNumber).trim(),
       carrier,
       shipped_date: shippedDate || null,
@@ -185,8 +190,7 @@ export async function POST(request: NextRequest) {
     const rowsFromAcc = accNums.map((acc: string) => {
       const k = kitsByAcc.get(acc)
       return {
-        lab_kit_id: k ? (k.id as string) : null,
-        accession_number: acc,
+        lab_kit_id: (k?.id as string),
         airway_bill_number: String(airwayBillNumber).trim(),
         carrier,
         shipped_date: shippedDate || null,
@@ -198,7 +202,7 @@ export async function POST(request: NextRequest) {
       .from('lab_kit_shipments')
       // @ts-expect-error dynamic insert array
       .insert(rows)
-      .select('id, lab_kit_id, accession_number, airway_bill_number, carrier, shipped_date, tracking_status')
+      .select('id, lab_kit_id, airway_bill_number, carrier, shipped_date, tracking_status')
     if (insErr) {
       logger.error('Insert shipments error', insErr as any)
       return NextResponse.json({ error: 'Failed to create shipments', detail: (insErr as any).message || String(insErr) }, { status: 500 })
@@ -219,7 +223,7 @@ export async function POST(request: NextRequest) {
     // Link to visits by accession number and set visit shipped date
     const shipDateToSet = shippedDate || new Date().toISOString().slice(0,10)
     for (const s of inserted || []) {
-      const acc = (s as any).accession_number || (kitsByAcc as any).get((s as any).lab_kit_id)?.accession_number
+      const acc = (kitsByAcc as any).get((s as any).lab_kit_id)?.accession_number
       if (!acc) continue
       const { data: visit } = await supabase
         .from('subject_visits')
