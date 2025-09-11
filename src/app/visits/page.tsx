@@ -23,7 +23,7 @@ function VisitsContent() {
   const searchParams = useSearchParams()
   const initialDate = searchParams?.get('date') || undefined
   const [studies, setStudies] = useState<Study[]>([])
-  const [selectedStudyId, setSelectedStudyId] = useState<string>('')
+  const [selectedStudyId, setSelectedStudyId] = useState<string>('all')
   const [userId, setUserId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     if (typeof window !== 'undefined') {
@@ -55,20 +55,18 @@ function VisitsContent() {
       if (response.ok) {
         const { studies } = await response.json()
         setStudies(studies)
-        // Prefer stored selection per user + site, else first study
+        // Prefer stored selection per user + site, else default to 'all'
         try {
           const key = `visits:selectedStudyId:${(user?.id)||'anon'}:${currentSiteId||'all'}`
           const stored = typeof window !== 'undefined' ? localStorage.getItem(key) : null
           const exists = stored && (studies || []).some((s: { id: string }) => s.id === stored)
           if (exists) {
             setSelectedStudyId(stored as string)
-          } else if (studies.length > 0 && !selectedStudyId) {
-            setSelectedStudyId(studies[0].id)
+          } else {
+            setSelectedStudyId('all')
           }
         } catch {
-          if (studies.length > 0 && !selectedStudyId) {
-            setSelectedStudyId(studies[0].id)
-          }
+          setSelectedStudyId('all')
         }
       }
     } catch (error) {
@@ -220,7 +218,7 @@ function VisitsContent() {
         </div>
 
         {/* No Study Selected State */}
-        {!selectedStudyId ? (
+        {false ? (
           <div className="text-center py-12">
             <div className="text-gray-400 mb-4">
               <svg className="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">

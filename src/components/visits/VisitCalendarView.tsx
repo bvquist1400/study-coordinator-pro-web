@@ -102,7 +102,10 @@ export default function VisitCalendarView({ studyId, onVisitClick, refreshKey, i
     const m = String(date.getMonth() + 1).padStart(2, '0')
     const d = String(date.getDate()).padStart(2, '0')
     const dateString = `${y}-${m}-${d}`
-    return visits.filter(visit => (visit.visit_date || '').slice(0, 10) === dateString)
+    // Exclude cancelled visits from calendar day cells
+    return visits.filter(
+      visit => visit.status !== 'cancelled' && (visit.visit_date || '').slice(0, 10) === dateString
+    )
   }
 
   const getStatusColor = (status: string, isWithinWindow?: boolean | null) => {

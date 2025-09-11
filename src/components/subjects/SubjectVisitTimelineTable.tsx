@@ -364,7 +364,7 @@ export default function SubjectVisitTimelineTable({
         visit_number: schedule.visit_number,
         visit_day: schedule.visit_day,
         scheduled_date: scheduledDate.toISOString(),
-        actual_date: actualVisit?.visit_date || null,
+        actual_date: actualVisit && actualVisit.status === 'completed' ? actualVisit.visit_date : null,
         status,
         window_start: windowStart.toISOString(),
         window_end: windowEnd.toISOString(),

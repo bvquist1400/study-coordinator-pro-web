@@ -61,6 +61,13 @@ Key App Areas
 - Lib: `src/lib/**` (`supabase` clients, date utils, logger with redaction)
 - Components/Pages: `src/app/**`, `src/components/**`
 
+Visits UX Highlights
+
+- All Studies: Visits page defaults to showing all accessible studies. Use the study dropdown to filter; scheduling is disabled when "All Studies" is selected.
+- Completion & Delete: Visit Details modal includes “Mark Complete” (computes timing) and “Delete Visit”.
+- Timing Rules: `is_within_window` and `days_from_scheduled` are computed only for `completed` visits. `cancelled`/`missed` visits clear timing and do not count towards timing compliance.
+- Calendar: Daily cells omit cancelled visits. Timeline shows Actual Date only for completed visits.
+
 Sections (Multi‑part Studies)
 
 - SOE is section-aware. In the SOE builder, use the Section dropdown to switch and maintain separate visit templates per section.
@@ -85,6 +92,10 @@ IP Compliance
   - Subject-level per-visit table (Drug Compliance tab): `GET /api/subjects/[id]/drug-cycles`
 - Data model: `subject_drug_cycles` (view: `v_subject_drug_compliance`). Legacy bottle-centric paths are deprecated.
 - Study Drugs: manage via Edit/Add Study UIs; APIs under `src/app/api/study-drugs/**`.
+
+Lab Kits
+
+- Status set includes `delivered`. Use the idempotent migration in `migrations/20250911_add_delivered_status_lab_kits.sql` to align environments, and ensure `supabase_database_structure/lab_kits.sql` stays in sync.
 
 Deployment
 

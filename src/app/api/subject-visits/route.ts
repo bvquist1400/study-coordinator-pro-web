@@ -42,19 +42,27 @@ export async function GET(request: NextRequest) {
 
     // If studyId is 'all', get all studies the user has access to, otherwise filter by studyId
     if (studyId === 'all') {
-      // Get all studies the user has access to
-      const { data: userStudies } = await supabase
-        .from('study_memberships')
-        .select('study_id')
+      // Get all studies the user has access to via site membership or ownership
+      const { data: siteRows } = await supabase
+        .from('site_members')
+        .select('site_id')
         .eq('user_id', user.id)
-      
-      const studyIds = (userStudies || []).map((m: any) => m.study_id)
-      if (studyIds.length > 0) {
-        query = query.in('study_id', studyIds)
-      } else {
-        // User has no study access, return empty results
-        return NextResponse.json({ subjectVisits: [] })
-      }
+
+      const siteIds = (siteRows || []).map((r: any) => r.site_id)
+
+      const { data: studiesRows } = await supabase
+        .from('studies')
+        .select('id, user_id, site_id')
+        .or(
+          [
+            `user_id.eq.${user.id}`,
+            siteIds.length > 0 ? `site_id.in.(${siteIds.join(',')})` : ''
+          ].filter(Boolean).join(',')
+        )
+
+      const studyIds = (studiesRows || []).map((s: any) => s.id)
+      if (studyIds.length === 0) return NextResponse.json({ subjectVisits: [] })
+      query = query.in('study_id', studyIds)
     } else {
       query = query.eq('study_id', studyId)
     }

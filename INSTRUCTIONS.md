@@ -26,6 +26,9 @@ Examples:
 - Function/RPC change: edit `supabase_database_structure/functions_<name>.sql`.
 - Trigger hooks: ensure trigger creation is represented either in table DDL or a dedicated function file when appropriate.
 
+Recent Schema Notes
+- Lab kits: `lab_kits.status` allows `delivered`. Migration: `migrations/20250911_add_delivered_status_lab_kits.sql` drops/recreates the check constraint idempotently. Keep `supabase_database_structure/lab_kits.sql` in parity.
+
 ## Sections (Multi‑part Studies)
 - Studies can have multiple sections (e.g., Part A Open Label, Part B Double‑Blind) with their own anchor dates and templates.
 - Tables:
@@ -51,6 +54,15 @@ Examples:
 - Route params typing: follow the project pattern (`{ params: Promise<{ id: string }> }`).
 - Error responses: `NextResponse.json({ error }, { status })`.
 - Logging: `src/lib/logger.ts`, only `console.warn/error` in client code.
+
+Visits API Contracts
+- GET `/api/subject-visits`: supports `studyId=all` to fetch all visits across studies the user owns or has site membership for. The handler expands to study IDs via `site_members` and `studies.user_id`.
+- PUT `/api/subject-visits/[id]`: when `status === 'completed'` and `visit_date` is provided, computes `days_from_scheduled` and `is_within_window` using schedule windows and section anchor. For `cancelled`/`missed`, clears timing fields.
+
+Visits UI Conventions
+- Visit Details: includes “Mark Complete” and “Delete Visit”. Completion triggers server-side timing calculation; cancelled/missed do not show timing.
+- Calendar: excludes cancelled visits from day cells.
+- Timeline: shows Actual Date only for completed visits.
 
 ## Feature Flags and Safety
 - Introduce new UI behind tabs or simple guards to avoid large build diffs.

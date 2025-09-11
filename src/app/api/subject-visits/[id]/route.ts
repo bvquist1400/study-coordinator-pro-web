@@ -149,8 +149,8 @@ export async function PUT(
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
 
-      // Calculate visit compliance if marking completed (compare to target date = anchor + visit_day)
-      let windowCalculation = {}
+      // Calculate/clear visit timing fields based on status
+      let windowCalculation: any = {}
       if (updateData.status === 'completed' && updateData.visit_date) {
         // Fetch required context: visit info, schedule, subject, and study anchor
         const { data: visitInfo } = await supabase
@@ -218,6 +218,12 @@ export async function PUT(
             days_from_scheduled: getDaysFromScheduled(actualDate, targetDate),
             is_within_window: isWithinVisitWindow(actualDate, targetDate, windowBefore, windowAfter)
           }
+        }
+      } else if (updateData.status === 'cancelled' || updateData.status === 'missed') {
+        // Ensure cancelled/missed do not retain timing flags
+        windowCalculation = {
+          days_from_scheduled: null,
+          is_within_window: null
         }
       }
 

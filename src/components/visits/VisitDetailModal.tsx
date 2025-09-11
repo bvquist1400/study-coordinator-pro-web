@@ -101,6 +101,36 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
   // Prior completed visit date suggestion for first dose date
   const [priorCompletedVisitDate, setPriorCompletedVisitDate] = useState<string | null>(null)
 
+  // Quick actions
+  const handleMarkComplete = async () => {
+    // Ensure we set status to completed and include visit_date in payload
+    setFormData(prev => ({ ...prev, status: 'completed' }))
+    await handleSave(true)
+  }
+
+  const handleDelete = async () => {
+    if (!visit) return
+    const confirmed = window.confirm('Delete this visit? This action cannot be undone.')
+    if (!confirmed) return
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('Not authenticated')
+      const resp = await fetch(`/api/subject-visits/${visit.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      })
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to delete visit')
+      }
+      onUpdate()
+      onClose()
+    } catch (e) {
+      console.error('Delete visit failed', e)
+      alert('Failed to delete visit')
+    }
+  }
+
   const loadVisit = useCallback(async () => {
     try {
       setLoading(true)
@@ -286,7 +316,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
     }
   }
 
-  const handleSave = async () => {
+  const handleSave = async (forceCompleted?: boolean) => {
     const warnings = validateForm()
     if (warnings.length > 0) {
       alert('Please fix the following issues:\n\n' + warnings.join('\n'))
@@ -312,15 +342,18 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
       }
 
       // Update visit record with summary (for backward compatibility)
+      const isCompleted = forceCompleted ? true : formData.status === 'completed'
       const firstCycle = formData.cycles[0]
       const firstReturn = formData.cycles.find(c => (c.tablets_returned || 0) > 0)
       const updatePayload = {
-        status: formData.status,
+        status: isCompleted ? 'completed' : formData.status,
         procedures_completed: formData.procedures_completed,
         accession_number: formData.accession_number || null,
         lab_kit_shipped_date: formData.lab_kit_shipped_date || null,
         local_labs_completed: formData.local_labs_completed,
         notes: formData.notes || null,
+        // Include visit_date to trigger server-side window calculation when completing
+        ...(isCompleted && visit?.visit_date ? { visit_date: visit.visit_date } : {}),
         // Legacy fields - approximate using first cycle
         ip_dispensed: firstCycle ? (firstCycle.tablets_dispensed ?? ((firstCycle.bottles || 0) * (firstCycle.tablets_per_bottle || 0))) : null,
         ip_returned: firstReturn?.tablets_returned ?? null,
@@ -466,6 +499,17 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
                 }`}>
                   {visit.status}
                 </span>
+                {visit.status === 'completed' && (
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                    visit.is_within_window === true
+                      ? 'bg-emerald-900/50 text-emerald-300 border border-emerald-600/50'
+                      : visit.is_within_window === false
+                        ? 'bg-orange-900/50 text-orange-300 border border-orange-600/50'
+                        : 'bg-gray-900/50 text-gray-300 border border-gray-600/50'
+                  }`}>
+                    {visit.is_within_window === true ? 'Within Window' : visit.is_within_window === false ? 'Outside Window' : 'Window n/a'}
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -625,12 +669,26 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
                 </button>
               </>
             ) : (
-              <button
-                onClick={() => setIsEditing(true)}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Edit Visit
-              </button>
+              <>
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Edit Visit
+                </button>
+                <button
+                  onClick={handleMarkComplete}
+                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  Mark Complete
+                </button>
+                <button
+                  onClick={handleDelete}
+                  className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  Delete Visit
+                </button>
+              </>
             )}
           </div>
         </div>
