@@ -125,7 +125,7 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'timeline' | 'drug-compliance' | 'notes'>('timeline')
   const [showEditForm, setShowEditForm] = useState(false)
-  const [perVisitCycles, setPerVisitCycles] = useState<Array<{ visit_id: string; visit_date: string; items: any[]; avg_compliance: number | null }>>([])
+  const [perVisitCycles, setPerVisitCycles] = useState<Array<{ visit_id: string; visit_date: string; visit_name: string | null; items: any[]; avg_compliance: number | null }>>([])
 
   const handleDeleteSubject = useCallback(async () => {
     if (!subject) return
