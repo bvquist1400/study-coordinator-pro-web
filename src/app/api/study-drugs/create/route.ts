@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
   const membership = await verifyStudyMembership(studyId, user.id)
   if (!membership.success) return NextResponse.json({ error: membership.error || 'Access denied' }, { status: membership.status || 403 })
   const payload = await request.json()
-  const { error } = await supabase.from('study_drugs').insert({
+  const { error } = await (supabase.from as any)('study_drugs').insert({
     study_id: studyId,
     code: payload.code,
     name: payload.name,
@@ -23,4 +23,3 @@ export async function POST(request: NextRequest) {
   if (error) return NextResponse.json({ error: 'Failed to create' }, { status: 500 })
   return NextResponse.json({ success: true })
 }
-
