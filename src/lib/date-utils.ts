@@ -89,3 +89,30 @@ export function parseDateLocal(dateStr: string | null | undefined): Date | null 
   return isNaN(local.getTime()) ? null : local
 }
 
+// Format date as MM/DD/YYYY
+export function formatDateUSShort(
+  value: string | Date | null | undefined
+): string {
+  if (!value) return ''
+  
+  // Handle date-only strings (YYYY-MM-DD) by treating them as UTC
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const d = parseDateUTC(value)
+    if (!d) return ''
+    return new Intl.DateTimeFormat('en-US', { 
+      month: '2-digit', 
+      day: '2-digit', 
+      year: 'numeric',
+      timeZone: 'UTC'
+    }).format(d)
+  }
+  
+  const d = value instanceof Date ? value : new Date(value)
+  if (isNaN(d.getTime())) return ''
+  return new Intl.DateTimeFormat('en-US', { 
+    month: '2-digit', 
+    day: '2-digit', 
+    year: 'numeric'
+  }).format(d)
+}
+

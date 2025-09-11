@@ -438,6 +438,35 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
+    // If the study has sections, auto-enroll the subject into the first section
+    try {
+      const { data: studySections, error: secErr } = await (supabase as any)
+        .from('study_sections')
+        .select('id, order_index')
+        .eq('study_id', subjectData.study_id)
+        .order('order_index', { ascending: true })
+
+      if (!secErr && studySections && studySections.length > 0) {
+        const firstSection = studySections[0]
+        const anchor = subject?.randomization_date || subject?.enrollment_date
+        // Create subject_sections row
+        const { error: subSecErr } = await (supabase as any)
+          .from('subject_sections')
+          .insert({
+            subject_id: subject!.id,
+            study_section_id: firstSection.id,
+            anchor_date: anchor,
+            started_at: new Date().toISOString(),
+          })
+        if (subSecErr) {
+          // Log but do not fail subject creation response
+          logger.warn('Failed to auto-create subject_section for new subject', subSecErr as any, { subject_id: subject?.id, study_section_id: firstSection.id })
+        }
+      }
+    } catch (e) {
+      logger.warn('Auto-enroll in first section failed', e as any)
+    }
+
     return NextResponse.json({ subject }, { status: 201 })
   } catch (error) {
     logger.error('API error in subjects POST', error as any)

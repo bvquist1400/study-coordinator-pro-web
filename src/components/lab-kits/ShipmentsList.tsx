@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import { formatDateUSShort } from '@/lib/date-utils'
 
 interface ShipmentsListProps {
   studyId: string | null // null means show all studies
@@ -23,6 +24,41 @@ type Shipment = {
 export default function ShipmentsList({ studyId, refreshKey, onRefresh }: ShipmentsListProps) {
   const [loading, setLoading] = useState(true)
   const [shipments, setShipments] = useState<Shipment[]>([])
+  const [updating, setUpdating] = useState<string | null>(null)
+
+  const handleMarkDelivered = async (shipmentId: string) => {
+    try {
+      setUpdating(shipmentId)
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) return
+
+      const resp = await fetch(`/api/shipments/${shipmentId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          tracking_status: 'delivered',
+          actual_delivery: new Date().toISOString().split('T')[0]
+        })
+      })
+
+      if (resp.ok) {
+        onRefresh() // Refresh the shipments list
+      } else {
+        const error = await resp.json().catch(() => ({ error: 'Failed to update shipment' }))
+        console.error('Failed to mark shipment as delivered:', error.error)
+        alert('Failed to mark shipment as delivered: ' + error.error)
+      }
+    } catch (error) {
+      console.error('Error updating shipment:', error)
+      alert('Failed to mark shipment as delivered')
+    } finally {
+      setUpdating(null)
+    }
+  }
 
   useEffect(() => {
     const load = async () => {
@@ -92,6 +128,7 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh }: Shipme
                 <th className="text-left px-4 py-2">Carrier</th>
                 <th className="text-left px-4 py-2">Shipped</th>
                 <th className="text-left px-4 py-2">Status</th>
+                <th className="text-left px-4 py-2">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700">
@@ -110,7 +147,7 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh }: Shipme
                   )}
                   <td className="px-4 py-2 font-mono text-sm">{s.accession_number || '-'}</td>
                   <td className="px-4 py-2">{s.carrier}</td>
-                  <td className="px-4 py-2">{s.shipped_date || '-'}</td>
+                  <td className="px-4 py-2">{s.shipped_date ? formatDateUSShort(s.shipped_date) : '-'}</td>
                   <td className="px-4 py-2">
                     <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                       s.tracking_status === 'shipped' ? 'bg-blue-900/20 border border-blue-700 text-blue-300' :
@@ -119,6 +156,27 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh }: Shipme
                     }`}>
                       {s.tracking_status || 'pending'}
                     </span>
+                  </td>
+                  <td className="px-4 py-2">
+                    {s.tracking_status === 'shipped' && (
+                      <button
+                        onClick={() => handleMarkDelivered(s.id)}
+                        disabled={updating === s.id}
+                        className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs rounded font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {updating === s.id ? (
+                          <span className="flex items-center space-x-1">
+                            <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></div>
+                            <span>Marking...</span>
+                          </span>
+                        ) : (
+                          'Mark Delivered'
+                        )}
+                      </button>
+                    )}
+                    {s.tracking_status === 'delivered' && (
+                      <span className="text-green-400 text-xs">✓ Delivered</span>
+                    )}
                   </td>
                 </tr>
               ))}

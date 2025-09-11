@@ -77,6 +77,8 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
         return `${baseClasses} bg-orange-900/50 text-orange-300 border border-orange-600`
       case 'shipped':
         return `${baseClasses} bg-yellow-900/50 text-yellow-300 border border-yellow-600`
+      case 'delivered':
+        return `${baseClasses} bg-emerald-900/50 text-emerald-300 border border-emerald-600`
       case 'expired':
         return `${baseClasses} bg-red-900/50 text-red-300 border border-red-600`
       default:
@@ -315,6 +317,7 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
             { key: 'assigned', label: 'Reserved/Assigned' },
             { key: 'used', label: 'Used' },
             { key: 'shipped', label: 'Shipped' },
+            { key: 'delivered', label: 'Delivered' },
             { key: 'expired', label: 'Expired' },
             { key: 'all', label: 'All' }
           ].map(tab => (
@@ -566,6 +569,14 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
                           className="text-red-400 hover:text-red-300 font-medium"
                         >
                           Mark Expired
+                        </button>
+                      )}
+                      {kit.status === 'shipped' && (
+                        <button
+                          onClick={() => handleStatusChange(kit.id, 'delivered')}
+                          className="text-emerald-400 hover:text-emerald-300 font-medium"
+                        >
+                          Mark Delivered
                         </button>
                       )}
                       {kit.status === 'expired' && (
@@ -1185,6 +1196,7 @@ function BulkEditModal({ selectedKits, onClose, onSave }: BulkEditModalProps) {
                   <option value="assigned">Assigned</option>
                   <option value="used">Used</option>
                   <option value="shipped">Shipped</option>
+                  <option value="delivered">Delivered</option>
                   <option value="expired">Expired</option>
                   <option value="archived">Archived</option>
                 </select>

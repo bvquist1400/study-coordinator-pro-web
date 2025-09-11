@@ -27,11 +27,14 @@ interface ScheduleVisitModalProps {
   studyId?: string // Optional - if not provided, will show study selector
   preSelectedSubjectId?: string
   allowStudySelection?: boolean // Default false for backward compatibility
+  preSelectedVisitScheduleId?: string
+  preSelectedDate?: string // YYYY-MM-DD
+  preSelectedSectionId?: string
   onClose: () => void
   onSchedule: () => void
 }
 
-export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allowStudySelection = false, onClose, onSchedule }: ScheduleVisitModalProps) {
+export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allowStudySelection = false, preSelectedVisitScheduleId, preSelectedDate, preSelectedSectionId, onClose, onSchedule }: ScheduleVisitModalProps) {
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [visitSchedules, setVisitSchedules] = useState<VisitSchedule[]>([])
   const [study, setStudy] = useState<Study | null>(null)
@@ -90,15 +93,17 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
       const secRes = await fetch(`/api/study-sections?study_id=${targetStudyId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
+      let effectiveSectionId = preSelectedSectionId || selectedSectionId
       if (secRes.ok) {
         const { sections } = await secRes.json()
         setSections(sections || [])
-        if (!selectedSectionId && sections && sections.length > 0) {
+        if (!effectiveSectionId && sections && sections.length > 0) {
+          effectiveSectionId = sections[0].id
           setSelectedSectionId(sections[0].id)
         }
       }
 
-      const sectionQuery = selectedSectionId ? `&section_id=${selectedSectionId}` : ''
+      const sectionQuery = effectiveSectionId ? `&section_id=${effectiveSectionId}` : ''
 
       // Load subjects, visit schedules, study data, and available lab kits in parallel
       const [subjectsRes, schedulesRes, studyRes, labKitsRes] = await Promise.all([
@@ -135,7 +140,10 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
             const active = (subjSecs || []).find((s: any) => s.ended_at === null) || (subjSecs || [])[subjSecs.length - 1]
             if (active) {
               setActiveSubjectSectionId(active.id)
-              if (active.study_section_id) setSelectedSectionId(active.study_section_id)
+              if (active.study_section_id) {
+                setSelectedSectionId(active.study_section_id)
+                effectiveSectionId = active.study_section_id
+              }
               setActiveAnchorDate(active.anchor_date || null)
             } else {
               setActiveSubjectSectionId(null)
@@ -150,8 +158,14 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
       if (schedulesRes.ok) {
         const data = await schedulesRes.json()
         const raw = data.visitSchedules || []
-        const filtered = selectedSectionId ? raw.filter((s: any) => (s as any).section_id === selectedSectionId) : raw
+        const filtered = effectiveSectionId ? raw.filter((s: any) => (s as any).section_id === effectiveSectionId) : raw
         setVisitSchedules(filtered)
+
+        // Preselect visit and date when provided
+        if (preSelectedVisitScheduleId) {
+          setSelectedVisitScheduleId(preSelectedVisitScheduleId)
+          if (preSelectedDate) setScheduledDate(preSelectedDate)
+        }
       }
 
       if (studyRes.ok) {

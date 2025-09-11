@@ -24,6 +24,7 @@ create table public.lab_kits (
           'used'::text,
           'pending_shipment'::text,
           'shipped'::text,
+          'delivered'::text,
           'expired'::text,
           'destroyed'::text,
           'archived'::text

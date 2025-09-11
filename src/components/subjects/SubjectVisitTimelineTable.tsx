@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, Fragment } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import ScheduleVisitModal from '@/components/visits/ScheduleVisitModal'
 import { formatDateUTC, parseDateUTC } from '@/lib/date-utils'
 
 interface VisitSchedule {
@@ -119,6 +120,8 @@ export default function SubjectVisitTimelineTable({
   const [_editingCell, setEditingCell] = useState<{visitId: string, field: string} | null>(null)
   const [showEditModal, setShowEditModal] = useState<{visitId: string, type: 'ip' | 'note' | 'reschedule'} | null>(null)
   const [sectionAnchors, setSectionAnchors] = useState<Array<{ id: string; study_section_id: string | null; anchor_date: string; section_code: string | null; section_order: number | null }>>([])
+  const [showScheduleModal, setShowScheduleModal] = useState(false)
+  const [preSchedule, setPreSchedule] = useState<{ scheduleId: string | null; date: string | null; sectionId: string | null }>({ scheduleId: null, date: null, sectionId: null })
 
   const loadTimelineData = useCallback(async () => {
     try {
@@ -317,13 +320,13 @@ export default function SubjectVisitTimelineTable({
       
 
       // Calculate window dates
-      const windowStart = schedule.window_before_days ? new Date(scheduledDate) : null
-      const windowEnd = schedule.window_after_days ? new Date(scheduledDate) : null
-      
-      if (windowStart && schedule.window_before_days) {
+      // Always compute window bounds; treat 0 as same-day bound
+      const windowStart = new Date(scheduledDate)
+      const windowEnd = new Date(scheduledDate)
+      if (typeof schedule.window_before_days === 'number' && schedule.window_before_days > 0) {
         windowStart.setDate(windowStart.getDate() - schedule.window_before_days)
       }
-      if (windowEnd && schedule.window_after_days) {
+      if (typeof schedule.window_after_days === 'number' && schedule.window_after_days > 0) {
         windowEnd.setDate(windowEnd.getDate() + schedule.window_after_days)
       }
 
@@ -339,9 +342,7 @@ export default function SubjectVisitTimelineTable({
         const visitDate = parseDateUTC(actualVisit.visit_date) || new Date(actualVisit.visit_date)
         
         // Check if within window
-        if (windowStart && windowEnd) {
-          isWithinWindow = visitDate >= windowStart && visitDate <= windowEnd
-        }
+        isWithinWindow = visitDate >= windowStart && visitDate <= windowEnd
         
         // Check if overdue
         if (actualVisit.status === 'scheduled' && visitDate < today) {
@@ -365,8 +366,8 @@ export default function SubjectVisitTimelineTable({
         scheduled_date: scheduledDate.toISOString(),
         actual_date: actualVisit?.visit_date || null,
         status,
-        window_start: windowStart?.toISOString() || null,
-        window_end: windowEnd?.toISOString() || null,
+        window_start: windowStart.toISOString(),
+        window_end: windowEnd.toISOString(),
         procedures: schedule.procedures,
         procedures_completed: actualVisit?.procedures_completed || null,
         notes: actualVisit?.notes || null,
@@ -396,6 +397,24 @@ export default function SubjectVisitTimelineTable({
       newExpanded.add(visitId)
     }
     setExpandedRows(newExpanded)
+  }
+
+  const openScheduleForVisit = (visit: TimelineVisit) => {
+    // Derive visit schedule id and section id if available
+    let scheduleId: string | null = null
+    if (visit.id.startsWith('schedule-')) {
+      scheduleId = visit.id.replace('schedule-', '')
+    }
+    let sectionId: string | null = null
+    if (visit.section_code && sectionAnchors.length > 0) {
+      const match = sectionAnchors.find(a => a.section_code === visit.section_code)
+      if (match) sectionId = match.study_section_id || match.id
+    }
+    // Format scheduled date as YYYY-MM-DD
+    const d = new Date(visit.scheduled_date)
+    const preDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+    setPreSchedule({ scheduleId, date: preDate, sectionId })
+    setShowScheduleModal(true)
   }
 
   const getStatusColor = (visit: TimelineVisit) => {
@@ -428,6 +447,9 @@ export default function SubjectVisitTimelineTable({
 
   const handleVisitNotNeededToggle = async (visitId: string, isNotNeeded: boolean) => {
     try {
+      // Optimistically update UI
+      setTimelineVisits(prev => prev.map(v => v.id === visitId ? { ...v, visit_not_needed: isNotNeeded } : v))
+
       // Check if this is a placeholder visit that needs to be created first
       if (visitId.startsWith('schedule-')) {
         if (isNotNeeded) {
@@ -455,17 +477,21 @@ export default function SubjectVisitTimelineTable({
         
         // Show user-friendly error message
         alert(`Failed to update visit status: ${error.message || 'Unknown error'}. The visit_not_needed column may not exist in the database yet.`)
+        // Revert optimistic update
+        setTimelineVisits(prev => prev.map(v => v.id === visitId ? { ...v, visit_not_needed: !isNotNeeded } : v))
         return
       }
       
       if (data) {
         console.log('Successfully updated visit_not_needed:', data)
-        // Reload the timeline data
+        // Soft refresh state from DB for accuracy, but not required
         await loadTimelineData()
       }
     } catch (error) {
       console.error('Error toggling visit not needed:', error)
       alert('Failed to update visit status. Please check the console for details.')
+      // Revert optimistic update
+      setTimelineVisits(prev => prev.map(v => v.id === visitId ? { ...v, visit_not_needed: !isNotNeeded } : v))
     }
   }
 
@@ -479,6 +505,18 @@ export default function SubjectVisitTimelineTable({
       if (!visit) {
         alert('Visit details not found')
         return
+      }
+
+      // Attempt to associate the new visit to the correct subject section
+      // Prefer matching by section_code from the timeline row
+      let subjectSectionId: string | null = null
+      if (visit.section_code && sectionAnchors && sectionAnchors.length > 0) {
+        const match = sectionAnchors.find(a => a.section_code === visit.section_code)
+        if (match) subjectSectionId = match.id
+      }
+      // Fallback: if only one assignment exists, use it
+      if (!subjectSectionId && sectionAnchors && sectionAnchors.length === 1) {
+        subjectSectionId = sectionAnchors[0].id
       }
 
       // Get current user
@@ -499,7 +537,8 @@ export default function SubjectVisitTimelineTable({
           visit_date: visit.scheduled_date.split('T')[0], // Convert to date format
           status: 'cancelled', // Use cancelled status for not-needed visits
           visit_not_needed: true,
-          study_id: studyId
+          study_id: studyId,
+          subject_section_id: subjectSectionId || undefined
         })
         .select()
 
@@ -511,7 +550,7 @@ export default function SubjectVisitTimelineTable({
 
       if (data) {
         console.log('Successfully created visit as not needed:', data)
-        // Reload the timeline data
+        // Reload the timeline data to reflect new record
         await loadTimelineData()
       }
     } catch (error) {
@@ -561,6 +600,17 @@ export default function SubjectVisitTimelineTable({
 
   return (
     <div className="space-y-6">
+      {showScheduleModal && (
+        <ScheduleVisitModal
+          studyId={studyId}
+          preSelectedSubjectId={subjectId}
+          preSelectedVisitScheduleId={preSchedule.scheduleId || undefined}
+          preSelectedDate={preSchedule.date || undefined}
+          preSelectedSectionId={preSchedule.sectionId || undefined}
+          onClose={() => setShowScheduleModal(false)}
+          onSchedule={async () => { setShowScheduleModal(false); await loadTimelineData() }}
+        />
+      )}
       {/* Summary Stats */}
       {metrics && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -694,7 +744,8 @@ export default function SubjectVisitTimelineTable({
                         <input
                           type="checkbox"
                           checked={visit.visit_not_needed || false}
-                          onChange={(e) => handleVisitNotNeededToggle(visit.id, e.target.checked)}
+                          onClick={(e) => { e.stopPropagation() }}
+                          onChange={(e) => { e.stopPropagation(); handleVisitNotNeededToggle(visit.id, e.target.checked) }}
                           className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
                           title={visit.id.startsWith('schedule-') 
                             ? "Mark as not needed - will create visit record automatically" 
@@ -720,8 +771,11 @@ export default function SubjectVisitTimelineTable({
                       {/* Actions */}
                       <td className="px-4 py-3">
                         <div className="flex space-x-1">
-                          {visit.status === 'not_scheduled' && (
-                            <button className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs transition-colors">
+                          {(!visit.visit_not_needed && (visit.status === 'not_scheduled' || visit.status === 'upcoming')) && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); openScheduleForVisit(visit) }}
+                              className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs transition-colors"
+                            >
                               Schedule
                             </button>
                           )}

@@ -83,7 +83,8 @@ export async function GET(request: NextRequest) {
       airway_bill_number: row.airway_bill_number as string,
       carrier: row.carrier as string,
       shipped_date: row.shipped_date as string | null,
-      tracking_status: row.tracking_status as string | null
+      tracking_status: row.tracking_status as string | null,
+      accession_number: row.accession_number as string | null
     }))
 
     return NextResponse.json({ shipments })
