@@ -10,6 +10,7 @@ create table public.visit_schedules (
   is_required boolean null default true,
   visit_type text null default 'regular'::text,
   procedures text[] null,
+  ip_compliance_calc_required boolean null,
   notes text null,
   created_at timestamp with time zone null default now(),
   updated_at timestamp with time zone null default now(),

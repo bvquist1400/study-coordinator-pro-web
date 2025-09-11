@@ -1,6 +1,6 @@
 # IP/Drug Compliance Redesign
 
-Status: Proposal (ready for implementation)
+Status: Implemented (cycles model)
 
 ## Context
 
@@ -21,53 +21,13 @@ Current IP accountability captures dispensing and returns in the visit details v
 - Server‑side computation of compliance using protocol dosing, avoiding client math drift.
 - Backward‑compatible reads during migration, then sunset legacy snapshots.
 
-## Proposed Architecture
+## Implemented Architecture
 
-### Option A (Recommended): Event Model
+### Chosen: Cycle Model (per visit, per drug)
 
 Record each IP action as an event; derive compliance from events.
 
-Table: `drug_events`
-
-- `id UUID PK`
-- `subject_id UUID` (FK subjects)
-- `user_id UUID` (FK auth.users)
-- `visit_id UUID NULL` (FK subject_visits)
-- `drug_id UUID` (FK study_drugs)
-- `ip_id TEXT` (bottle/kit identifier)
-- `event_type TEXT CHECK IN ('dispensed','returned')`
-- `count INTEGER` (positive integer)
-- `event_date DATE` (dispensing date or last dose date for returns)
-- `notes TEXT NULL`
-- `created_at TIMESTAMPTZ DEFAULT now()`
-
-Indexes:
-
-- `(subject_id, drug_id, ip_id, event_date)`
-- `(visit_id)`
-- `(event_type, event_date)`
-
-Derived View: `drug_compliance_view`
-
-- Groups events by subject + ip_id (and optionally by cycle) to compute:
-  - Per-drug grouping: include `drug_id` so compliance is computed separately for each drug within a study
-  - `dispensed_count = SUM(count WHERE event_type='dispensed')`
-  - `returned_count = SUM(count WHERE event_type='returned')`
-  - `actual_taken = dispensed_count - returned_count`
-  - `dispensing_date = MIN(event_date WHERE dispensed)`
-  - `ip_last_dose_date = MAX(event_date WHERE returned)`
-  - `expected_taken = days_between(dispensing_date, ip_last_dose_date) * dose_per_day`
-  - `compliance_percentage`, `is_compliant` (>= 80%, cap > 100% separately in analytics)
-
-Pros:
-
-- Append‑only audit trail; easy to handle partial returns and corrections.
-- Atomic writes; simple client payload.
-- Backfilling and recomputing compliance is straightforward.
-
-### Option B: Cycle Model (Keep single row per issue)
-
-Table: `drug_cycles` (can be a reworked `drug_compliance`)
+Table: `subject_drug_cycles`
 
 - `id UUID PK`
 - `subject_id`, `user_id`, `visit_id NULL`, `ip_id`
@@ -77,7 +37,7 @@ Table: `drug_cycles` (can be a reworked `drug_compliance`)
 - `expected_taken NUMERIC NULL`
 - `actual_taken GENERATED (dispensed_count - returned_count)`
 - `compliance_percentage GENERATED`, `is_compliant GENERATED`
-- Unique: `(subject_id, ip_id, dispensing_date)`
+- Unique per visit+drug.
 
 Pros:
 
@@ -152,7 +112,7 @@ Option A (events):
 
 Option B (cycles): adjust `drug_compliance` to allow multiple cycles per ip via `(subject_id, ip_id, dispensing_date)`; add `dose_per_day`.
 
-## Migration Plan
+## Migration Notes
 
 1) Introduce new schema alongside existing
 
@@ -162,15 +122,9 @@ Option B (cycles): adjust `drug_compliance` to allow multiple cycles per ip via 
   - Populate `drug_id` by mapping `ip_id` to a drug using a site‑provided kit map if available; if not, leave NULL and flag for manual assignment. Add a lightweight admin tool to bulk assign `drug_id` for historical bottles.
 - Option B: enforce new unique key, set `dose_per_day` from study.
 
-2) Switch writes
+2) Writes now require `cycles` array (per drug) to `/api/subject-visits/[id]/ip-accountability`. Legacy single-bottle formats removed.
 
-- Update `/api/subject-visits/[id]/ip-accountability` to call one RPC/transaction with arrays; remove per‑bottle loops.
-- Maintain legacy snapshots via trigger during the transition.
-
-3) Switch reads
-
-- UI & analytics source compliance from the new view/table.
-- Stop referencing legacy snapshot fields.
+3) Reads source from `subject_drug_cycles` (and `v_subject_drug_compliance`). Legacy bottle-centric UI removed.
 
 4) Cleanup
 

@@ -95,9 +95,11 @@ Last updated: 2025-09-06
   - Files: `src/app/page.tsx`
 
 ## IP Compliance Plan — Status
-- ✅ Atomic multi-bottle save via RPC
-  - DB: `public.save_visit_ip_batch` created (see `migrations/20250905_add_functions_ip_batch_and_expected.sql`) and used by API
-    - Evidence: `src/app/api/subject-visits/[id]/ip-accountability/route.ts` calls the RPC; tests reference it.
+- ✅ Per-drug cycles model in use
+  - Writes require `cycles` (per-drug) via `PUT /api/subject-visits/[id]/ip-accountability`; legacy single-bottle formats removed.
+  - Reads: per-visit/per-drug via `subject_drug_cycles` (view: `v_subject_drug_compliance`).
+- ✅ Atomic multi-bottle RPC (legacy path) — deprecated
+  - `public.save_visit_ip_batch` retained for compatibility; app no longer calls it.
 
 - ✅ Server-side inclusive date math function
   - DB: `public.calculate_expected_taken()` exists (inclusive days × dose_per_day).
@@ -127,7 +129,7 @@ Last updated: 2025-09-06
 - ✅ Consolidated stray migrations; README overhaul
 - ✅ Initial API integration tests (subjects) and date/time util tests; tightened lint rules
 
-Note: Re-validated via file presence and references; spot-checks confirmed usage of the new RPC in API route and test.
+Note: Re-validated via file presence and references; app now uses per-drug cycles path in API route.
 
 ## File-Specific To-Dos (Collapsed Summary)
 - Members: replace `confirm()`, standardize error handling, extract `getToken` util.
@@ -149,6 +151,7 @@ Note: Re-validated via file presence and references; spot-checks confirmed usage
 
 ## Notes
 - Schema “source of truth” is in `supabase_database_structure/`. Keep migrations in sync.
+ - Column added: `ip_compliance_calc_required` on `visit_schedules` and `subject_visits` (backfilled from SOE `procedures` when legacy flag absent). Structure files updated.
 - IP docs (“IP Accountability System Documentation”) moved into this checklist as actionable items; future enhancements tracked in backlog below.
 
 ## Developer Conventions

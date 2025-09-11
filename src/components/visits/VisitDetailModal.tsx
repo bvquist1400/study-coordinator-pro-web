@@ -98,6 +98,9 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
     local_labs_required: false
   })
 
+  // Prior completed visit date suggestion for first dose date
+  const [priorCompletedVisitDate, setPriorCompletedVisitDate] = useState<string | null>(null)
+
   const loadVisit = useCallback(async () => {
     try {
       setLoading(true)
@@ -160,6 +163,30 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
   useEffect(() => {
     loadVisit()
   }, [loadVisit])
+
+  // Load prior completed visit date to suggest for first dose
+  useEffect(() => {
+    const loadPriorCompleted = async () => {
+      if (!visit?.subject_id || !visit?.study_id || !visit?.visit_date) return
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.access_token) return
+        const url = `/api/subject-visits?studyId=${visit.study_id}&subjectId=${visit.subject_id}&endDate=${visit.visit_date}`
+        const resp = await fetch(url, { headers: { Authorization: `Bearer ${session.access_token}` } })
+        if (!resp.ok) return
+        const json = await resp.json()
+        const visits = (json.subjectVisits || []) as Array<any>
+        const currentDate = visit.visit_date.split('T')[0]
+        const prior = visits
+          .filter(v => v.status === 'completed' && v.visit_date && v.visit_date < currentDate)
+          .sort((a, b) => (a.visit_date < b.visit_date ? 1 : -1))[0]
+        setPriorCompletedVisitDate(prior?.visit_date || null)
+      } catch (e) {
+        console.error('Error loading prior visit', e)
+      }
+    }
+    loadPriorCompleted()
+  }, [visit?.subject_id, visit?.study_id, visit?.visit_date])
 
   // Load study drugs for the visit's study to populate dropdown
   useEffect(() => {
@@ -328,6 +355,8 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
       setSaving(false)
     }
   }
+
+  // No per-visit compliance table in Visit Details (moved to Subject modal)
 
   // Helper function to update lab kit status
   const updateLabKitStatus = async (accessionNumber: string, status: string, token: string) => {
@@ -502,26 +531,34 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
           {/* Multi-Bottle Drug Accountability Section (always available for multi-drug support) */}
           {(() => {
             const ipSectionRequired = Boolean(inferredRequirements.drug_dispensing_required || visit.drug_dispensing_required)
-            return (
-              <div className="bg-gray-700/30 rounded-lg p-4 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-white">Investigational Product Accountability</h3>
-                  {!ipSectionRequired && (
-                    <span className="text-xs text-gray-400">Optional for this visit</span>
-                  )}
-                </div>
-
-                {/* Aggregated per-drug entry */}
-                <PerDrugEntry
-                  cycles={formData.cycles}
-                  onChange={(cycles) => handleChange('cycles', cycles)}
-                  disabled={!isEditing}
-                  defaultStartDate={visit.visit_date?.split('T')[0] || ''}
-                  drugOptions={studyDrugs}
-                />
+          return (
+            <div className="bg-gray-700/30 rounded-lg p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-white">IP Compliance Calculation</h3>
+                {!ipSectionRequired && (
+                  <span className="text-xs text-gray-400">Optional for this visit</span>
+                )}
               </div>
-            )
+
+              {/* Brief blurb explaining the process */}
+              <p className="text-sm text-gray-300 bg-gray-800/40 border border-gray-700 rounded-md p-3">
+                Record first dose date, total dispensed, returned, and last dose taken here. This records compliance for items dispensed previously and assessed today.
+              </p>
+
+              {/* Aggregated per-drug entry */}
+              <PerDrugEntry
+                cycles={formData.cycles}
+                onChange={(cycles) => handleChange('cycles', cycles)}
+                disabled={!isEditing}
+                defaultStartDate={priorCompletedVisitDate || visit.visit_date?.split('T')[0] || ''}
+                drugOptions={studyDrugs}
+                priorCompletedVisitDate={priorCompletedVisitDate || undefined}
+              />
+            </div>
+          )
           })()}
+
+          {/* Per-visit compliance table intentionally not shown here. See Subject modal. */}
 
           {/* Local Labs */}
           {(inferredRequirements.local_labs_required || visit.local_labs_required) && (

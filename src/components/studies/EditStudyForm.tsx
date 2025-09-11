@@ -35,6 +35,21 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
   const [newSecCode, setNewSecCode] = useState('')
   const [newSecName, setNewSecName] = useState('')
   const [secError, setSecError] = useState('')
+  // Study Drugs management
+  const [drugs, setDrugs] = useState<Array<{ id: string, code: string, name: string, dosing_frequency?: string | null, dose_per_day?: number | null }>>([])
+  const [newDrug, setNewDrug] = useState<{ code?: string; name?: string; dosing_frequency?: string; dose_per_day?: number | null }>({})
+  const refreshDrugs = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) return
+      const resp = await fetch(`/api/study-drugs?studyId=${study.id}`, { headers: { Authorization: `Bearer ${token}` } })
+      if (resp.ok) {
+        const { drugs } = await resp.json()
+        setDrugs(drugs || [])
+      }
+    } catch {}
+  }
 
   useEffect(() => {
     if (study) {
@@ -73,6 +88,19 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
       } finally {
         setSecLoading(false)
       }
+    })()
+    // Load study drugs
+    ;(async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
+        if (!token) return
+        const resp = await fetch(`/api/study-drugs?studyId=${study.id}`, { headers: { Authorization: `Bearer ${token}` } })
+        if (resp.ok) {
+          const { drugs } = await resp.json()
+          setDrugs(drugs || [])
+        }
+      } catch {}
     })()
   }, [study])
 
@@ -383,6 +411,75 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
                 </div>
               </div>
             </div>
+
+            {/* Study Drugs */}
+            <div className="bg-gray-800/40 border border-gray-700 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-white font-semibold">Study Drugs</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm text-left text-gray-300">
+                  <thead className="text-xs uppercase text-gray-400">
+                    <tr>
+                      <th className="px-3 py-2">Code</th>
+                      <th className="px-3 py-2">Name</th>
+                      <th className="px-3 py-2">Dosing Freq</th>
+                      <th className="px-3 py-2">Dose/Day</th>
+                      <th className="px-3 py-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {drugs.map((d) => (
+                      <tr key={d.id} className="border-t border-gray-700/60">
+                        <td className="px-3 py-2"><input defaultValue={d.code} onBlur={async (e) => { await updateDrugReq(d.id, { code: e.target.value }); await refreshDrugs() }} className="w-full bg-gray-700/50 border border-gray-600 rounded px-2 py-1" /></td>
+                        <td className="px-3 py-2"><input defaultValue={d.name} onBlur={async (e) => { await updateDrugReq(d.id, { name: e.target.value }); await refreshDrugs() }} className="w-full bg-gray-700/50 border border-gray-600 rounded px-2 py-1" /></td>
+                        <td className="px-3 py-2">
+                          <select defaultValue={d.dosing_frequency || ''} onChange={async (e) => { await updateDrugReq(d.id, { dosing_frequency: e.target.value || null }); await refreshDrugs() }} className="w-full bg-gray-700/50 border border-gray-600 rounded px-2 py-1">
+                            <option value="">(none)</option>
+                            <option value="QD">QD</option>
+                            <option value="BID">BID</option>
+                            <option value="TID">TID</option>
+                            <option value="QID">QID</option>
+                            <option value="weekly">weekly</option>
+                            <option value="custom">custom</option>
+                          </select>
+                        </td>
+                        <td className="px-3 py-2"><input type="number" step="0.1" defaultValue={d.dose_per_day || ''} onBlur={async (e) => { await updateDrugReq(d.id, { dose_per_day: e.target.value ? Number(e.target.value) : null }); await refreshDrugs() }} className="w-full bg-gray-700/50 border border-gray-600 rounded px-2 py-1" /></td>
+                        <td className="px-3 py-2 text-right">
+                          <button type="button" className="text-red-400 hover:text-red-300" onClick={async () => { await deleteDrugReq(d.id); await refreshDrugs() }}>Delete</button>
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="border-t border-gray-700/60">
+                      <td className="px-3 py-2"><input value={newDrug.code || ''} onChange={(e) => setNewDrug({ ...newDrug, code: e.target.value })} placeholder="Code" className="w-full bg-gray-700/50 border border-gray-600 rounded px-2 py-1" /></td>
+                      <td className="px-3 py-2"><input value={newDrug.name || ''} onChange={(e) => setNewDrug({ ...newDrug, name: e.target.value })} placeholder="Name" className="w-full bg-gray-700/50 border border-gray-600 rounded px-2 py-1" /></td>
+                      <td className="px-3 py-2">
+                        <select value={newDrug.dosing_frequency || ''} onChange={(e) => setNewDrug({ ...newDrug, dosing_frequency: e.target.value || undefined })} className="w-full bg-gray-700/50 border border-gray-600 rounded px-2 py-1">
+                          <option value="">(none)</option>
+                          <option value="QD">QD</option>
+                          <option value="BID">BID</option>
+                          <option value="TID">TID</option>
+                          <option value="QID">QID</option>
+                          <option value="weekly">weekly</option>
+                          <option value="custom">custom</option>
+                        </select>
+                      </td>
+                      <td className="px-3 py-2"><input type="number" step="0.1" value={newDrug.dose_per_day as any || ''} onChange={(e) => setNewDrug({ ...newDrug, dose_per_day: e.target.value ? Number(e.target.value) : null })} placeholder="1" className="w-full bg-gray-700/50 border border-gray-600 rounded px-2 py-1" /></td>
+                      <td className="px-3 py-2 text-right">
+                        <button type="button" className="text-blue-400 hover:text-blue-300" onClick={async () => {
+                          const tokenRes = await supabase.auth.getSession();
+                          const token = tokenRes.data.session?.access_token
+                          if (!token) return
+                          await fetch(`/api/study-drugs/create?studyId=${study.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(newDrug) })
+                          setNewDrug({})
+                          await refreshDrugs()
+                        }}>Add</button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Protocol Number *</label>
@@ -490,4 +587,18 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
       </div>
     </div>
   )
+}
+
+async function updateDrugReq(id: string, patch: any) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const token = session?.access_token
+  if (!token) return
+  await fetch(`/api/study-drugs/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(patch) })
+}
+
+async function deleteDrugReq(id: string) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const token = session?.access_token
+  if (!token) return
+  await fetch(`/api/study-drugs/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
 }

@@ -331,7 +331,8 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
         const procNames: string[] = (schedule?.procedures || []) as string[]
         const lower = procNames.map(p => String(p).toLowerCase())
         labKitRequired = lower.includes('lab kit') || lower.includes('labkit')
-        drugDispensingRequired = lower.includes('medication dispensing') || lower.includes('drug dispensing')
+        // Interpret SOE row label "IP Compliance Calculation" as the flag for IP accountability UI
+        drugDispensingRequired = lower.includes('ip compliance calculation') || lower.includes('medication dispensing') || lower.includes('drug dispensing')
         localLabsRequired = lower.includes('local labs') || lower.includes('local lab')
       }
 

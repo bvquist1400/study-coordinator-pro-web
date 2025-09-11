@@ -76,12 +76,15 @@ Auth
   - Site membership via `site_members`, or
   - Legacy ownership via `studies.user_id`
 
-IP Accountability
+IP Compliance
 
-- Endpoints under:
-  - `src/app/api/subject-visits/[id]/ip-accountability/route.ts`
-  - Data model: `drug_compliance`, fields on `subject_visits`
-- Multi-drug MVP supported: record multiple bottles per visit (by `ip_id`), compute per-bottle compliance; see `docs/multi-drug-mvp.md`.
+- UI: Visit Details shows "IP Compliance Calculation" with per-drug entry (Start date, total dispensed, returned, last dose date) with a prior-visit date suggestion.
+- Writes: `PUT /api/subject-visits/[id]/ip-accountability` requires `cycles` (per-drug) and updates `subject_drug_cycles`. Legacy single-bottle formats are removed.
+- Reads:
+  - Per-visit, per-drug cycles: `GET /api/subject-visits/[id]/drug-cycles`
+  - Subject-level per-visit table (Drug Compliance tab): `GET /api/subjects/[id]/drug-cycles`
+- Data model: `subject_drug_cycles` (view: `v_subject_drug_compliance`). Legacy bottle-centric paths are deprecated.
+- Study Drugs: manage via Edit/Add Study UIs; APIs under `src/app/api/study-drugs/**`.
 
 Deployment
 
@@ -92,3 +95,4 @@ Notes
 
 - Logs redact sensitive fields by default in production. Toggle with `LOG_REDACT`.
 - Date handling prefers UTC-safe utilities to avoid off-by-one errors.
+ - SOE: label "IP Compliance Calculation" indicates compliance capture required for that visit.

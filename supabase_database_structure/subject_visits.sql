@@ -20,6 +20,7 @@ create table public.subject_visits (
   airway_bill_number text null,
   lab_kit_shipped_date date null,
   drug_dispensing_required boolean null,
+  ip_compliance_calc_required boolean null,
   ip_last_dose_date date null,
   ip_dispensed integer null,
   ip_returned integer null,

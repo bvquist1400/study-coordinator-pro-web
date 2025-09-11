@@ -72,7 +72,7 @@ interface SubjectVisitTimelineTableProps {
 const PROCEDURE_CATEGORIES = {
   'Local Labs': { color: 'bg-blue-500', icon: '🧪' },
   'Lab Kit': { color: 'bg-purple-500', icon: '🩸' },
-  'Medication Dispensing': { color: 'bg-green-500', icon: '💊' },
+  'IP Compliance Calculation': { color: 'bg-green-500', icon: '💊' },
   'Vital Signs': { color: 'bg-orange-500', icon: '🩺' },
   'Physical Exam': { color: 'bg-yellow-500', icon: '👨‍⚕️' },
   'ECG': { color: 'bg-red-500', icon: '❤️' },

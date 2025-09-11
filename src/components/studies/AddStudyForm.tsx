@@ -36,6 +36,8 @@ export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) 
   const { currentSiteId } = useSite()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [drugs, setDrugs] = useState<Array<{ code?: string; name?: string; dosing_frequency?: string; dose_per_day?: number | null }>>([])
+  const [newDrug, setNewDrug] = useState<{ code?: string; name?: string; dosing_frequency?: string; dose_per_day?: number | null }>({})
   
   const [formData, setFormData] = useState<StudyFormData>({
     protocol_number: '',
@@ -220,6 +222,24 @@ export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) 
           }
         } catch (e) {
           console.warn('Error creating initial section', e)
+        }
+      }
+      // Create study_drugs for this new study from staged list
+      if (data && data[0]?.id && drugs.length > 0) {
+        try {
+          const { data: sessionData } = await supabase.auth.getSession()
+          const token = sessionData?.session?.access_token
+          if (token) {
+            for (const d of drugs) {
+              await fetch(`/api/study-drugs/create?studyId=${data[0].id}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify(d)
+              })
+            }
+          }
+        } catch (e) {
+          console.warn('Error creating study drugs', e)
         }
       }
       onSuccess()
@@ -575,6 +595,68 @@ export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) 
                 placeholder="Additional study notes..."
                 disabled={isSubmitting}
               />
+            </div>
+
+            {/* Study Drugs (staged before creation) */}
+            <div className="bg-gray-800/40 border border-gray-700 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-white font-semibold">Study Drugs</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm text-left text-gray-300">
+                  <thead className="text-xs uppercase text-gray-400">
+                    <tr>
+                      <th className="px-3 py-2">Code</th>
+                      <th className="px-3 py-2">Name</th>
+                      <th className="px-3 py-2">Dosing Freq</th>
+                      <th className="px-3 py-2">Dose/Day</th>
+                      <th className="px-3 py-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {drugs.map((d, idx) => (
+                      <tr key={idx} className="border-t border-gray-700/60">
+                        <td className="px-3 py-2"><input value={d.code || ''} onChange={(e) => setDrugs(prev => prev.map((x, i) => i === idx ? { ...x, code: e.target.value } : x))} className="w-full bg-gray-700/50 border border-gray-600 rounded px-2 py-1" /></td>
+                        <td className="px-3 py-2"><input value={d.name || ''} onChange={(e) => setDrugs(prev => prev.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))} className="w-full bg-gray-700/50 border border-gray-600 rounded px-2 py-1" /></td>
+                        <td className="px-3 py-2">
+                          <select value={d.dosing_frequency || ''} onChange={(e) => setDrugs(prev => prev.map((x, i) => i === idx ? { ...x, dosing_frequency: e.target.value || undefined } : x))} className="w-full bg-gray-700/50 border border-gray-600 rounded px-2 py-1">
+                            <option value="">(none)</option>
+                            <option value="QD">QD</option>
+                            <option value="BID">BID</option>
+                            <option value="TID">TID</option>
+                            <option value="QID">QID</option>
+                            <option value="weekly">weekly</option>
+                            <option value="custom">custom</option>
+                          </select>
+                        </td>
+                        <td className="px-3 py-2"><input type="number" step="0.1" value={d.dose_per_day as any || ''} onChange={(e) => setDrugs(prev => prev.map((x, i) => i === idx ? { ...x, dose_per_day: e.target.value ? Number(e.target.value) : null } : x))} className="w-full bg-gray-700/50 border border-gray-600 rounded px-2 py-1" /></td>
+                        <td className="px-3 py-2 text-right">
+                          <button type="button" className="text-red-400 hover:text-red-300" onClick={() => setDrugs(prev => prev.filter((_, i) => i !== idx))}>Delete</button>
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="border-t border-gray-700/60">
+                      <td className="px-3 py-2"><input value={newDrug.code || ''} onChange={(e) => setNewDrug({ ...newDrug, code: e.target.value })} placeholder="Code" className="w-full bg-gray-700/50 border border-gray-600 rounded px-2 py-1" /></td>
+                      <td className="px-3 py-2"><input value={newDrug.name || ''} onChange={(e) => setNewDrug({ ...newDrug, name: e.target.value })} placeholder="Name" className="w-full bg-gray-700/50 border border-gray-600 rounded px-2 py-1" /></td>
+                      <td className="px-3 py-2">
+                        <select value={newDrug.dosing_frequency || ''} onChange={(e) => setNewDrug({ ...newDrug, dosing_frequency: e.target.value || undefined })} className="w-full bg-gray-700/50 border border-gray-600 rounded px-2 py-1">
+                          <option value="">(none)</option>
+                          <option value="QD">QD</option>
+                          <option value="BID">BID</option>
+                          <option value="TID">TID</option>
+                          <option value="QID">QID</option>
+                          <option value="weekly">weekly</option>
+                          <option value="custom">custom</option>
+                        </select>
+                      </td>
+                      <td className="px-3 py-2"><input type="number" step="0.1" value={newDrug.dose_per_day as any || ''} onChange={(e) => setNewDrug({ ...newDrug, dose_per_day: e.target.value ? Number(e.target.value) : null })} placeholder="1" className="w-full bg-gray-700/50 border border-gray-600 rounded px-2 py-1" /></td>
+                      <td className="px-3 py-2 text-right">
+                        <button type="button" className="text-blue-400 hover:text-blue-300" onClick={() => { if (!newDrug.code || !newDrug.name) return; setDrugs(prev => [...prev, newDrug]); setNewDrug({}) }}>Add</button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             {/* Form Actions */}

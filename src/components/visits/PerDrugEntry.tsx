@@ -20,6 +20,7 @@ interface PerDrugEntryProps {
   defaultStartDate?: string
   defaultLastDoseDate?: string
   drugOptions?: Array<{ id: string; code: string; name: string }>
+  priorCompletedVisitDate?: string
 }
 
 export default function PerDrugEntry({
@@ -29,7 +30,8 @@ export default function PerDrugEntry({
   className = '',
   defaultStartDate,
   defaultLastDoseDate,
-  drugOptions = []
+  drugOptions = [],
+  priorCompletedVisitDate
 }: PerDrugEntryProps) {
   const addCycle = () => {
     const nowId = Date.now().toString()
@@ -113,7 +115,7 @@ export default function PerDrugEntry({
                       onChange={(e) => {
                         const selected = drugOptions.find(d => d.id === e.target.value)
                         updateCycle(c.id, 'drug_id', e.target.value || undefined)
-                        updateCycle(c.id, 'drug_label', selected ? `${selected.code}` : '')
+                        updateCycle(c.id, 'drug_label', selected ? `${selected.name}` : '')
                       }}
                       className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
                     >
@@ -188,6 +190,9 @@ export default function PerDrugEntry({
                             onChange={(e) => updateCycle(c.id, 'start_date', e.target.value)}
                             className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
                           />
+                        )}
+                        {priorCompletedVisitDate && (
+                          <div className="text-[10px] text-gray-400 mt-1">Suggestion: Prior completed visit {priorCompletedVisitDate}</div>
                         )}
                       </div>
                     </div>

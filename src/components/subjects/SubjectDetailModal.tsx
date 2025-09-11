@@ -125,6 +125,7 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'timeline' | 'drug-compliance' | 'notes'>('timeline')
   const [showEditForm, setShowEditForm] = useState(false)
+  const [perVisitCycles, setPerVisitCycles] = useState<Array<{ visit_id: string; visit_date: string; items: any[]; avg_compliance: number | null }>>([])
 
   const handleDeleteSubject = useCallback(async () => {
     if (!subject) return
@@ -156,6 +157,21 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
       alert('Failed to delete subject')
     }
   }, [subject, onClose, onSubjectUpdated])
+
+  useEffect(() => {
+    const loadPerVisit = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
+        if (!token || !subjectId) return
+        const resp = await fetch(`/api/subjects/${subjectId}/drug-cycles`, { headers: { Authorization: `Bearer ${token}` } })
+        if (!resp.ok) return
+        const json = await resp.json()
+        setPerVisitCycles(json.per_visit || [])
+      } catch {}
+    }
+    loadPerVisit()
+  }, [subjectId])
 
   const loadSubjectDetail = useCallback(async () => {
     try {
@@ -598,157 +614,115 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
                         </div>
                       )}
 
-                      {/* IP Dispensing History */}
-                      <div className="bg-gray-800/30 rounded-lg p-6">
-                        <h4 className="text-white font-medium mb-4 flex items-center">
+                      {/* Old IP Dispensing History table removed. Show summary cards only when available. */}
+                      <div className="bg-gray-800/30 rounded-lg p-6 space-y-4">
+                        <h4 className="text-white font-medium mb-2 flex items-center">
                           <svg className="w-5 h-5 mr-2 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
                           </svg>
                           IP Compliance
                         </h4>
 
-                        {/* Excel-style accountability table */}
-                        {(metrics.ip_dispensing_history && metrics.ip_dispensing_history.length > 0) && (
-                          <div className="overflow-x-auto mb-6">
-                            <table className="min-w-full text-sm">
-                              <thead className="bg-gray-800/60 text-gray-300">
+                        {metrics?.drug_compliance && (
+                          <div className="flex items-start space-x-4 p-4 bg-gray-800/40 rounded-lg">
+                            <div className="flex-shrink-0 w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
+                              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4" />
+                              </svg>
+                            </div>
+                            <div className="flex-grow">
+                              <div className="flex items-center justify-between">
+                                <h5 className="text-white font-medium">Compliance Assessment</h5>
+                                <span className="text-gray-400 text-sm">Latest</span>
+                              </div>
+                              <p className="text-gray-400 text-sm mt-1">
+                                {metrics.drug_compliance.dispensed_count - metrics.drug_compliance.returned_count} tablets taken out of {metrics.drug_compliance.expected_taken || 'N/A'} expected
+                              </p>
+                              <div className="mt-2 flex items-center space-x-2">
+                                <div className="flex-shrink-0">
+                                  <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                    metrics.drug_compliance.percentage && metrics.drug_compliance.percentage >= 90
+                                      ? 'bg-green-900/50 text-green-300 border border-green-600/50'
+                                      : metrics.drug_compliance.percentage && metrics.drug_compliance.percentage >= 75
+                                      ? 'bg-yellow-900/50 text-yellow-300 border border-yellow-600/50'
+                                      : 'bg-red-900/50 text-red-300 border border-red-600/50'
+                                  }`}>
+                                    {metrics.drug_compliance.percentage ? `${metrics.drug_compliance.percentage}%` : 'N/A'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {metrics?.expected_return_date && (
+                          <div className="flex items-start space-x-4 p-4 bg-gray-800/40 rounded-lg border-l-4 border-yellow-500">
+                            <div className="flex-shrink-0 w-10 h-10 bg-yellow-600 rounded-full flex items-center justify-center">
+                              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3" />
+                              </svg>
+                            </div>
+                            <div className="flex-grow">
+                              <div className="flex items-center justify-between">
+                                <h5 className="text-white font-medium">Expected Return</h5>
+                                <span className="text-gray-400 text-sm">{formatDateUTC(metrics.expected_return_date)}</span>
+                              </div>
+                              <p className="text-gray-400 text-sm mt-1">
+                                Return visit due for tablet count and compliance assessment
+                              </p>
+                              <div className="mt-2">
+                                {(() => {
+                                  const today = new Date()
+                                  const returnDate = new Date(metrics.expected_return_date)
+                                  const diffDays = Math.ceil((returnDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+                                  if (diffDays < 0) {
+                                    return <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-900/50 text-red-300 border border-red-600/50">Overdue by {Math.abs(diffDays)} days</span>
+                                  } else if (diffDays === 0) {
+                                    return <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-900/50 text-yellow-300 border border-yellow-600/50">Due today</span>
+                                  } else if (diffDays <= 7) {
+                                    return <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-900/50 text-yellow-300 border border-yellow-600/50">Due in {diffDays} days</span>
+                                  }
+                                  return <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-700 text-gray-300">Due in {diffDays} days</span>
+                                })()}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      {/* Per-Visit Compliance Table */}
+                      <div className="bg-gray-800/30 rounded-lg p-6">
+                        <h4 className="text-white font-medium mb-4">Per-Visit Drug Compliance</h4>
+                        {(perVisitCycles || []).length === 0 ? (
+                          <div className="text-sm text-gray-400">No per-visit compliance entries.</div>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <table className="min-w-full text-sm text-left text-gray-300">
+                              <thead className="text-xs uppercase text-gray-400">
                                 <tr>
-                                  <th className="px-3 py-2 text-left font-medium">Bottle ID</th>
-                                  <th className="px-3 py-2 text-left font-medium">Dispense Date</th>
-                                  <th className="px-3 py-2 text-right font-medium">Dispensed</th>
-                                  <th className="px-3 py-2 text-left font-medium">Return Date</th>
-                                  <th className="px-3 py-2 text-right font-medium">Returned</th>
-                                  <th className="px-3 py-2 text-right font-medium">Taken</th>
-                                  <th className="px-3 py-2 text-right font-medium">Expected</th>
-                                  <th className="px-3 py-2 text-right font-medium">Compliance</th>
+                                  <th className="px-3 py-2">Visit</th>
+                                  <th className="px-3 py-2">First Dose Date</th>
+                                  <th className="px-3 py-2">Drug Dispensed</th>
+                                  <th className="px-3 py-2">Drug Returned</th>
+                                  <th className="px-3 py-2">Date Returned</th>
+                                  <th className="px-3 py-2">Compliance</th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {metrics.ip_dispensing_history
-                                  .slice()
-                                  .sort((a: any, b: any) => new Date(a.visit_date).getTime() - new Date(b.visit_date).getTime())
-                                  .map((row: any) => {
-                                    const taken = (row.ip_dispensed || 0) - (row.ip_returned || 0)
-                                    return (
-                                      <tr key={`${row.ip_id}-${row.visit_id || row.visit_date || row.ip_start_date}`} className="border-b border-gray-700/50">
-                                        <td className="px-3 py-2 text-gray-100 font-mono">{row.ip_id}</td>
-                                        <td className="px-3 py-2 text-gray-300">{formatDateUTC(row.ip_start_date || row.visit_date)}</td>
-                                        <td className="px-3 py-2 text-right text-gray-100">{row.ip_dispensed ?? '-'}</td>
-                                        <td className="px-3 py-2 text-gray-300">{row.ip_last_dose_date ? formatDateUTC(row.ip_last_dose_date) : '-'}</td>
-                                        <td className="px-3 py-2 text-right text-gray-100">{row.ip_returned ?? '-'}</td>
-                                        <td className="px-3 py-2 text-right text-gray-100">{row.ip_returned != null ? taken : '-'}</td>
-                                        <td className="px-3 py-2 text-right text-gray-100">{row.expected_taken != null ? row.expected_taken : '-'}</td>
-                                        <td className="px-3 py-2 text-right">
-                                          {row.compliance_percentage != null ? (
-                                            <span className={`${row.compliance_percentage >= 90 ? 'text-green-400' : row.compliance_percentage >= 75 ? 'text-yellow-400' : 'text-red-400'}`}>
-                                              {row.compliance_percentage}%
-                                            </span>
-                                          ) : (
-                                            '-'
-                                          )}
-                                        </td>
-                                      </tr>
-                                    )
-                                  })}
+                                {perVisitCycles.map(v => (
+                                  v.items.map((it: any, idx: number) => (
+                                    <tr key={`${v.visit_id}-${idx}`} className="border-t border-gray-700/60">
+                                      <td className="px-3 py-2">{v.visit_name || '-'}</td>
+                                      <td className="px-3 py-2">{it.first_dose_date ? formatDateUTC(it.first_dose_date) : '-'}</td>
+                                      <td className="px-3 py-2">{it.tablets_dispensed ?? '-'}</td>
+                                      <td className="px-3 py-2">{it.tablets_returned ?? 0}</td>
+                                      <td className="px-3 py-2">{it.last_dose_date ? formatDateUTC(it.last_dose_date) : '-'}</td>
+                                      <td className="px-3 py-2">{it.compliance_percentage != null ? `${Math.round(it.compliance_percentage)}%` : '-'}</td>
+                                    </tr>
+                                  ))
+                                ))}
+                                {/* Per-visit average rows removed per request */}
                               </tbody>
                             </table>
-                          </div>
-                        )}
-                        
-                        {(metrics.ip_dispensing_history && metrics.ip_dispensing_history.length > 0) ? (
-                          <div className="space-y-4">
-                            {/* Table is rendered above; card list removed for clarity */}
-                          
-                            {metrics.drug_compliance && (
-                              <div className="flex items-start space-x-4 p-4 bg-gray-800/40 rounded-lg">
-                                <div className="flex-shrink-0 w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
-                                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4" />
-                                  </svg>
-                                </div>
-                                <div className="flex-grow">
-                                  <div className="flex items-center justify-between">
-                                    <h5 className="text-white font-medium">Compliance Assessment</h5>
-                                    <span className="text-gray-400 text-sm">Latest</span>
-                                  </div>
-                                  <p className="text-gray-400 text-sm mt-1">
-                                    {metrics.drug_compliance.dispensed_count - metrics.drug_compliance.returned_count} tablets taken out of {metrics.drug_compliance.expected_taken || 'N/A'} expected
-                                  </p>
-                                  <div className="mt-2 flex items-center space-x-2">
-                                    <div className="flex-shrink-0">
-                                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                                        metrics.drug_compliance.percentage && metrics.drug_compliance.percentage >= 90
-                                          ? 'bg-green-900/50 text-green-300 border border-green-600/50'
-                                          : metrics.drug_compliance.percentage && metrics.drug_compliance.percentage >= 75
-                                          ? 'bg-yellow-900/50 text-yellow-300 border border-yellow-600/50'
-                                          : 'bg-red-900/50 text-red-300 border border-red-600/50'
-                                      }`}>
-                                        {metrics.drug_compliance.percentage ? `${metrics.drug_compliance.percentage}%` : 'N/A'}
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {metrics.expected_return_date && (
-                              <div className="flex items-start space-x-4 p-4 bg-gray-800/40 rounded-lg border-l-4 border-yellow-500">
-                                <div className="flex-shrink-0 w-10 h-10 bg-yellow-600 rounded-full flex items-center justify-center">
-                                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3" />
-                                  </svg>
-                                </div>
-                                <div className="flex-grow">
-                                  <div className="flex items-center justify-between">
-                                    <h5 className="text-white font-medium">Expected Return</h5>
-                                    <span className="text-gray-400 text-sm">{formatDateUTC(metrics.expected_return_date)}</span>
-                                  </div>
-                                  <p className="text-gray-400 text-sm mt-1">
-                                    Return visit due for tablet count and compliance assessment
-                                  </p>
-                                  <div className="mt-2">
-                                    {(() => {
-                                      const today = new Date()
-                                      const returnDate = new Date(metrics.expected_return_date)
-                                      const diffDays = Math.ceil((returnDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-                                      
-                                      if (diffDays < 0) {
-                                        return (
-                                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-900/50 text-red-300 border border-red-600/50">
-                                            Overdue by {Math.abs(diffDays)} days
-                                          </span>
-                                        )
-                                      } else if (diffDays === 0) {
-                                        return (
-                                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-900/50 text-yellow-300 border border-yellow-600/50">
-                                            Due today
-                                          </span>
-                                        )
-                                      } else if (diffDays <= 7) {
-                                        return (
-                                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-900/50 text-yellow-300 border border-yellow-600/50">
-                                            Due in {diffDays} days
-                                          </span>
-                                        )
-                                      } else {
-                                        return (
-                                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-700 text-gray-300">
-                                            Due in {diffDays} days
-                                          </span>
-                                        )
-                                      }
-                                    })()}
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="text-center py-8">
-                            <svg className="w-12 h-12 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                            </svg>
-                            <p className="text-gray-400">No IP activity recorded</p>
                           </div>
                         )}
                       </div>
