@@ -460,7 +460,7 @@ export async function POST(request: NextRequest) {
           })
         if (subSecErr) {
           // Log but do not fail subject creation response
-          logger.warn('Failed to auto-create subject_section for new subject', subSecErr as any, { subject_id: subject?.id, study_section_id: firstSection.id })
+          logger.warn('Failed to auto-create subject_section for new subject', { error: String((subSecErr as any)?.message || subSecErr), subject_id: subject?.id, study_section_id: firstSection.id })
         }
       }
     } catch (e) {
