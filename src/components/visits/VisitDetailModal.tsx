@@ -81,6 +81,16 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
   const [studyDrugs, setStudyDrugs] = useState<Array<{ id: string; code: string; name: string }>>([])
   const [showAccessionDropdown, setShowAccessionDropdown] = useState(false)
   const [_dosingFactor, _setDosingFactor] = useState(1)
+  const [computedCycles, setComputedCycles] = useState<Array<{
+    id: string
+    drug_id: string | null
+    drug_code: string | null
+    drug_name: string | null
+    tablets_dispensed: number | null
+    tablets_returned: number | null
+    expected_taken: number | null
+    compliance_percentage: number | null
+  }>>([])
 
   const [formData, setFormData] = useState<FormData>({
     status: 'scheduled',
@@ -181,6 +191,21 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
             drug_dispensing_required: visitName.includes('dispensing') || visitName.includes('medication'),
             local_labs_required: visitName.includes('local lab')
           })
+        }
+
+        // Load computed compliance for this visit
+        try {
+          const cyclesResp = await fetch(`/api/subject-visits/${visitId}/drug-cycles`, {
+            headers: { 'Authorization': `Bearer ${session.access_token}` }
+          })
+          if (cyclesResp.ok) {
+            const json = await cyclesResp.json()
+            setComputedCycles(json.cycles || [])
+          } else {
+            setComputedCycles([])
+          }
+        } catch {
+          setComputedCycles([])
         }
       }
     } catch (error) {
@@ -380,6 +405,19 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
       onUpdate()
       setIsEditing(false)
       await loadVisit() // Reload to get updated data
+      // Reload computed cycles explicitly
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.access_token) {
+          const cyclesResp = await fetch(`/api/subject-visits/${visitId}/drug-cycles`, {
+            headers: { 'Authorization': `Bearer ${session.access_token}` }
+          })
+          if (cyclesResp.ok) {
+            const json = await cyclesResp.json()
+            setComputedCycles(json.cycles || [])
+          }
+        }
+      } catch {}
       
     } catch (error) {
       console.error('Error saving visit:', error)
@@ -578,7 +616,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
           return (
             <div className="bg-gray-700/30 rounded-lg p-4 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-white">IP Compliance Calculation</h3>
+                <h3 className="text-lg font-semibold text-white">Return Assessment (IP Compliance)</h3>
                 {!ipSectionRequired && (
                   <span className="text-xs text-gray-400">Optional for this visit</span>
                 )}
@@ -586,7 +624,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
 
               {/* Brief blurb explaining the process */}
               <p className="text-sm text-gray-300 bg-gray-800/40 border border-gray-700 rounded-md p-3">
-                Record first dose date, total dispensed, returned, and last dose taken here. This records compliance for items dispensed previously and assessed today.
+                Record returns for medication dispensed previously. We will compute expected taken and compliance on save.
               </p>
 
               {/* Aggregated per-drug entry */}
@@ -598,6 +636,38 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
                 drugOptions={studyDrugs}
                 priorCompletedVisitDate={priorCompletedVisitDate || undefined}
               />
+
+              {/* Computed results after save */}
+              {computedCycles.length > 0 && (
+                <div className="mt-3 bg-gray-800/40 border border-gray-700 rounded-md p-3">
+                  <div className="text-sm font-semibold text-gray-200 mb-2">Computed Compliance</div>
+                  <div className="space-y-2">
+                    {computedCycles.map((c) => {
+                      const name = c.drug_code && c.drug_name ? `${c.drug_code} — ${c.drug_name}` : (c.drug_name || c.drug_code || 'Drug')
+                      const disp = Number(c.tablets_dispensed || 0)
+                      const ret = Number(c.tablets_returned || 0)
+                      const actual = Math.max(0, disp - ret)
+                      const cp = c.compliance_percentage
+                      const badge = ((): { label: string; classes: string } => {
+                        if (cp === null || cp === undefined) return { label: 'N/A', classes: 'bg-gray-700 text-gray-200' }
+                        if (cp >= 90) return { label: `${cp}%`, classes: 'bg-green-700 text-white' }
+                        if (cp >= 70) return { label: `${cp}%`, classes: 'bg-yellow-700 text-white' }
+                        return { label: `${cp}%`, classes: 'bg-red-700 text-white' }
+                      })()
+                      return (
+                        <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                          <div className="text-gray-200">{name}</div>
+                          <div className="flex items-center gap-4 text-gray-300">
+                            <span>Actual taken: <span className="text-gray-100 font-medium">{actual}</span></span>
+                            <span>Expected taken: <span className="text-gray-100 font-medium">{c.expected_taken ?? '—'}</span></span>
+                            <span className={`px-2 py-0.5 rounded ${badge.classes}`}>Compliance: {badge.label}</span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )
           })()}
