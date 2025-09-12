@@ -173,11 +173,11 @@ export async function PUT(
         const first = cycles[0]
         updateData.ip_dispensed = first.tablets_dispensed ?? ((first.bottles || 0) * (first.tablets_per_bottle || 0))
         updateData.ip_start_date = first.start_date || null
-      }
-      const firstReturn = cycles.find((c: any) => (c.tablets_returned || 0) > 0)
-      if (firstReturn) {
-        updateData.ip_returned = firstReturn.tablets_returned
-        updateData.ip_last_dose_date = firstReturn.last_dose_date || null
+        // Legacy summary fields: reflect totals and any provided last dose date
+        const totalReturned = cycles.reduce((sum: number, c: any) => sum + Number(c.tablets_returned || 0), 0)
+        const anyLastDose = (cycles.find((c: any) => !!c.last_dose_date)?.last_dose_date) || null
+        updateData.ip_returned = totalReturned
+        updateData.ip_last_dose_date = anyLastDose
       }
       const { error: visitError } = await (supabase
         .from('subject_visits') as any)

@@ -369,7 +369,8 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
       // Update visit record with summary (for backward compatibility)
       const isCompleted = forceCompleted ? true : formData.status === 'completed'
       const firstCycle = formData.cycles[0]
-      const firstReturn = formData.cycles.find(c => (c.tablets_returned || 0) > 0)
+      const totalReturned = formData.cycles.reduce((sum, c) => sum + Number(c.tablets_returned || 0), 0)
+      const anyLastDose = (formData.cycles.find(c => !!c.last_dose_date)?.last_dose_date) || null
       const updatePayload = {
         status: isCompleted ? 'completed' : formData.status,
         procedures_completed: formData.procedures_completed,
@@ -381,11 +382,11 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
         ...(isCompleted && visit?.visit_date ? { visit_date: visit.visit_date } : {}),
         // Legacy fields - approximate using first cycle
         ip_dispensed: firstCycle ? (firstCycle.tablets_dispensed ?? ((firstCycle.bottles || 0) * (firstCycle.tablets_per_bottle || 0))) : null,
-        ip_returned: firstReturn?.tablets_returned ?? null,
+        ip_returned: Number.isFinite(totalReturned) ? totalReturned : 0,
         ip_id: null,
         return_ip_id: null,
         ip_start_date: firstCycle?.start_date || null,
-        ip_last_dose_date: firstReturn?.last_dose_date || null
+        ip_last_dose_date: anyLastDose
       }
 
       const response = await fetch(`/api/subject-visits/${visitId}`, {
