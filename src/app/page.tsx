@@ -260,19 +260,19 @@ export default function Home() {
             <div className="glass-card p-8 text-center">
               <div className="text-5xl font-bold text-blue-400 mb-2">⏱️</div>
               <div className="text-gray-300 mb-4">Save time on daily workflow management</div>
-              <div className="text-sm text-gray-400">"Simplified my daily tasks significantly"</div>
+              <div className="text-sm text-gray-400">&ldquo;Simplified my daily tasks significantly&rdquo;</div>
             </div>
             
             <div className="glass-card p-8 text-center">
               <div className="text-5xl font-bold text-green-400 mb-2">📊</div>
               <div className="text-gray-300 mb-4">Track compliance calculations efficiently</div>
-              <div className="text-sm text-gray-400">"Makes compliance tracking much easier"</div>
+              <div className="text-sm text-gray-400">&ldquo;Makes compliance tracking much easier&rdquo;</div>
             </div>
             
             <div className="glass-card p-8 text-center">
               <div className="text-5xl font-bold text-purple-400 mb-2">🎯</div>
               <div className="text-gray-300 mb-4">Organized approach to study coordination</div>
-              <div className="text-sm text-gray-400">"Helps me stay on top of everything"</div>
+              <div className="text-sm text-gray-400">&ldquo;Helps me stay on top of everything&rdquo;</div>
             </div>
           </div>
 
@@ -289,8 +289,8 @@ export default function Home() {
                 </div>
               </div>
               <p className="text-gray-300 mb-4">
-                "Managing multiple studies used to be overwhelming. The IP compliance calculator saves me significant time each week, 
-                and the visit scheduling tools help keep everything organized."
+                &ldquo;Managing multiple studies used to be overwhelming. The IP compliance calculator saves me significant time each week, 
+                and the visit scheduling tools help keep everything organized.&rdquo;
               </p>
               <div className="flex text-yellow-400">
                 {'★'.repeat(5)}
@@ -308,8 +308,8 @@ export default function Home() {
                 </div>
               </div>
               <p className="text-gray-300 mb-4">
-                "The visit window calculations are helpful, and the automated reminders make it easier to stay on schedule. 
-                It's made visit planning much more manageable for our team."
+                &ldquo;The visit window calculations are helpful, and the automated reminders make it easier to stay on schedule. 
+                It&apos;s made visit planning much more manageable for our team.&rdquo;
               </p>
               <div className="flex text-yellow-400">
                 {'★'.repeat(5)}
