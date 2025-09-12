@@ -22,8 +22,29 @@ export function formatDateUTC(
     const d = parseDateUTC(value)!
     return new Intl.DateTimeFormat(locale, { ...options, timeZone: 'UTC' }).format(d)
   }
+  // If it's an ISO string at UTC midnight, treat it as date-only and format in UTC
+  if (
+    typeof value === 'string' &&
+    /^\d{4}-\d{2}-\d{2}T00:00:00(\.\d{3})?Z$/.test(value)
+  ) {
+    const d = new Date(value)
+    if (!isNaN(d.getTime())) {
+      return new Intl.DateTimeFormat(locale, { ...options, timeZone: 'UTC' }).format(d)
+    }
+  }
   const d = value instanceof Date ? value : new Date(value)
   if (isNaN(d.getTime())) return ''
+  // If this Date represents a date-only value at UTC midnight, format in UTC
+  // to avoid local timezone shifting it to the previous/next day.
+  if (
+    value instanceof Date &&
+    d.getUTCHours() === 0 &&
+    d.getUTCMinutes() === 0 &&
+    d.getUTCSeconds() === 0 &&
+    d.getUTCMilliseconds() === 0
+  ) {
+    return new Intl.DateTimeFormat(locale, { ...options, timeZone: 'UTC' }).format(d)
+  }
   return new Intl.DateTimeFormat(locale, options).format(d)
 }
 
@@ -115,4 +136,3 @@ export function formatDateUSShort(
     year: 'numeric'
   }).format(d)
 }
-

@@ -18,6 +18,8 @@ interface Visit {
   subject_section_id?: string | null
   study_protocol_number?: string | null
   study_title?: string | null
+  // anchor_day deprecated; Day 0 semantics used globally
+  study_anchor_day?: number | null
   // We'll need these to calculate window
   subjects?: {
     randomization_date?: string
@@ -162,18 +164,20 @@ export default function VisitListView({ studyId, onVisitClick, refreshKey }: Vis
 
       const anchorDate = parseDateUTC(anchorDateStr) || new Date(anchorDateStr)
       const targetDate = new Date(anchorDate)
-      const dayOffset = (visit.visit_schedules.visit_day ?? 0) - 1
-      targetDate.setDate(anchorDate.getDate() + dayOffset)
+      // Day 0 semantics: target = anchor + visit_day
+      const dayOffset = (visit.visit_schedules.visit_day ?? 0)
+      // UTC-based add days to avoid timezone shifts
+      targetDate.setUTCDate(targetDate.getUTCDate() + dayOffset)
 
       // Calculate window
       const windowBefore = visit.visit_schedules.window_before_days || 7
       const windowAfter = visit.visit_schedules.window_after_days || 7
       
       const windowStart = new Date(targetDate)
-      windowStart.setDate(targetDate.getDate() - windowBefore)
+      windowStart.setUTCDate(targetDate.getUTCDate() - windowBefore)
       
       const windowEnd = new Date(targetDate)  
-      windowEnd.setDate(targetDate.getDate() + windowAfter)
+      windowEnd.setUTCDate(targetDate.getUTCDate() + windowAfter)
 
       const startStr = formatDateUTC(windowStart, 'en-US', { month: 'short', day: 'numeric' })
       const endStr = formatDateUTC(windowEnd, 'en-US', { month: 'short', day: 'numeric' })

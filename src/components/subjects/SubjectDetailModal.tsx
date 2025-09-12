@@ -270,9 +270,9 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
     
     const visitDate = parseDateUTC(visit.visit_date) || new Date(visit.visit_date)
     const windowStart = new Date(visitDate)
-    windowStart.setDate(windowStart.getDate() - windowBefore)
+    windowStart.setUTCDate(windowStart.getUTCDate() - windowBefore)
     const windowEnd = new Date(visitDate)
-    windowEnd.setDate(windowEnd.getDate() + windowAfter)
+    windowEnd.setUTCDate(windowEnd.getUTCDate() + windowAfter)
     
     return {
       start: windowStart,

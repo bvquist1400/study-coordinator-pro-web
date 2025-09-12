@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
         subjects!inner(subject_number),
         visit_schedules(visit_day, window_before_days, window_after_days),
         subject_sections(id, anchor_date, study_section_id, study_sections(code, name)),
-        studies(protocol_number, study_title)
+        studies(protocol_number, study_title, anchor_day)
       `)
 
     // If studyId is 'all', get all studies the user has access to, otherwise filter by studyId
@@ -97,7 +97,8 @@ export async function GET(request: NextRequest) {
       visit_schedules: v.visit_schedules,
       subject_sections: v.subject_sections || null,
       study_protocol_number: v.studies?.protocol_number || null,
-      study_title: v.studies?.study_title || null
+      study_title: v.studies?.study_title || null,
+      study_anchor_day: typeof v.studies?.anchor_day === 'number' ? v.studies.anchor_day : null
     }))
 
     return NextResponse.json({ subjectVisits })

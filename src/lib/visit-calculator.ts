@@ -27,6 +27,13 @@ export interface CalculatedVisitDate {
   daysFromBaseline: number
 }
 
+// Add days using UTC components to avoid timezone-induced day shifts
+function addDaysUTC(date: Date, days: number): Date {
+  const d = new Date(date)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d
+}
+
 /**
  * Calculate visit date from baseline considering study anchor day
  * 
@@ -69,15 +76,12 @@ export function calculateVisitDate(
   const totalDaysFromBaseline = daysFromBaseline + anchorOffset
 
   // Calculate scheduled date
-  const scheduledDate = new Date(baselineDate)
-  scheduledDate.setDate(scheduledDate.getDate() + totalDaysFromBaseline)
+  // Use UTC-based arithmetic to avoid off-by-one due to local timezone
+  const scheduledDate = addDaysUTC(baselineDate, totalDaysFromBaseline)
 
   // Calculate visit window
-  const windowStart = new Date(scheduledDate)
-  windowStart.setDate(windowStart.getDate() - windowBefore)
-
-  const windowEnd = new Date(scheduledDate)
-  windowEnd.setDate(windowEnd.getDate() + windowAfter)
+  const windowStart = addDaysUTC(scheduledDate, -windowBefore)
+  const windowEnd = addDaysUTC(scheduledDate, windowAfter)
 
   return {
     scheduledDate,
@@ -117,11 +121,8 @@ export function isWithinVisitWindow(
   windowBefore: number,
   windowAfter: number
 ): boolean {
-  const windowStart = new Date(scheduledDate)
-  windowStart.setDate(windowStart.getDate() - windowBefore)
-
-  const windowEnd = new Date(scheduledDate)
-  windowEnd.setDate(windowEnd.getDate() + windowAfter)
+  const windowStart = addDaysUTC(scheduledDate, -windowBefore)
+  const windowEnd = addDaysUTC(scheduledDate, windowAfter)
 
   return actualDate >= windowStart && actualDate <= windowEnd
 }
@@ -154,11 +155,8 @@ export function getVisitStatus(
   windowAfter: number = 7
 ): 'scheduled' | 'due' | 'overdue' | 'completed' | 'early' | 'late' {
   const today = new Date()
-  const windowStart = new Date(scheduledDate)
-  windowStart.setDate(windowStart.getDate() - windowBefore)
-
-  const windowEnd = new Date(scheduledDate)
-  windowEnd.setDate(windowEnd.getDate() + windowAfter)
+  const windowStart = addDaysUTC(scheduledDate, -windowBefore)
+  const windowEnd = addDaysUTC(scheduledDate, windowAfter)
 
   if (actualDate) {
     // Visit completed

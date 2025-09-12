@@ -28,7 +28,8 @@ export async function POST(request: NextRequest) {
     const membership = await verifyStudyMembership(studyId, user.id)
     if (!membership.success) return NextResponse.json({ error: membership.error || 'Access denied' }, { status: membership.status || 403 })
 
-    // Day 1 default: no dynamic anchor_day used
+    // Day 0 semantics: anchor date is Day 0
+    const anchorDay = 0
 
     // Find current active subject_section
     const { data: activeSec } = await (supabase as any)
@@ -99,7 +100,7 @@ export async function POST(request: NextRequest) {
       subject_section_id: newSubjSec.id,
       visit_schedule_id: s.id,
       visit_name: s.visit_name,
-      visit_date: addDays((s.visit_day ?? 0) - 1),
+      visit_date: addDays((s.visit_day ?? 0) - anchorDay),
       status: 'scheduled' as const,
       is_within_window: null,
       days_from_scheduled: null

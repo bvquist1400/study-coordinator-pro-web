@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser, createSupabaseAdmin } from '@/lib/api/auth'
-import { isWithinVisitWindow, getDaysFromScheduled } from '@/lib/visit-calculator'
+import { isWithinVisitWindow, getDaysFromScheduled, calculateVisitDate } from '@/lib/visit-calculator'
+import { parseDateUTC } from '@/lib/date-utils'
 import logger from '@/lib/logger'
 import type { SubjectVisitInsert, SubjectVisitUpdate } from '@/types/database'
 
@@ -167,7 +168,7 @@ export async function PUT(
           let windowBefore = 7
           let windowAfter = 7
 
-          // Schedule windows and day offset (Day 1 default)
+          // Schedule windows and day offset based on study anchor_day
           const vi: any = visitInfo
           if (vi.visit_schedule_id) {
             const { data: vs } = await supabase
@@ -200,11 +201,19 @@ export async function PUT(
               }
 
               if (anchorStr) {
-                const anchor = new Date(anchorStr)
-                const t = new Date(anchor)
-                const dayOffset = (vsAny.visit_day ?? 0) - 1
-                t.setDate(t.getDate() + dayOffset)
-                targetDate = t
+                // Day 0 semantics across the system
+                const anchorDay = 0
+                // Use UTC-safe calculator with Day 0
+                const base = parseDateUTC(anchorStr) || new Date(anchorStr)
+                const calc = calculateVisitDate(
+                  base as Date,
+                  (vsAny.visit_day ?? 0),
+                  'days',
+                  anchorDay,
+                  0,
+                  0
+                )
+                targetDate = calc.scheduledDate
               }
             }
           }

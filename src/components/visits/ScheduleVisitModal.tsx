@@ -426,7 +426,7 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
       (parseDateUTC(anchorStr) || new Date(anchorStr)) as Date,
       schedule.visit_day,
       'days',
-      study.anchor_day,
+      0,
       schedule.window_before_days,
       schedule.window_after_days
     )

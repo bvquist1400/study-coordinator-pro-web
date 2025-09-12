@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { type User } from '@supabase/supabase-js'
 import DashboardLayout from '@/components/dashboard/DashboardLayout'
+import { formatDateUTC } from '@/lib/date-utils'
 import InventoryAlerts from '@/components/lab-kits/InventoryAlerts'
 
 interface DebugInfo {
@@ -355,9 +356,9 @@ export default function DashboardPage() {
           <h3 className="text-lg font-semibold text-white mb-4">Next 7 Days</h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
             {calendarStrip.map(({ date, count }) => {
-              const dt = new Date(date)
-              const day = dt.toLocaleDateString(undefined, { weekday: 'short' })
-              const label = dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+              // Use UTC-safe formatting to avoid off-by-one day shifts
+              const day = formatDateUTC(date, undefined, { weekday: 'short' })
+              const label = formatDateUTC(date, undefined, { month: 'short', day: 'numeric' })
               const highlight = count > 0
               return (
                 <button

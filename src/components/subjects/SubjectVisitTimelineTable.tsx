@@ -313,10 +313,10 @@ export default function SubjectVisitTimelineTable({
     // Process each scheduled visit
     schedules.forEach((schedule, _index) => {
       const scheduledDate = new Date(anchorDateObj)
-      // Align SOE days so that Day 0 maps to the anchor date,
-      // Day 1 = anchor + 1, etc. (no -1 offset)
+      // Day 0 protocol: anchor date is Day 0, so add visit_day directly
       const dayOffset = (schedule.visit_day ?? 0)
-      scheduledDate.setDate(scheduledDate.getDate() + dayOffset)
+      // Use UTC-based math to avoid timezone-induced day shifts
+      scheduledDate.setUTCDate(scheduledDate.getUTCDate() + dayOffset)
       
 
       // Calculate window dates
@@ -324,10 +324,10 @@ export default function SubjectVisitTimelineTable({
       const windowStart = new Date(scheduledDate)
       const windowEnd = new Date(scheduledDate)
       if (typeof schedule.window_before_days === 'number' && schedule.window_before_days > 0) {
-        windowStart.setDate(windowStart.getDate() - schedule.window_before_days)
+        windowStart.setUTCDate(windowStart.getUTCDate() - schedule.window_before_days)
       }
       if (typeof schedule.window_after_days === 'number' && schedule.window_after_days > 0) {
-        windowEnd.setDate(windowEnd.getDate() + schedule.window_after_days)
+        windowEnd.setUTCDate(windowEnd.getUTCDate() + schedule.window_after_days)
       }
 
       // Check if there's an actual visit for this schedule
