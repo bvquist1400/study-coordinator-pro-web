@@ -17,6 +17,7 @@ interface LabKitWithVisit extends LabKit {
     visit_name: string
     visit_number: number
   }
+  studies?: { protocol_number?: string | null; study_title?: string | null } | null
 }
 
 export default function LabKitInventory({ studyId, refreshKey, onRefresh, showExpiringOnly }: LabKitInventoryProps) {
@@ -551,9 +552,6 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
                       isExpiringSoon(kit.expiration_date) ? 'text-yellow-300' : 'text-gray-300'
                     }`}>
                       {formatDate(kit.expiration_date)}
-                      {isExpiringSoon(kit.expiration_date) && (
-                        <span className="ml-1 text-yellow-400">⚠️</span>
-                      )}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -631,6 +629,9 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
                       className="w-4 h-4 text-blue-600 border-gray-600 rounded focus:ring-blue-500 bg-gray-700"
                     />
                   </th>
+                  {studyId === 'all' && (
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Study</th>
+                  )}
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                     Accession Number
                   </th>
@@ -670,6 +671,14 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
                         className="w-4 h-4 text-blue-600 border-gray-600 rounded focus:ring-blue-500 bg-gray-700"
                       />
                     </td>
+                    {studyId === 'all' && (
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-300">
+                          <div className="font-medium text-white">{kit.studies?.protocol_number || '—'}</div>
+                          <div className="text-xs text-gray-400 truncate max-w-40" title={kit.studies?.study_title || undefined}>{kit.studies?.study_title || ''}</div>
+                        </div>
+                      </td>
+                    )}
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-white">
                         {kit.accession_number}
@@ -696,7 +705,7 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-300">
                         {kit.expiration_date ? (
-                          <span className={isExpiringSoon(kit.expiration_date) ? 'text-red-400 font-semibold' : ''}>
+                          <span className={isExpiringSoon(kit.expiration_date) ? 'text-yellow-300' : ''}>
                             {formatDate(kit.expiration_date)}
                           </span>
                         ) : '-'}
@@ -819,9 +828,6 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
                     <label className="block text-sm font-medium text-gray-400 mb-1">Expiration Date</label>
                     <p className={`text-gray-100 ${isExpiringSoon(selectedKit.expiration_date) ? 'text-yellow-300' : ''}`}>
                       {formatDate(selectedKit.expiration_date)}
-                      {isExpiringSoon(selectedKit.expiration_date) && (
-                        <span className="ml-2 text-yellow-400">⚠️ Expiring Soon</span>
-                      )}
                     </p>
                   </div>
 

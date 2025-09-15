@@ -29,7 +29,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { name: 'Studies', href: '/studies', icon: FolderIcon },
     { name: 'Subjects', href: '/subjects', icon: UsersIcon },
     { name: 'Visits', href: '/visits', icon: CalendarIcon },
-    { name: 'Lab Kits', href: '/lab-kits', icon: BeakerIcon },
+    { name: 'Lab Kits', href: '/lab-kits/dashboard', icon: BeakerIcon },
     { name: 'Shipments', href: '/shipments', icon: TruckIcon },
     { name: 'Compliance', href: '/compliance', icon: DocumentChartBarIcon },
     { name: 'Members', href: '/members', icon: UsersIcon },

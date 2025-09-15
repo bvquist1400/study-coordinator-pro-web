@@ -10,6 +10,7 @@ import AddLabKitModal from '@/components/lab-kits/AddLabKitModal'
 import InventoryForecast from '@/components/lab-kits/InventoryForecast'
 import ShipmentsList from '@/components/lab-kits/ShipmentsList'
 import CreateShipmentModal from '@/components/lab-kits/CreateShipmentModal'
+import LabKitAlertsPanel from '@/components/lab-kits/LabKitAlertsPanel'
 import { useSite } from '@/components/site/SiteProvider'
 
 interface Study {
@@ -18,17 +19,18 @@ interface Study {
   study_title: string
 }
 
-type ViewMode = 'inventory' | 'expired' | 'shipments' | 'reports'
+type ViewMode = 'inventory' | 'expired' | 'shipments' | 'alerts'
 
 export default function LabKitsPage() {
   const [studies, setStudies] = useState<Study[]>([])
-  const [selectedStudyId, setSelectedStudyId] = useState<string>('')
+  const [selectedStudyId, setSelectedStudyId] = useState<string>('all')
   const [viewMode, setViewMode] = useState<ViewMode>('inventory')
   const [showAddModal, setShowAddModal] = useState(false)
   const [showCreateShipment, setShowCreateShipment] = useState(false)
   const [loading, setLoading] = useState(true)
   const [refreshKey, setRefreshKey] = useState(0)
   const [showExpiringOnly, setShowExpiringOnly] = useState(false)
+  const [alertsCount, setAlertsCount] = useState(0)
   const { currentSiteId } = useSite()
 
   // Load studies on mount
@@ -102,20 +104,29 @@ export default function LabKitsPage() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3">
-            {/* Study Selector */}
-            <select
-              value={selectedStudyId}
-              onChange={(e) => setSelectedStudyId(e.target.value)}
-              className="px-4 py-2 bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              disabled={studies.length === 0}
-            >
-              <option value="">Select Study...</option>
+            {/* Study Hot Buttons */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              <button
+                onClick={() => setSelectedStudyId('all')}
+                className={`px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap ${
+                  selectedStudyId === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-700/50 text-gray-300 hover:bg-gray-600/50'
+                }`}
+              >
+                All Studies
+              </button>
               {studies.map((study) => (
-                <option key={study.id} value={study.id}>
-                  {study.protocol_number} - {study.study_title}
-                </option>
+                <button
+                  key={study.id}
+                  onClick={() => setSelectedStudyId(study.id)}
+                  className={`px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap ${
+                    selectedStudyId === study.id ? 'bg-blue-600 text-white' : 'bg-gray-700/50 text-gray-300 hover:bg-gray-600/50'
+                  }`}
+                  title={study.study_title}
+                >
+                  {study.protocol_number}
+                </button>
               ))}
-            </select>
+            </div>
 
             {/* View Toggle */}
             <div className="flex bg-gray-700/30 rounded-lg p-1">
@@ -150,21 +161,23 @@ export default function LabKitsPage() {
                 Shipments
               </button>
               <button
-                onClick={() => setViewMode('reports')}
+                onClick={() => setViewMode('alerts')}
                 className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                  viewMode === 'reports'
+                  viewMode === 'alerts'
                     ? 'bg-blue-600 text-white'
                     : 'text-gray-400 hover:text-white'
                 }`}
               >
-                Reports
+                Alerts{alertsCount > 0 && (
+                  <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-red-600 text-white">{alertsCount}</span>
+                )}
               </button>
             </div>
 
             {/* Action Buttons */}
             <button
               onClick={() => window.location.href = '/lab-kits/bulk-import'}
-              disabled={!selectedStudyId}
+              disabled={!selectedStudyId || selectedStudyId === 'all'}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -175,7 +188,7 @@ export default function LabKitsPage() {
             {viewMode === 'shipments' && (
               <button
                 onClick={() => setShowCreateShipment(true)}
-                disabled={!selectedStudyId}
+                disabled={!selectedStudyId || selectedStudyId === 'all'}
                 className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Create Shipment
@@ -185,7 +198,7 @@ export default function LabKitsPage() {
         </div>
 
         {/* No Study Selected State */}
-        {!selectedStudyId ? (
+        {!selectedStudyId && selectedStudyId !== 'all' ? (
           <div className="text-center py-12">
             <div className="text-gray-400 mb-4">
               <svg className="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -207,8 +220,10 @@ export default function LabKitsPage() {
             {/* Main Content */}
             {viewMode === 'inventory' && (
               <div className="space-y-6">
-                {/* Inventory Forecast */}
-                <InventoryForecast studyId={selectedStudyId} daysAhead={30} />
+                {/* Inventory Forecast (hidden when viewing all studies) */}
+                {selectedStudyId !== 'all' && (
+                  <InventoryForecast studyId={selectedStudyId} daysAhead={30} />
+                )}
                 
                 {/* Lab Kit Inventory */}
                 <LabKitInventory
@@ -230,22 +245,25 @@ export default function LabKitsPage() {
 
             {viewMode === 'shipments' && (
               <ShipmentsList
-                studyId={selectedStudyId}
+                studyId={selectedStudyId === 'all' ? null : selectedStudyId}
                 refreshKey={refreshKey}
                 onRefresh={handleRefresh}
               />
             )}
 
-            {viewMode === 'reports' && (
-              <div className="bg-gray-800/50 rounded-lg border border-gray-700 p-8">
-                <div className="text-center text-gray-400">
-                  <svg className="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                  </svg>
-                  <p className="text-lg mb-2">Usage Reports & Analytics</p>
-                  <p className="text-sm">Coming in Phase 2 - Detailed analytics and usage reports</p>
-                </div>
-              </div>
+            {viewMode === 'alerts' && (
+              <LabKitAlertsPanel
+                studyId={selectedStudyId}
+                onNavigate={(dest, options) => {
+                  if (dest === 'inventory') {
+                    if (options?.expiringOnly) setShowExpiringOnly(true)
+                    setViewMode('inventory')
+                  } else if (dest === 'expired') {
+                    setViewMode('expired')
+                  }
+                }}
+                onCountChange={(n) => setAlertsCount(n)}
+              />
             )}
           </>
         )}

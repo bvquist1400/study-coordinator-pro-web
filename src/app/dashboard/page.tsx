@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { type User } from '@supabase/supabase-js'
 import DashboardLayout from '@/components/dashboard/DashboardLayout'
-import { formatDateUTC } from '@/lib/date-utils'
 import InventoryAlerts from '@/components/lab-kits/InventoryAlerts'
+import UpcomingVisits from '@/components/dashboard/UpcomingVisits'
 
 interface DebugInfo {
   code?: string
@@ -40,7 +40,6 @@ export default function DashboardPage() {
 
   // Alerts
   const [complianceAlerts, setComplianceAlerts] = useState<Array<{ id: string; visit_name: string; updated_at: string }>>([])
-  const [calendarStrip, setCalendarStrip] = useState<Array<{ date: string; count: number }>>([])
 
   useEffect(() => {
     async function checkAuthAndDatabase() {
@@ -105,46 +104,13 @@ export default function DashboardPage() {
         // Subjects count
         await supabase.from('subjects').select('id')
 
-        // Upcoming and overdue visits (7-day window for upcoming)
+        // Date helpers for queries
         const today = new Date()
-        const week = new Date(); week.setDate(today.getDate() + 7)
         const toISO = (d: Date) => {
           const y = d.getFullYear(); const m = String(d.getMonth()+1).padStart(2,'0'); const da = String(d.getDate()).padStart(2,'0')
           return `${y}-${m}-${da}`
         }
-        const { data: upcoming } = await supabase
-          .from('subject_visits')
-          .select('id')
-          .eq('status', 'scheduled')
-          .gte('visit_date', toISO(today))
-          .lte('visit_date', toISO(week))
-        void upcoming
-
-        // Build 7-day calendar strip counts (scheduled visits only)
-        const end6 = new Date(); end6.setDate(today.getDate() + 6)
-        const { data: cal } = await supabase
-          .from('subject_visits')
-          .select('id, visit_date')
-          .eq('status', 'scheduled')
-          .gte('visit_date', toISO(today))
-          .lte('visit_date', toISO(end6))
-        const days: Array<{ date: string; count: number }> = []
-        for (let i = 0; i < 7; i++) {
-          const d = new Date(today)
-          d.setDate(today.getDate() + i)
-          days.push({ date: toISO(d), count: 0 })
-        }
-        if (cal && cal.length > 0) {
-          const map: Record<string, number> = {}
-          for (const v of (cal as Array<{ visit_date: string }>)) {
-            const part = String(v.visit_date ?? '').split('T')[0]
-            map[part] = (map[part] || 0) + 1
-          }
-          for (const d of days) {
-            d.count = map[d.date] || 0
-          }
-        }
-        setCalendarStrip(days)
+        // Calendar strip removed
 
         const { data: overdue } = await supabase
           .from('subject_visits')
@@ -321,6 +287,9 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* Upcoming visits moved to top */}
+        <UpcomingVisits />
+
         {!hasDatabase && (
           <div className="bg-red-900/20 border border-red-700 rounded-2xl p-6">
             <div className="flex items-start space-x-3">
@@ -350,39 +319,6 @@ export default function DashboardPage() {
           </div>
         )}
 
-
-        {/* Calendar Strip: Next 7 Days */}
-        <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-2xl p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">Next 7 Days</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
-            {calendarStrip.map(({ date, count }) => {
-              // Use UTC-safe formatting to avoid off-by-one day shifts
-              const day = formatDateUTC(date, undefined, { weekday: 'short' })
-              const label = formatDateUTC(date, undefined, { month: 'short', day: 'numeric' })
-              const highlight = count > 0
-              return (
-                <button
-                  key={date}
-                  onClick={() => router.push(`/visits?date=${date}`)}
-                  className={`text-left rounded-lg border px-4 py-3 transition-colors ${
-                    highlight
-                      ? 'border-blue-600/50 bg-blue-900/20 hover:bg-blue-900/30 text-blue-200'
-                      : 'border-gray-700 bg-gray-700/20 hover:bg-gray-700/30 text-gray-200'
-                  }`}
-                  title={`Go to visits on ${label}`}
-                >
-                  <div className="text-xs uppercase opacity-75">{day}</div>
-                  <div className="text-sm font-semibold">{label}</div>
-                  <div className={`mt-2 inline-flex items-center px-2 py-0.5 rounded text-xs border ${
-                    highlight ? 'border-blue-500 text-blue-300' : 'border-gray-600 text-gray-300'
-                  }`}>
-                    {count} visit{count === 1 ? '' : 's'}
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        </div>
 
         {/* Study Overview + Compliance Snapshot */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -462,6 +398,7 @@ export default function DashboardPage() {
             )}
           </div>
         </div>
+
       </div>
     </DashboardLayout>
   )

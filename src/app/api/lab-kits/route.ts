@@ -17,8 +17,31 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'studyId parameter is required' }, { status: 400 })
     }
 
-    const membership = await verifyStudyMembership(studyId, user.id)
-    if (!membership.success) return NextResponse.json({ error: membership.error || 'Access denied' }, { status: membership.status || 403 })
+    // Resolve accessible studies
+    let studyIds: string[] = []
+    if (studyId === 'all') {
+      // Gather studies the user can access (owner or site member)
+      const { data: siteRows } = await supabase
+        .from('site_members')
+        .select('site_id')
+        .eq('user_id', user.id)
+      const siteIds = (siteRows || []).map((r: any) => r.site_id)
+
+      const { data: studiesRows } = await supabase
+        .from('studies')
+        .select('id, user_id, site_id')
+        .or([
+          `user_id.eq.${user.id}`,
+          siteIds.length > 0 ? `site_id.in.(${siteIds.join(',')})` : ''
+        ].filter(Boolean).join(','))
+
+      studyIds = (studiesRows || []).map((s: any) => s.id)
+      if (studyIds.length === 0) return NextResponse.json({ labKits: [] })
+    } else {
+      const membership = await verifyStudyMembership(studyId, user.id)
+      if (!membership.success) return NextResponse.json({ error: membership.error || 'Access denied' }, { status: membership.status || 403 })
+      studyIds = [studyId]
+    }
 
     // Auto-expire kits whose expiration_date has passed
     try {
@@ -31,7 +54,7 @@ export async function GET(request: NextRequest) {
         .update({ status: 'expired' })
         .lt('expiration_date', todayISO)
         .in('status', ['available','assigned','used','pending_shipment'])
-        .eq('study_id', studyId)
+        .in('study_id', studyIds)
     } catch {}
 
     // Build query with optional join to visit_schedules
@@ -39,9 +62,10 @@ export async function GET(request: NextRequest) {
       .from('lab_kits')
       .select(`
         *,
-        visit_schedules(visit_name, visit_number)
+        visit_schedules(visit_name, visit_number),
+        studies(protocol_number, study_title)
       `)
-      .eq('study_id', studyId)
+      .in('study_id', studyIds)
       .order('created_at', { ascending: false })
 
     // Filter by status if provided

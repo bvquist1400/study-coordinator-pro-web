@@ -165,21 +165,21 @@ export default function LabKitSummaryCards({ studyId, refreshKey, onFilterExpiri
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
       {cards.map((card, index) => (
         <div
           key={index}
-          className={`rounded-lg border p-6 ${card.color} ${card.bgColor} backdrop-blur-sm ${
+          className={`rounded-lg border p-4 ${card.color} ${card.bgColor} backdrop-blur-sm ${
             card.onClick ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''
           }`}
           onClick={card.onClick}
         >
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm opacity-75 mb-1">{card.title}</p>
-              <p className="text-2xl font-bold">{card.value}</p>
+              <p className="text-xs opacity-75 mb-1">{card.title}</p>
+              <p className="text-xl font-bold">{card.value}</p>
             </div>
-            <div className="opacity-75">
+            <div className="opacity-75 scale-90">
               {card.icon}
             </div>
           </div>
