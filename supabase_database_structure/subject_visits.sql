@@ -15,6 +15,8 @@ create table public.subject_visits (
   study_id uuid null,
   subject_section_id uuid null,
   cycle_index integer null,
+  is_unscheduled boolean null default false,
+  unscheduled_reason text null,
   lab_kit_required boolean null,
   accession_number text null,
   airway_bill_number text null,

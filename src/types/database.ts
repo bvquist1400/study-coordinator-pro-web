@@ -380,6 +380,8 @@ export interface Database {
           procedures_completed: string[]
           subject_section_id: string | null
           cycle_index: number | null
+          is_unscheduled: boolean | null
+          unscheduled_reason: string | null
           
           // Lab Kit Accountability
           lab_kit_required: boolean | null
@@ -421,6 +423,8 @@ export interface Database {
           procedures_completed?: string[]
           subject_section_id?: string | null
           cycle_index?: number | null
+          is_unscheduled?: boolean | null
+          unscheduled_reason?: string | null
           
           // Lab Kit Accountability
           lab_kit_required?: boolean | null
@@ -462,6 +466,8 @@ export interface Database {
           procedures_completed?: string[]
           subject_section_id?: string | null
           cycle_index?: number | null
+          is_unscheduled?: boolean | null
+          unscheduled_reason?: string | null
           
           // Lab Kit Accountability
           lab_kit_required?: boolean | null

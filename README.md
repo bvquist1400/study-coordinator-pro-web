@@ -46,6 +46,7 @@ Run
 Scripts
 
 - Lint: `npm run lint`
+- Type check: `npm run typecheck`
 - Tests: `npm test` | `npm run test:watch` | `npm run test:coverage`
 - Data fix/diagnostics: `scripts/*` (see filenames)
 

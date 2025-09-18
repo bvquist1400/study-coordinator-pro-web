@@ -18,6 +18,20 @@ interface LabKitWithVisit extends LabKit {
     visit_number: number
   }
   studies?: { protocol_number?: string | null; study_title?: string | null } | null
+  subject_assignment?: {
+    visit_id: string | null
+    visit_date: string | null
+    subject_id: string | null
+    subject_number: string | null
+  } | null
+  latest_shipment?: {
+    id: string | null
+    airway_bill_number: string | null
+    tracking_status: string | null
+    shipped_date: string | null
+    actual_delivery: string | null
+    accession_number: string | null
+  } | null
 }
 
 export default function LabKitInventory({ studyId, refreshKey, onRefresh, showExpiringOnly }: LabKitInventoryProps) {
@@ -816,6 +830,13 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
                       }
                     </p>
                   </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-400 mb-1">Subject</label>
+                    <p className="text-gray-100">
+                      {selectedKit.subject_assignment?.subject_number || selectedKit.subject_assignment?.subject_id || 'Unassigned'}
+                    </p>
+                  </div>
                 </div>
 
                 <div className="space-y-4">
@@ -839,6 +860,16 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
                   <div>
                     <label className="block text-sm font-medium text-gray-400 mb-1">Created</label>
                     <p className="text-gray-100">{formatDate(selectedKit.created_at)}</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-400 mb-1">Tracking Number</label>
+                    <p className="text-gray-100">{selectedKit.latest_shipment?.airway_bill_number || 'N/A'}</p>
+                    {selectedKit.latest_shipment?.tracking_status && (
+                      <p className="text-xs text-gray-400 mt-1 capitalize">
+                        Status: {selectedKit.latest_shipment.tracking_status.replace(/_/g, ' ')}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>

@@ -156,7 +156,7 @@ export async function PUT(
         // Fetch required context: visit info, schedule, subject, and study anchor
         const { data: visitInfo } = await supabase
           .from('subject_visits')
-          .select('visit_date, study_id, subject_id, visit_schedule_id')
+          .select('visit_date, study_id, subject_id, visit_schedule_id, subject_section_id, studies(anchor_day)')
           .eq('id', resolvedParams.id)
           .single()
 
@@ -201,17 +201,20 @@ export async function PUT(
               }
 
               if (anchorStr) {
-                // Day 0 semantics across the system
-                const anchorDay = 0
+                // Prefer study-specific anchor day (0-based vs 1-based)
+                const anchorDayValue = (visitInfo as any)?.studies?.anchor_day
+                const anchorDay = typeof anchorDayValue === 'number' ? anchorDayValue : 0
+                const scheduleDayRaw = typeof vsAny.visit_day === 'number' ? vsAny.visit_day : 0
+                const normalizedVisitDay = anchorDay === 1 ? Math.max(scheduleDayRaw - 1, 0) : scheduleDayRaw
                 // Use UTC-safe calculator with Day 0
                 const base = parseDateUTC(anchorStr) || new Date(anchorStr)
                 const calc = calculateVisitDate(
                   base as Date,
-                  (vsAny.visit_day ?? 0),
+                  normalizedVisitDay,
                   'days',
-                  anchorDay,
                   0,
-                  0
+                  windowBefore,
+                  windowAfter
                 )
                 targetDate = calc.scheduledDate
               }

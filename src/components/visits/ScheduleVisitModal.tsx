@@ -3,8 +3,29 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { calculateVisitDate } from '@/lib/visit-calculator'
-import { formatDateUTC, parseDateUTC } from '@/lib/date-utils'
+import { formatDateUTC, parseDateUTC, todayLocalISODate } from '@/lib/date-utils'
 import type { VisitSchedule as DbVisitSchedule, LabKit, StudySection } from '@/types/database'
+
+const UNSCHEDULED_TEMPLATES = [
+  {
+    id: 'safety-follow-up',
+    label: 'Safety Follow-up',
+    name: 'Unscheduled Safety Follow-up',
+    reason: 'Safety follow-up assessment after an adverse event.'
+  },
+  {
+    id: 'lab-draw',
+    label: 'Additional Lab Draw',
+    name: 'Unscheduled Lab Draw',
+    reason: 'Additional lab samples required outside the scheduled window.'
+  },
+  {
+    id: 'drug-check',
+    label: 'Drug Accountability Check',
+    name: 'Drug Accountability Check',
+    reason: 'Off-cycle drug accountability reconciliation.'
+  }
+] as const
 
 interface Subject {
   id: string
@@ -30,11 +51,12 @@ interface ScheduleVisitModalProps {
   preSelectedVisitScheduleId?: string
   preSelectedDate?: string // YYYY-MM-DD
   preSelectedSectionId?: string
+  initialMode?: 'protocol' | 'custom'
   onClose: () => void
   onSchedule: () => void
 }
 
-export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allowStudySelection = false, preSelectedVisitScheduleId, preSelectedDate, preSelectedSectionId, onClose, onSchedule }: ScheduleVisitModalProps) {
+export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allowStudySelection = false, preSelectedVisitScheduleId, preSelectedDate, preSelectedSectionId, initialMode = 'protocol', onClose, onSchedule }: ScheduleVisitModalProps) {
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [visitSchedules, setVisitSchedules] = useState<VisitSchedule[]>([])
   const [study, setStudy] = useState<Study | null>(null)
@@ -49,7 +71,9 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
   const [selectedVisitScheduleId, setSelectedVisitScheduleId] = useState('')
   const [scheduledDate, setScheduledDate] = useState('')
   const [customVisitName, setCustomVisitName] = useState('')
-  const [isCustomVisit, setIsCustomVisit] = useState(false)
+  const [isCustomVisit, setIsCustomVisit] = useState(initialMode === 'custom')
+  const [unscheduledReason, setUnscheduledReason] = useState('')
+  const [selectedTemplate, setSelectedTemplate] = useState<string>('')
   
   // Lab kit assignment state
   const [availableLabKits, setAvailableLabKits] = useState<LabKit[]>([])
@@ -63,6 +87,40 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
   const [selectedSectionId, setSelectedSectionId] = useState<string>('')
   const [activeSubjectSectionId, setActiveSubjectSectionId] = useState<string | null>(null)
   const [activeAnchorDate, setActiveAnchorDate] = useState<string | null>(null)
+
+  const handleModeChange = (mode: 'protocol' | 'custom') => {
+    if (mode === 'custom') {
+      setIsCustomVisit(true)
+      setSelectedTemplate('')
+      setSelectedVisitScheduleId('')
+      setLabKitRequired(false)
+      setSelectedLabKit(null)
+      setShowLabKitDropdown(false)
+      if (!scheduledDate) {
+        setScheduledDate(preSelectedDate || todayLocalISODate())
+      }
+    } else {
+      setIsCustomVisit(false)
+      setSelectedTemplate('')
+      setCustomVisitName('')
+      setUnscheduledReason('')
+    }
+  }
+
+  const handleTemplateSelect = (templateId: string) => {
+    setSelectedTemplate(templateId)
+    const template = UNSCHEDULED_TEMPLATES.find(t => t.id === templateId)
+    if (template) {
+      setCustomVisitName(template.name)
+      setUnscheduledReason(template.reason)
+      if (!scheduledDate) {
+        setScheduledDate(preSelectedDate || todayLocalISODate())
+      }
+    } else {
+      setCustomVisitName('')
+      setUnscheduledReason('')
+    }
+  }
 
   const loadData = useCallback(async () => {
     try {
@@ -123,10 +181,8 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
 
       if (subjectsRes.ok) {
         const data = await subjectsRes.json()
-        console.warn('Raw subjects data:', data.subjects)
         // For now, show all subjects regardless of status to ensure visits can be scheduled
         const filteredSubjects = data.subjects || []
-        console.warn('Filtered subjects:', filteredSubjects)
         setSubjects(filteredSubjects)
         // If a subject is preselected or first subject exists, check active subject section
         const subjId = preSelectedSubjectId || filteredSubjects[0]?.id
@@ -170,12 +226,13 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
 
       if (studyRes.ok) {
         const data = await studyRes.json()
-        setStudy(data.study)
+        if (data?.study) {
+          setStudy(data.study)
+        }
       }
 
       if (labKitsRes.ok) {
         const data = await labKitsRes.json()
-        console.warn('Available lab kits:', data.labKits)
         setAvailableLabKits(data.labKits || [])
       } else {
         console.error('Failed to fetch lab kits:', labKitsRes.status, await labKitsRes.text())
@@ -190,6 +247,11 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  useEffect(() => {
+    handleModeChange(initialMode)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialMode])
 
   // Auto-select the preselected subject when data loads
   useEffect(() => {
@@ -213,7 +275,7 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
 
   const handleSubjectChange = (subjectId: string) => {
     setSelectedSubjectId(subjectId)
-    setScheduledDate('') // Reset date when subject changes
+    setScheduledDate(isCustomVisit ? todayLocalISODate() : '') // Reset date when subject changes
     // Load active section for this subject
     ;(async () => {
       try {
@@ -256,24 +318,25 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
     
     if (scheduleId && selectedSubjectId && study) {
       // Auto-calculate visit date based on subject's anchor date
-      const subject = subjects.find(s => s.id === selectedSubjectId)
-      
       const anchorStr = activeAnchorDate // require section anchor
       if (anchorStr && schedule) {
-        // Align SOE days so Day 0 = anchor date, Day 1 = anchor + 1
+        const anchorDay = typeof study.anchor_day === 'number' ? study.anchor_day : 0
+        const scheduleDayRaw = typeof schedule.visit_day === 'number' ? schedule.visit_day : 0
+        const normalizedVisitDay = anchorDay === 1 ? Math.max(scheduleDayRaw - 1, 0) : scheduleDayRaw
+        const windowBefore = typeof schedule.window_before_days === 'number' ? schedule.window_before_days : 0
+        const windowAfter = typeof schedule.window_after_days === 'number' ? schedule.window_after_days : 0
+        const baseAnchor = parseDateUTC(anchorStr) || new Date(anchorStr)
         const calc = calculateVisitDate(
-          new Date(anchorStr),
-          schedule.visit_day,
+          baseAnchor,
+          normalizedVisitDay,
           'days',
-          0, // force Day 0 baseline behavior to avoid off-by-one
-          schedule.window_before_days,
-          schedule.window_after_days
+          0,
+          windowBefore,
+          windowAfter
         )
-        // Format as local YYYY-MM-DD to avoid timezone shifts
-        const y = calc.scheduledDate.getFullYear()
-        const m = String(calc.scheduledDate.getMonth() + 1).padStart(2, '0')
-        const d = String(calc.scheduledDate.getDate()).padStart(2, '0')
-        setScheduledDate(`${y}-${m}-${d}`)
+        // Use ISO date string to avoid timezone shifts when populating the input
+        const isoDate = calc.scheduledDate.toISOString().slice(0, 10)
+        setScheduledDate(isoDate)
       }
     }
   }
@@ -314,9 +377,25 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
   }
 
   const handleSchedule = async () => {
-    if (!selectedSubjectId || (!selectedVisitScheduleId && !isCustomVisit) || !scheduledDate) {
+    if (!selectedSubjectId || !scheduledDate) {
       alert('Please fill in all required fields')
       return
+    }
+
+    if (!isCustomVisit && !selectedVisitScheduleId) {
+      alert('Please select a protocol visit')
+      return
+    }
+
+    if (isCustomVisit) {
+      if (!customVisitName.trim()) {
+        alert('Provide a custom visit name')
+        return
+      }
+      if (!unscheduledReason.trim()) {
+        alert('Provide a reason for the unscheduled visit')
+        return
+      }
     }
 
     // Note: We intentionally do NOT require lab kit selection at scheduling time
@@ -330,7 +409,7 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
       
       if (!token) return
 
-      let visitName = customVisitName
+      let visitName = customVisitName.trim()
       let visitScheduleId: string | null = null
       let labKitRequired = false
       let drugDispensingRequired = false
@@ -363,7 +442,9 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
         drug_dispensing_required: drugDispensingRequired || undefined,
         local_labs_required: localLabsRequired || undefined,
         // Include selected lab kit if assigned
-        lab_kit_id: selectedLabKit?.id || undefined
+        lab_kit_id: selectedLabKit?.id || undefined,
+        is_unscheduled: isCustomVisit ? true : undefined,
+        unscheduled_reason: isCustomVisit ? unscheduledReason.trim() : undefined
       }
 
       const response = await fetch('/api/subject-visits', {
@@ -412,6 +493,7 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
   }, [selectedSectionId])
 
   const getVisitWindow = () => {
+    if (isCustomVisit) return null
     // Window MUST be anchored to the target date (anchor + visit_day), not the chosen scheduled date
     if (!selectedVisitScheduleId) return null
     const schedule = visitSchedules.find(s => s.id === selectedVisitScheduleId)
@@ -422,13 +504,19 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
     const anchorStr = activeAnchorDate
     if (!anchorStr) return null
 
+    const anchorDay = typeof study.anchor_day === 'number' ? study.anchor_day : 0
+    const scheduleDayRaw = typeof schedule.visit_day === 'number' ? schedule.visit_day : 0
+    const normalizedVisitDay = anchorDay === 1 ? Math.max(scheduleDayRaw - 1, 0) : scheduleDayRaw
+    const windowBefore = typeof schedule.window_before_days === 'number' ? schedule.window_before_days : 0
+    const windowAfter = typeof schedule.window_after_days === 'number' ? schedule.window_after_days : 0
+
     const calc = calculateVisitDate(
       (parseDateUTC(anchorStr) || new Date(anchorStr)) as Date,
-      schedule.visit_day,
+      normalizedVisitDay,
       'days',
       0,
-      schedule.window_before_days,
-      schedule.window_after_days
+      windowBefore,
+      windowAfter
     )
     // calc.scheduledDate here represents the target date (anchor + visit_day + anchor offset)
     const windowStart = calc.windowStart
@@ -451,24 +539,25 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
   }
 
   const visitWindow = getVisitWindow()
+  const hasProtocolVisits = visitSchedules.length > 0
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-800/95 backdrop-blur-sm border border-gray-700 rounded-2xl max-w-2xl w-full">
-        <div className="p-6">
-          {/* Header */}
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-white">Schedule Visit</h2>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-white transition-colors"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-              </svg>
-            </button>
-          </div>
+      <div className="bg-gray-800/95 backdrop-blur-sm border border-gray-700 rounded-2xl max-w-2xl w-full max-h-[80vh] sm:max-h-[85vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
+          <h2 className="text-2xl font-bold text-white">Schedule Visit</h2>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white transition-colors"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+            </svg>
+          </button>
+        </div>
 
+        <div className="flex-1 overflow-y-auto px-6 py-6">
           <div className="space-y-6">
             {/* Study Selection - only shown when allowStudySelection is true */}
             {allowStudySelection && (
@@ -539,36 +628,38 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 Visit Type
               </label>
-              <div className="flex space-x-4">
+              <div className="flex flex-wrap gap-2">
                 <button
-                  onClick={() => setIsCustomVisit(false)}
+                  type="button"
+                  onClick={() => handleModeChange('protocol')}
+                  disabled={!hasProtocolVisits}
                   className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                     !isCustomVisit
                       ? 'bg-blue-600 text-white'
                       : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                  }`}
+                  } ${!hasProtocolVisits ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   Protocol Visit
                 </button>
-                {/* Only show Custom Visit option if no protocol schedules exist or for emergency/unscheduled visits */}
-                {visitSchedules.length === 0 && (
-                  <button
-                    onClick={() => setIsCustomVisit(true)}
-                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                      isCustomVisit
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    }`}
-                  >
-                    Custom Visit
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => handleModeChange('custom')}
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                    isCustomVisit
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                >
+                  Custom / Unscheduled
+                </button>
               </div>
-              {visitSchedules.length > 0 && (
-                <p className="text-xs text-gray-400 mt-1">
-                  Use protocol visits to maintain compliance tracking. Contact study coordinator for emergency/unscheduled visits.
-                </p>
-              )}
+              <p className="text-xs text-gray-400 mt-1">
+                {isCustomVisit
+                  ? 'Custom visits are flagged as unscheduled and require a brief reason.'
+                  : hasProtocolVisits
+                    ? 'Protocol visits keep window calculations intact.'
+                    : 'No protocol templates defined for this section; create an unscheduled visit below.'}
+              </p>
             </div>
 
             {/* Visit Selection */}
@@ -607,6 +698,37 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
                   placeholder="e.g., Unscheduled Visit, Safety Follow-up"
                   className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Template
+                  </label>
+                  <select
+                    value={selectedTemplate}
+                    onChange={(e) => handleTemplateSelect(e.target.value)}
+                    className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Select a template (optional)...</option>
+                    {UNSCHEDULED_TEMPLATES.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Reason *
+                  </label>
+                  <textarea
+                    value={unscheduledReason}
+                    onChange={(e) => setUnscheduledReason(e.target.value)}
+                    placeholder="Briefly describe why this unscheduled visit is needed"
+                    rows={3}
+                    className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
               </div>
             )}
 
@@ -747,27 +869,28 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
               </div>
             )}
 
-            {/* Actions */}
-            <div className="flex justify-end space-x-4 pt-6 border-t border-gray-700">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-6 py-2 text-gray-400 hover:text-white transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSchedule}
-                disabled={scheduling || !selectedSubjectId || (!selectedVisitScheduleId && !customVisitName) || !scheduledDate}
-                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-              >
-                {scheduling && (
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                )}
-                <span>{scheduling ? 'Scheduling...' : 'Schedule Visit'}</span>
-              </button>
-            </div>
           </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex justify-end space-x-4 px-6 py-4 border-t border-gray-700">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-6 py-2 text-gray-400 hover:text-white transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSchedule}
+            disabled={scheduling || !selectedSubjectId || (!selectedVisitScheduleId && !customVisitName) || !scheduledDate}
+            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+          >
+            {scheduling && (
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            )}
+            <span>{scheduling ? 'Scheduling...' : 'Schedule Visit'}</span>
+          </button>
         </div>
       </div>
     </div>

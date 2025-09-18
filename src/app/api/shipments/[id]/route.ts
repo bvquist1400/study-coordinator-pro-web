@@ -99,6 +99,37 @@ export async function PUT(
       return NextResponse.json({ error: 'Failed to update shipment' }, { status: 500 })
     }
 
+    // Keep related lab kit state in sync when marking delivered.
+    if (tracking_status === 'delivered') {
+      try {
+        const kitUpdate = { status: 'delivered', updated_at: new Date().toISOString() }
+        const shipmentLabKitId = (shipment as any).lab_kit_id as string | null
+        const shipmentAccession = (shipment as any).accession_number as string | null
+
+        if (shipmentLabKitId) {
+          const { error: kitUpdateError } = await supabase
+            .from('lab_kits')
+            // @ts-expect-error dynamic update object
+            .update(kitUpdate)
+            .eq('id', shipmentLabKitId)
+          if (kitUpdateError) {
+            throw kitUpdateError
+          }
+        } else if (shipmentAccession) {
+          const { error: kitUpdateError } = await supabase
+            .from('lab_kits')
+            // @ts-expect-error dynamic update object
+            .update(kitUpdate)
+            .eq('accession_number', shipmentAccession)
+          if (kitUpdateError) {
+            throw kitUpdateError
+          }
+        }
+      } catch (syncError) {
+        logger.warn?.('Failed to sync lab kit status for delivered shipment', syncError as any)
+      }
+    }
+
     return NextResponse.json({ 
       shipment: updated,
       message: `Shipment marked as ${tracking_status}` 

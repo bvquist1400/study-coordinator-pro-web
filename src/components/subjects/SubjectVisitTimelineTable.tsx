@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback, Fragment } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import ScheduleVisitModal from '@/components/visits/ScheduleVisitModal'
-import { formatDateUTC, parseDateUTC } from '@/lib/date-utils'
+import { formatDateUTC, parseDateUTC, todayLocalISODate } from '@/lib/date-utils'
+import { calculateVisitDate } from '@/lib/visit-calculator'
 
 interface VisitSchedule {
   id: string
@@ -57,6 +58,8 @@ interface TimelineVisit {
   compliance_percentage: number | null
   is_compliant: boolean | null
   visit_not_needed: boolean | null
+  is_unscheduled?: boolean | null
+  unscheduled_reason?: string | null
   // Section grouping/ordering
   section_code?: string | null
   section_order?: number | null
@@ -135,6 +138,21 @@ export default function SubjectVisitTimelineTable({
         return
       }
 
+      // Fetch study anchor day once so timeline respects Day 0/Day 1 semantics
+      let resolvedAnchorDay = 0
+      try {
+        const { data: studyMeta } = await supabase
+          .from('studies')
+          .select('anchor_day')
+          .eq('id', studyId)
+          .single()
+        if (studyMeta && typeof (studyMeta as any).anchor_day === 'number') {
+          resolvedAnchorDay = (studyMeta as any).anchor_day
+        }
+      } catch (_studyErr) {
+        resolvedAnchorDay = 0
+      }
+
       // Day 1 default: use provided main anchor (aka anchor_date_1) when no sections
 
       // Fetch visit schedules via API
@@ -198,13 +216,13 @@ export default function SubjectVisitTimelineTable({
           let secSchedules = (schedules || []).filter((s: any) => (s as any).section_id === assn.study_section_id)
           const secVisits = (visits || []).filter((v: any) => (v as any).subject_section_id === assn.id)
           if (secSchedules.length === 0) secSchedules = (schedules || [])
-          const seg = buildCompleteTimeline(secSchedules, secVisits, assn.anchor_date)
+          const seg = buildCompleteTimeline(secSchedules, secVisits, assn.anchor_date, resolvedAnchorDay)
             .map(v => ({ ...v, section_code: assn.study_sections?.code || null, section_order: assn.study_sections?.order_index ?? null }))
           timeline.push(...seg)
         })
       } else {
         // Fallback single segment using provided anchorDate (aka anchor_date_1)
-        timeline = buildCompleteTimeline(schedules || [], visits || [], anchorDate)
+        timeline = buildCompleteTimeline(schedules || [], visits || [], anchorDate, resolvedAnchorDay)
       }
 
       // Fetch drug compliance for this subject and map to visits by visit_id
@@ -290,7 +308,8 @@ export default function SubjectVisitTimelineTable({
   const buildCompleteTimeline = (
     schedules: VisitSchedule[], 
     visits: SubjectVisit[], 
-    anchorDate: string
+    anchorDate: string,
+    anchorDay: number
   ): TimelineVisit[] => {
     const timeline: TimelineVisit[] = []
     const anchorDateObj = parseDateUTC(anchorDate) || new Date(anchorDate)
@@ -312,23 +331,23 @@ export default function SubjectVisitTimelineTable({
 
     // Process each scheduled visit
     schedules.forEach((schedule, _index) => {
-      const scheduledDate = new Date(anchorDateObj)
-      // Day 0 protocol: anchor date is Day 0, so add visit_day directly
-      const dayOffset = (schedule.visit_day ?? 0)
-      // Use UTC-based math to avoid timezone-induced day shifts
-      scheduledDate.setUTCDate(scheduledDate.getUTCDate() + dayOffset)
-      
+      const baseline = anchorDateObj
+      const windowBefore = typeof schedule.window_before_days === 'number' ? schedule.window_before_days : 0
+      const windowAfter = typeof schedule.window_after_days === 'number' ? schedule.window_after_days : 0
+      const scheduleDayRaw = typeof schedule.visit_day === 'number' ? schedule.visit_day : 0
+      const normalizedVisitDay = anchorDay === 1 ? Math.max(scheduleDayRaw - 1, 0) : scheduleDayRaw
 
-      // Calculate window dates
-      // Always compute window bounds; treat 0 as same-day bound
-      const windowStart = new Date(scheduledDate)
-      const windowEnd = new Date(scheduledDate)
-      if (typeof schedule.window_before_days === 'number' && schedule.window_before_days > 0) {
-        windowStart.setUTCDate(windowStart.getUTCDate() - schedule.window_before_days)
-      }
-      if (typeof schedule.window_after_days === 'number' && schedule.window_after_days > 0) {
-        windowEnd.setUTCDate(windowEnd.getUTCDate() + schedule.window_after_days)
-      }
+      const calc = calculateVisitDate(
+        baseline,
+        normalizedVisitDay,
+        'days',
+        0,
+        windowBefore,
+        windowAfter
+      )
+      const scheduledDate = calc.scheduledDate
+      const windowStart = calc.windowStart
+      const windowEnd = calc.windowEnd
 
       // Check if there's an actual visit for this schedule
       const actualVisit = visitsByScheduleId.get(schedule.id)
@@ -379,9 +398,48 @@ export default function SubjectVisitTimelineTable({
         return_ip_id: (actualVisit as any)?.return_ip_id || null,
         compliance_percentage: null, // Will be calculated from drug_compliance table
         is_compliant: null,
-        visit_not_needed: actualVisit?.visit_not_needed || null
+        visit_not_needed: actualVisit?.visit_not_needed || null,
+        is_unscheduled: (actualVisit as any)?.is_unscheduled ?? null,
+        unscheduled_reason: (actualVisit as any)?.unscheduled_reason || null
       })
     })
+
+    const unscheduledVisits = (visits || []).filter((visit: any) => !visit.visit_schedule_id)
+    for (const visit of unscheduledVisits as any[]) {
+      const visitDate = parseDateUTC(visit.visit_date) || new Date(visit.visit_date)
+      const visitIso = visitDate.toISOString()
+      const status = visit.status as TimelineVisit['status']
+      const isOverdue = status === 'scheduled' && visitDate < today
+      const sectionMeta = sectionAnchors.find(s => s.id === visit.subject_section_id) || null
+
+      timeline.push({
+        id: visit.id,
+        visit_name: visit.visit_name,
+        visit_number: null,
+        visit_day: null,
+        scheduled_date: visitIso,
+        actual_date: visit.status === 'completed' ? visit.visit_date : null,
+        status,
+        window_start: visitIso,
+        window_end: visitIso,
+        procedures: [],
+        procedures_completed: visit.procedures_completed || null,
+        notes: visit.notes || null,
+        is_overdue: isOverdue,
+        is_within_window: visit.is_within_window ?? true,
+        ip_dispensed: visit.ip_dispensed || null,
+        ip_returned: visit.ip_returned || null,
+        ip_id: visit.ip_id || null,
+        return_ip_id: visit.return_ip_id || null,
+        compliance_percentage: null,
+        is_compliant: null,
+        visit_not_needed: visit.visit_not_needed || null,
+        is_unscheduled: visit.is_unscheduled ?? true,
+        unscheduled_reason: visit.unscheduled_reason || null,
+        section_code: sectionMeta?.section_code || null,
+        section_order: sectionMeta?.section_order ?? null
+      })
+    }
 
     // Sort by scheduled date
     timeline.sort((a, b) => new Date(a.scheduled_date).getTime() - new Date(b.scheduled_date).getTime())
@@ -411,9 +469,16 @@ export default function SubjectVisitTimelineTable({
       if (match) sectionId = match.study_section_id || match.id
     }
     // Format scheduled date as YYYY-MM-DD
-    const d = new Date(visit.scheduled_date)
-    const preDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+    const scheduled = parseDateUTC(visit.scheduled_date) || new Date(visit.scheduled_date)
+    const preDate = !scheduled || isNaN(scheduled.getTime())
+      ? (typeof visit.scheduled_date === 'string' ? visit.scheduled_date.slice(0, 10) : '')
+      : scheduled.toISOString().slice(0, 10)
     setPreSchedule({ scheduleId, date: preDate, sectionId })
+    setShowScheduleModal(true)
+  }
+
+  const openUnscheduledVisit = () => {
+    setPreSchedule({ scheduleId: null, date: todayLocalISODate(), sectionId: null })
     setShowScheduleModal(true)
   }
 
@@ -607,10 +672,27 @@ export default function SubjectVisitTimelineTable({
           preSelectedVisitScheduleId={preSchedule.scheduleId || undefined}
           preSelectedDate={preSchedule.date || undefined}
           preSelectedSectionId={preSchedule.sectionId || undefined}
-          onClose={() => setShowScheduleModal(false)}
-          onSchedule={async () => { setShowScheduleModal(false); await loadTimelineData() }}
+          initialMode={preSchedule.scheduleId ? 'protocol' : 'custom'}
+          onClose={() => {
+            setShowScheduleModal(false)
+            setPreSchedule({ scheduleId: null, date: null, sectionId: null })
+          }}
+          onSchedule={async () => {
+            setShowScheduleModal(false)
+            setPreSchedule({ scheduleId: null, date: null, sectionId: null })
+            await loadTimelineData()
+          }}
         />
       )}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={openUnscheduledVisit}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+        >
+          Add Unscheduled Visit
+        </button>
+      </div>
       {/* Summary Stats */}
       {metrics && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -691,6 +773,11 @@ export default function SubjectVisitTimelineTable({
                           {visit.section_code && (
                             <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-100 border border-gray-600">
                               {visit.section_code}
+                            </span>
+                          )}
+                          {visit.is_unscheduled && (
+                            <span className="ml-1 text-xs px-2 py-0.5 rounded-full bg-yellow-900/60 text-yellow-200 border border-yellow-600/40">
+                              Unscheduled
                             </span>
                           )}
                         </div>
@@ -856,7 +943,16 @@ export default function SubjectVisitTimelineTable({
                                 </div>
                               </div>
                             )}
-                            
+
+                            {visit.is_unscheduled && (
+                              <div>
+                                <h5 className="text-white font-medium mb-2">Unscheduled Reason</h5>
+                                <div className="text-gray-300 bg-gray-800/50 rounded p-3 text-sm whitespace-pre-line">
+                                  {visit.unscheduled_reason || 'No reason provided'}
+                                </div>
+                              </div>
+                            )}
+
                             {/* Notes */}
                             {visit.notes && (
                               <div>
