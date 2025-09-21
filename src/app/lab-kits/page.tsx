@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { Suspense, useState, useEffect, useCallback } from 'react'
 import DashboardLayout from '@/components/dashboard/DashboardLayout'
 import { supabase } from '@/lib/supabase/client'
 import LabKitSummaryCards from '@/components/lab-kits/LabKitSummaryCards'
@@ -14,6 +14,30 @@ import LabKitAlertsPanel from '@/components/lab-kits/LabKitAlertsPanel'
 import { useSite } from '@/components/site/SiteProvider'
 import { useRouter, useSearchParams } from 'next/navigation'
 
+function LabKitsPageLoader() {
+  return (
+    <DashboardLayout>
+      <div>
+        <div className="h-8 bg-gray-700 rounded w-1/4 mb-6"></div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-24 bg-gray-700 rounded"></div>
+          ))}
+        </div>
+        <div className="h-96 bg-gray-700 rounded"></div>
+      </div>
+    </DashboardLayout>
+  )
+}
+
+export default function LabKitsPage() {
+  return (
+    <Suspense fallback={<LabKitsPageLoader />}>
+      <LabKitsPageContent />
+    </Suspense>
+  )
+}
+
 interface Study {
   id: string
   protocol_number: string
@@ -22,7 +46,7 @@ interface Study {
 
 type ViewMode = 'inventory' | 'expired' | 'shipments' | 'alerts'
 
-export default function LabKitsPage() {
+function LabKitsPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const initialStudyIdParam = searchParams.get('studyId')
@@ -150,19 +174,7 @@ export default function LabKitsPage() {
   }
 
   if (loading) {
-    return (
-      <DashboardLayout>
-        <div>
-          <div className="h-8 bg-gray-700 rounded w-1/4 mb-6"></div>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-24 bg-gray-700 rounded"></div>
-            ))}
-          </div>
-          <div className="h-96 bg-gray-700 rounded"></div>
-        </div>
-      </DashboardLayout>
-    )
+    return <LabKitsPageLoader />
   }
 
   return (
