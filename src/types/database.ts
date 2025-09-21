@@ -798,6 +798,50 @@ export interface Database {
           updated_at?: string
         }
       }
+      lab_kit_orders: {
+        Row: {
+          id: string
+          study_id: string
+          kit_type_id: string | null
+          quantity: number
+          vendor: string | null
+          expected_arrival: string | null
+          status: 'pending' | 'received' | 'cancelled'
+          notes: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+          received_date: string | null
+        }
+        Insert: {
+          id?: string
+          study_id: string
+          kit_type_id?: string | null
+          quantity: number
+          vendor?: string | null
+          expected_arrival?: string | null
+          status?: 'pending' | 'received' | 'cancelled'
+          notes?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+          received_date?: string | null
+        }
+        Update: {
+          id?: string
+          study_id?: string
+          kit_type_id?: string | null
+          quantity?: number
+          vendor?: string | null
+          expected_arrival?: string | null
+          status?: 'pending' | 'received' | 'cancelled'
+          notes?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+          received_date?: string | null
+        }
+      }
       lab_kit_shipments: {
         Row: {
           id: string
@@ -933,6 +977,10 @@ export type SubjectSectionUpdate = Database['public']['Tables']['subject_section
 export type LabKit = Database['public']['Tables']['lab_kits']['Row']
 export type LabKitInsert = Database['public']['Tables']['lab_kits']['Insert']
 export type LabKitUpdate = Database['public']['Tables']['lab_kits']['Update']
+
+export type LabKitOrder = Database['public']['Tables']['lab_kit_orders']['Row']
+export type LabKitOrderInsert = Database['public']['Tables']['lab_kit_orders']['Insert']
+export type LabKitOrderUpdate = Database['public']['Tables']['lab_kit_orders']['Update']
 
 export type LabKitShipment = Database['public']['Tables']['lab_kit_shipments']['Row']
 export type LabKitShipmentInsert = Database['public']['Tables']['lab_kit_shipments']['Insert']

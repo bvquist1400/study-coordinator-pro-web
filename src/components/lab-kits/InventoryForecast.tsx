@@ -23,6 +23,19 @@ interface ForecastRequirementBreakdown {
   upcomingVisits?: ForecastUpcomingVisit[]
 }
 
+interface ForecastPendingOrder {
+  id: string
+  quantity: number
+  vendor: string | null
+  expectedArrival: string | null
+  status: 'pending' | 'received' | 'cancelled'
+  isOverdue: boolean
+  notes: string | null
+  createdAt: string
+  createdBy: string | null
+  receivedDate: string | null
+}
+
 interface InventoryForecastItem {
   key: string
   kitTypeId: string | null
@@ -37,6 +50,9 @@ interface InventoryForecastItem {
   status: 'ok' | 'warning' | 'critical'
   upcomingVisits: ForecastUpcomingVisit[]
   requirements: ForecastRequirementBreakdown[]
+  originalDeficit: number
+  pendingOrderQuantity: number
+  pendingOrders: ForecastPendingOrder[]
 }
 
 interface ForecastSummary {
@@ -112,8 +128,18 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
   }
 
   const getStatusMessage = (item: InventoryForecastItem) => {
-    if (item.deficit > 0) {
-      return `${item.deficit} kit${item.deficit === 1 ? '' : 's'} short (need ${item.kitsRequired})`
+    const outstanding = item.deficit
+    const pending = item.pendingOrderQuantity ?? 0
+    const original = item.originalDeficit ?? outstanding
+
+    if (outstanding > 0) {
+      if (pending > 0) {
+        return `${outstanding} kit${outstanding === 1 ? '' : 's'} short after ordering ${pending} (need ${item.kitsRequired})`
+      }
+      return `${outstanding} kit${outstanding === 1 ? '' : 's'} short (need ${item.kitsRequired})`
+    }
+    if (original > 0 && pending > 0) {
+      return `${pending} kit${pending === 1 ? '' : 's'} on order to cover demand`
     }
     if (item.kitsExpiringSoon > 0) {
       return `${item.kitsExpiringSoon} kit${item.kitsExpiringSoon === 1 ? '' : 's'} expiring soon`

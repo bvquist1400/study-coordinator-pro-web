@@ -24,6 +24,19 @@ interface ForecastRequirementBreakdown {
   upcomingVisits: ForecastUpcomingVisit[]
 }
 
+interface ForecastPendingOrder {
+  id: string
+  quantity: number
+  vendor: string | null
+  expectedArrival: string | null
+  status: 'pending' | 'received' | 'cancelled'
+  isOverdue: boolean
+  notes: string | null
+  createdAt: string
+  createdBy: string | null
+  receivedDate: string | null
+}
+
 interface InventoryForecastItem {
   key: string
   kitTypeId: string | null
@@ -38,6 +51,9 @@ interface InventoryForecastItem {
   status: 'ok' | 'warning' | 'critical'
   upcomingVisits: ForecastUpcomingVisit[]
   requirements: ForecastRequirementBreakdown[]
+  originalDeficit: number
+  pendingOrderQuantity: number
+  pendingOrders: ForecastPendingOrder[]
 }
 
 interface ForecastSummary {
@@ -73,6 +89,20 @@ type LabKitRow = {
   kit_type: string | null
   status: string
   expiration_date: string | null
+}
+
+type LabKitOrderRow = {
+  id: string
+  study_id: string
+  kit_type_id: string | null
+  quantity: number
+  vendor: string | null
+  expected_arrival: string | null
+  status: 'pending' | 'received' | 'cancelled'
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  received_date: string | null
 }
 
 const severityWeight: Record<InventoryForecastItem['status'], number> = {
@@ -216,7 +246,10 @@ export async function GET(request: NextRequest) {
         deficit: 0,
         status: 'ok',
         upcomingVisits: [],
-        requirements: []
+        requirements: [],
+        originalDeficit: 0,
+        pendingOrderQuantity: 0,
+        pendingOrders: []
       }
 
       entryByKey.set(key, entry)
@@ -333,16 +366,88 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const { data: orderRows, error: orderError } = await supabase
+      .from('lab_kit_orders')
+      .select('id, study_id, kit_type_id, quantity, vendor, expected_arrival, status, notes, created_by, created_at, received_date')
+      .eq('study_id', studyId)
+
+    if (orderError) {
+      logger.error('inventory-forecast: failed to load lab kit orders', orderError, { studyId })
+      return NextResponse.json({ error: 'Failed to load lab kit orders' }, { status: 500 })
+    }
+
+    const ordersByKey = new Map<string, { totalPending: number; orders: ForecastPendingOrder[] }>()
+
+    for (const row of (orderRows || []) as LabKitOrderRow[]) {
+      const kitTypeId = row.kit_type_id
+      if (!kitTypeId) continue
+
+      let key = keyByKitTypeId.get(kitTypeId)
+      if (!key) {
+        const kitType = kitTypeById.get(kitTypeId)
+        if (kitType) {
+          const entry = ensureEntry(kitTypeId, kitType.name || 'Uncategorized kit')
+          key = entry.key
+        }
+      }
+      if (!key) continue
+
+      const isPending = row.status === 'pending'
+      const expectedArrival = row.expected_arrival
+      const isOverdue = isPending && !!expectedArrival && expectedArrival < todayISO
+
+      if (!ordersByKey.has(key)) {
+        ordersByKey.set(key, { totalPending: 0, orders: [] })
+      }
+      const bucket = ordersByKey.get(key)!
+
+      if (isPending) {
+        bucket.totalPending += row.quantity
+      }
+
+      bucket.orders.push({
+        id: row.id,
+        quantity: row.quantity,
+        vendor: row.vendor ?? null,
+        expectedArrival,
+        status: row.status,
+        isOverdue,
+        notes: row.notes ?? null,
+        createdAt: row.created_at,
+        createdBy: row.created_by ?? null,
+        receivedDate: row.received_date ?? null
+      })
+    }
+
     const forecast: InventoryForecastItem[] = []
 
     for (const entry of entryByKey.values()) {
       entry.upcomingVisits.sort((a, b) => a.visit_date.localeCompare(b.visit_date))
       entry.requirements.sort((a, b) => b.kitsRequired - a.kitsRequired)
 
-      entry.deficit = Math.max(0, entry.kitsRequired - entry.kitsAvailable)
+      entry.originalDeficit = Math.max(0, entry.kitsRequired - entry.kitsAvailable)
+
+      const orderBucket = ordersByKey.get(entry.key)
+      if (orderBucket) {
+        entry.pendingOrderQuantity = orderBucket.totalPending
+        entry.pendingOrders = orderBucket.orders.sort((a, b) => {
+          if (a.status === 'pending' && b.status !== 'pending') return -1
+          if (a.status !== 'pending' && b.status === 'pending') return 1
+          const aDate = a.expectedArrival || a.createdAt
+          const bDate = b.expectedArrival || b.createdAt
+          return aDate.localeCompare(bDate)
+        })
+      } else {
+        entry.pendingOrderQuantity = 0
+        entry.pendingOrders = []
+      }
+
+      entry.deficit = Math.max(0, entry.originalDeficit - entry.pendingOrderQuantity)
 
       if (entry.deficit > 0) {
         entry.status = entry.optional ? 'warning' : 'critical'
+      } else if (entry.originalDeficit > 0 && entry.pendingOrderQuantity > 0) {
+        entry.status = 'warning'
       } else if (entry.kitsRequired === 0) {
         entry.status = entry.kitsExpiringSoon > 0 ? 'warning' : 'ok'
       } else if ((entry.kitsAvailable - entry.kitsRequired) <= BUFFER_THRESHOLD || entry.kitsExpiringSoon > 0) {

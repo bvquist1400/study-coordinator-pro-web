@@ -94,7 +94,7 @@ Multiple issues need resolution in the lab kit workflow:
     is_optional BOOLEAN DEFAULT FALSE
   );
   ```
-- **Progress**: Added a dedicated `visit_kit_requirements` table, exposed CRUD APIs, surfaced requirements on visit schedule reads, and introduced a “Manage Kit Requirements” editor inside the Schedule of Events builder (with optimistic syncing to the new API). Inventory forecasting now rolls up kit demand per shared kit type (buffer/deficit alerts and the Inventory panel consume the enriched data), and Add Lab Kit defaults align with protocol requirements. Next follow-up: wire the bulk import / bulk edit flows to the shared kit catalog and extend forecasting with adjustable safety buffers.
+- **Progress**: Added a dedicated `visit_kit_requirements` table, exposed CRUD APIs, surfaced requirements on visit schedule reads, and introduced a “Manage Kit Requirements” editor inside the Schedule of Events builder (with optimistic syncing to the new API). Inventory forecasting now rolls up kit demand per shared kit type, Add Lab Kit / bulk edit / bulk import use the shared catalog with SOE-driven recommendations, and coordinators can leave kits unassigned for multi-visit usage. **Next follow-up**: introduce adjustable safety buffers in forecasting and tighten the inventory alert UX (collapsible groups, dismissals).
 
 #### C. **Inventory Forecast UI** (Priority: LOW)
 - **Problem**: Alerts overwhelming on Lab Kit management page
