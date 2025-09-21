@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { useSite } from '@/components/site/SiteProvider'
@@ -20,6 +20,20 @@ interface VisitSchedule {
   visit_day: number
 }
 
+interface StudyKitType {
+  id: string
+  name: string
+  description: string | null
+  is_active: boolean
+}
+
+interface VisitKitRequirementSummary {
+  visit_schedule_id: string | null
+  kit_type_id: string
+  quantity: number
+  is_optional: boolean
+}
+
 interface LabKitRow {
   id: string
   accession_number: string
@@ -37,11 +51,17 @@ export default function BulkImportPage() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   
   // Form state
+  const CUSTOM_OPTION = '__custom__'
   const [selectedStudyId, setSelectedStudyId] = useState('')
   const [selectedVisitScheduleId, setSelectedVisitScheduleId] = useState('')
   const [expirationDate, setExpirationDate] = useState('')
   const [lotNumber, setLotNumber] = useState('')
-  const [kitName, setKitName] = useState('')
+  const [kitTypes, setKitTypes] = useState<StudyKitType[]>([])
+  const [kitTypesLoading, setKitTypesLoading] = useState(false)
+  const [kitTypeError, setKitTypeError] = useState<string | null>(null)
+  const [selectedKitTypeId, setSelectedKitTypeId] = useState('')
+  const [customKitName, setCustomKitName] = useState('')
+  const [requirementsByKitType, setRequirementsByKitType] = useState<Record<string, VisitKitRequirementSummary[]>>({})
   const [receivedDate, setReceivedDate] = useState(todayLocalISODate())
   
   // Grid state
@@ -102,13 +122,82 @@ export default function BulkImportPage() {
     }
   }, [selectedStudyId])
 
+  const loadKitTypesAndRequirements = useCallback(async () => {
+    if (!selectedStudyId) return
+    try {
+      setKitTypesLoading(true)
+      setKitTypeError(null)
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) return
+
+      const [kitTypesResp, requirementsResp] = await Promise.all([
+        fetch(`/api/study-kit-types?study_id=${selectedStudyId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch(`/api/visit-kit-requirements?study_id=${selectedStudyId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+      ])
+
+      if (kitTypesResp.ok) {
+        const { kitTypes: serverKitTypes } = await kitTypesResp.json()
+        setKitTypes(Array.isArray(serverKitTypes) ? serverKitTypes : [])
+      } else {
+        setKitTypes([])
+        setKitTypeError('Failed to load kit types')
+      }
+
+      if (requirementsResp.ok) {
+        const { requirements } = await requirementsResp.json()
+        const grouped = (requirements || []).reduce((acc: Record<string, VisitKitRequirementSummary[]>, req: any) => {
+          const kitTypeId = req.kit_type_id as string | undefined
+          if (!kitTypeId) return acc
+          if (!acc[kitTypeId]) acc[kitTypeId] = []
+          acc[kitTypeId].push({
+            kit_type_id: kitTypeId,
+            visit_schedule_id: req.visit_schedule_id as string | null,
+            quantity: req.quantity ?? 1,
+            is_optional: !!req.is_optional
+          })
+          return acc
+        }, {})
+        setRequirementsByKitType(grouped)
+      } else {
+        setRequirementsByKitType({})
+      }
+    } catch (error) {
+      console.error('Error loading kit types or requirements:', error)
+      setKitTypes([])
+      setRequirementsByKitType({})
+      setKitTypeError('Failed to load kit types')
+    } finally {
+      setKitTypesLoading(false)
+    }
+  }, [selectedStudyId])
+
   useEffect(() => {
     if (selectedStudyId) {
       loadVisitSchedules()
+      loadKitTypesAndRequirements()
     } else {
       setVisitSchedules([])
+      setKitTypes([])
+      setRequirementsByKitType({})
+      setSelectedKitTypeId('')
+      setCustomKitName('')
+      setKitTypeError(null)
+      setKitTypesLoading(false)
     }
-  }, [selectedStudyId, loadVisitSchedules])
+  }, [selectedStudyId, loadVisitSchedules, loadKitTypesAndRequirements])
+
+  useEffect(() => {
+    if (kitTypes.length === 1 && !selectedKitTypeId) {
+      setSelectedKitTypeId(kitTypes[0].id)
+    } else if (selectedKitTypeId && !kitTypes.find(type => type.id === selectedKitTypeId)) {
+      setSelectedKitTypeId('')
+    }
+  }, [kitTypes, selectedKitTypeId])
 
   const addRow = () => {
     const newId = String(Date.now())
@@ -126,6 +215,44 @@ export default function BulkImportPage() {
       row.id === id ? { ...row, [field]: value, error: undefined } : row
     ))
   }
+
+  const useCustomKitType = useMemo(() => kitTypes.length === 0 || selectedKitTypeId === CUSTOM_OPTION, [kitTypes, selectedKitTypeId])
+
+  const selectedKitType = useMemo(() => {
+    if (useCustomKitType) return null
+    return kitTypes.find(type => type.id === selectedKitTypeId) || null
+  }, [useCustomKitType, kitTypes, selectedKitTypeId])
+
+  const selectedRequirements = useMemo(() => {
+    if (!selectedStudyId || useCustomKitType || !selectedKitTypeId) return []
+    return requirementsByKitType[selectedKitTypeId] || []
+  }, [selectedStudyId, useCustomKitType, selectedKitTypeId, requirementsByKitType])
+
+  const recommendedVisitIds = useMemo(() => new Set(selectedRequirements.map(req => req.visit_schedule_id).filter((id): id is string => !!id)), [selectedRequirements])
+
+  const visitScheduleMap = useMemo(() => new Map(visitSchedules.map(schedule => [schedule.id, schedule])), [visitSchedules])
+
+  const recommendedVisits = useMemo(
+    () => visitSchedules.filter(schedule => recommendedVisitIds.has(schedule.id)),
+    [visitSchedules, recommendedVisitIds]
+  )
+
+  const otherVisits = useMemo(
+    () => visitSchedules.filter(schedule => !recommendedVisitIds.has(schedule.id)),
+    [visitSchedules, recommendedVisitIds]
+  )
+
+  useEffect(() => {
+    if (
+      selectedVisitScheduleId &&
+      !useCustomKitType &&
+      selectedKitTypeId &&
+      recommendedVisitIds.size > 0 &&
+      !recommendedVisitIds.has(selectedVisitScheduleId)
+    ) {
+      setSelectedVisitScheduleId('')
+    }
+  }, [selectedVisitScheduleId, useCustomKitType, selectedKitTypeId, recommendedVisitIds])
 
   const validateRows = () => {
     let hasErrors = false
@@ -155,6 +282,8 @@ export default function BulkImportPage() {
   }
 
   const handleSubmit = async () => {
+    setErrorMsg(null)
+    setSuccessMsg(null)
     if (!selectedStudyId) {
       setErrorMsg('Please select a study')
       return
@@ -174,6 +303,19 @@ export default function BulkImportPage() {
       return
     }
 
+    const kitTypeRecord = useCustomKitType ? null : selectedKitType
+    const kitTypeName = useCustomKitType ? customKitName.trim() : (kitTypeRecord?.name?.trim() ?? '')
+
+    if (!useCustomKitType && !kitTypeRecord) {
+      setErrorMsg('Please select a kit type')
+      return
+    }
+
+    if (useCustomKitType && !kitTypeName) {
+      setErrorMsg('Please enter a kit name')
+      return
+    }
+
     try {
       setSubmitting(true)
       
@@ -186,7 +328,8 @@ export default function BulkImportPage() {
         study_id: selectedStudyId,
         visit_schedule_id: selectedVisitScheduleId || null,
         accession_number: row.accession_number.trim(),
-        kit_type: kitName.trim() || null,
+        kit_type_id: kitTypeRecord ? kitTypeRecord.id : null,
+        kit_type: kitTypeName || null,
         lot_number: lotNumber.trim() || null,
         expiration_date: expirationDate || null,
         received_date: receivedDate || null,
@@ -320,15 +463,88 @@ export default function BulkImportPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <div>
                 <label className="block text-sm font-semibold text-gray-300 mb-3">
-                  Kit Name
+                  Kit Type{kitTypes.length > 0 ? ' *' : ''}
                 </label>
-                <input
-                  type="text"
-                  value={kitName}
-                  onChange={(e) => setKitName(e.target.value)}
-                  placeholder="e.g., Visit 2 Week 4"
-                  className="w-full bg-gray-700/60 border border-gray-600/50 text-gray-100 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                />
+                {kitTypesLoading ? (
+                  <div className="px-4 py-3 bg-gray-700/60 border border-gray-600/40 rounded-xl text-gray-300 text-sm">
+                    Loading kit types…
+                  </div>
+                ) : kitTypes.length > 0 ? (
+                  <>
+                    <select
+                      value={selectedKitTypeId || (useCustomKitType && kitTypes.length > 0 ? CUSTOM_OPTION : '')}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        if (value === CUSTOM_OPTION) {
+                          setSelectedKitTypeId(CUSTOM_OPTION)
+                        } else {
+                          setSelectedKitTypeId(value)
+                          setCustomKitName('')
+                        }
+                      }}
+                      className="w-full bg-gray-700/60 border border-gray-600/50 text-gray-100 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    >
+                      <option value="">Select the SOE kit type…</option>
+                      {kitTypes.map((type) => (
+                        <option key={type.id} value={type.id}>
+                          {type.name}{!type.is_active ? ' (Inactive)' : ''}
+                        </option>
+                      ))}
+                      <option value={CUSTOM_OPTION}>Other / custom kit name…</option>
+                    </select>
+                    {kitTypeError && (
+                      <p className="text-xs text-red-400 mt-2">{kitTypeError}</p>
+                    )}
+                    {selectedKitType && selectedKitType.description && (
+                      <p className="text-xs text-gray-400 mt-2">{selectedKitType.description}</p>
+                    )}
+                    {selectedRequirements.length > 0 && (
+                      <div className="mt-3 text-xs text-gray-400 space-y-1">
+                        <p className="font-semibold text-gray-300">Used in:</p>
+                        <ul className="space-y-1">
+                          {selectedRequirements.map((req, index) => {
+                            const schedule = req.visit_schedule_id ? visitScheduleMap.get(req.visit_schedule_id) : null
+                            const label = schedule ? `${schedule.visit_name} (V${schedule.visit_number})` : 'Unassigned'
+                            const requirementText = req.is_optional ? 'Optional' : `Required ×${req.quantity}`
+                            return (
+                              <li key={`${req.kit_type_id}-${index}`} className="list-none text-gray-300">
+                                {label} · {requirementText}
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      </div>
+                    )}
+                    {selectedKitType && selectedRequirements.length === 0 && (
+                      <p className="text-xs text-gray-400 mt-3">
+                        This kit type is not yet linked to visits in the Schedule of Events.
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-sm text-gray-300">No kit catalog entries found for this study. Enter a kit name below.</p>
+                    <input
+                      type="text"
+                      value={customKitName}
+                      onChange={(e) => setCustomKitName(e.target.value)}
+                      placeholder="e.g., Stool Kit"
+                      className="w-full bg-gray-700/60 border border-gray-600/50 text-gray-100 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    />
+                  </div>
+                )}
+                {useCustomKitType && kitTypes.length > 0 && (
+                  <div className="mt-3">
+                    <label className="block text-xs font-semibold text-gray-300 mb-2">Custom kit name</label>
+                    <input
+                      type="text"
+                      value={customKitName}
+                      onChange={(e) => setCustomKitName(e.target.value)}
+                      placeholder="e.g., Q12 Sample Kit"
+                      className="w-full bg-gray-700/60 border border-gray-600/50 text-gray-100 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    />
+                  </div>
+                )}
               </div>
 
               <div>
@@ -355,12 +571,34 @@ export default function BulkImportPage() {
                   disabled={!selectedStudyId}
                 >
                   <option value="">No specific visit</option>
-                  {visitSchedules.map((schedule) => (
-                    <option key={schedule.id} value={schedule.id}>
-                      {schedule.visit_name} (Day {schedule.visit_day})
-                    </option>
-                  ))}
+                  {recommendedVisits.length > 0 && (
+                    <optgroup label="Recommended (SOE)">
+                      {recommendedVisits.map(schedule => {
+                        const req = selectedRequirements.find(r => r.visit_schedule_id === schedule.id)
+                        const requirementText = req ? (req.is_optional ? 'Optional' : `Required ×${req.quantity}`) : ''
+                        return (
+                          <option key={schedule.id} value={schedule.id}>
+                            {schedule.visit_name} (Day {schedule.visit_day}){requirementText ? ` · ${requirementText}` : ''}
+                          </option>
+                        )
+                      })}
+                    </optgroup>
+                  )}
+                  {otherVisits.length > 0 && (
+                    <optgroup label={recommendedVisits.length > 0 ? 'Other Visits' : 'All Visits'}>
+                      {otherVisits.map(schedule => (
+                        <option key={schedule.id} value={schedule.id}>
+                          {schedule.visit_name} (Day {schedule.visit_day})
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
+                <p className="text-xs text-gray-400 mt-2">
+                  {selectedRequirements.length > 0
+                    ? 'Assign if these kits are reserved for a specific visit. Otherwise leave unassigned and allocate later.'
+                    : 'Leave unassigned when these kits can be used across visits; you can assign them when scheduling or shipping.'}
+                </p>
               </div>
 
               <div>

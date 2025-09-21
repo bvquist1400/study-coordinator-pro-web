@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser, verifyStudyMembership, createSupabaseAdmin } from '@/lib/api/auth'
+import type { LabKitInsert } from '@/types/database'
 
 // GET /api/lab-kits?studyId=xxx&status=xxx&summary=true - Get lab kits
 export async function GET(request: NextRequest) {
@@ -87,13 +88,35 @@ export async function GET(request: NextRequest) {
 
     const kitIds = Array.from(new Set(kits.map((kit: any) => kit.id).filter(Boolean)))
     const accessionNumbers = Array.from(new Set(kits.map((kit: any) => kit.accession_number).filter(Boolean)))
+    const kitTypeIds = Array.from(new Set(kits.map((kit: any) => kit.kit_type_id as string | null).filter(Boolean)))
+
+    const kitTypeInfoById = new Map<string, { id: string; name: string | null; description: string | null; is_active: boolean | null }>()
+    if (kitTypeIds.length > 0) {
+      const { data: kitTypeRows, error: kitTypeErr } = await supabase
+        .from('study_kit_types')
+        .select('id, name, description, is_active')
+        .in('id', kitTypeIds)
+
+      if (kitTypeErr) {
+        console.error('Failed to fetch kit type metadata for lab kits:', kitTypeErr)
+      } else {
+        for (const row of kitTypeRows || []) {
+          kitTypeInfoById.set((row as any).id as string, {
+            id: (row as any).id as string,
+            name: (row as any).name ?? null,
+            description: (row as any).description ?? null,
+            is_active: (row as any).is_active ?? null
+          })
+        }
+      }
+    }
 
     // Preload subject assignments by accession number
     const subjectAssignments = new Map<string, any>()
     if (accessionNumbers.length > 0) {
       const { data: subjectRows, error: subjectErr } = await supabase
         .from('subject_visits')
-        .select('id, accession_number, visit_date, created_at, subject_id, subjects(id, subject_number)')
+        .select('id, accession_number, visit_name, visit_date, created_at, subject_id, subjects(id, subject_number)')
         .in('accession_number', accessionNumbers)
         .order('visit_date', { ascending: false })
         .order('created_at', { ascending: false })
@@ -108,6 +131,7 @@ export async function GET(request: NextRequest) {
             subjectAssignments.set(acc, {
               visit_id: (row as any).id,
               visit_date: (row as any).visit_date,
+              visit_name: (row as any).visit_name ?? null,
               subject_id: (row as any).subject_id,
               subject_number: (row as any).subjects?.subject_number || null
             })
@@ -135,8 +159,10 @@ export async function GET(request: NextRequest) {
             shipmentByKitId.set(kitId, {
               id: (row as any).id,
               airway_bill_number: (row as any).airway_bill_number,
+              carrier: (row as any).carrier,
               tracking_status: (row as any).tracking_status,
               shipped_date: (row as any).shipped_date,
+              estimated_delivery: (row as any).estimated_delivery,
               actual_delivery: (row as any).actual_delivery,
               accession_number: (row as any).accession_number || null
             })
@@ -163,8 +189,10 @@ export async function GET(request: NextRequest) {
           shipmentByAccession.set(acc, {
             id: (row as any).id,
             airway_bill_number: (row as any).airway_bill_number,
+            carrier: (row as any).carrier,
             tracking_status: (row as any).tracking_status,
             shipped_date: (row as any).shipped_date,
+            estimated_delivery: (row as any).estimated_delivery,
             actual_delivery: (row as any).actual_delivery,
             accession_number: acc
           })
@@ -176,9 +204,13 @@ export async function GET(request: NextRequest) {
       const acc = kit.accession_number as string | null
       const subjectInfo = acc ? subjectAssignments.get(acc) || null : null
       const shipmentInfo = shipmentByKitId.get(kit.id) || (acc ? shipmentByAccession.get(acc) : null) || null
+      const kitTypeId = (kit as any).kit_type_id as string | null | undefined
+      const kitTypeInfo = kitTypeId ? kitTypeInfoById.get(kitTypeId) || null : null
 
       return {
         ...kit,
+        kit_type_label: kitTypeInfo?.name || kit.kit_type || null,
+        kit_type_info: kitTypeInfo,
         subject_assignment: subjectInfo,
         latest_shipment: shipmentInfo
       }
@@ -199,22 +231,35 @@ export async function POST(request: NextRequest) {
     const supabase = createSupabaseAdmin()
 
     const kitData = await request.json()
-    
-    // Validate required fields
-    if (!kitData.study_id || !kitData.accession_number || !kitData.kit_type) {
-      return NextResponse.json({ 
-        error: 'Missing required fields: study_id, accession_number, kit_type' 
+
+    const { study_id, kit_type_id } = kitData
+
+    if (!study_id || !kitData.accession_number || !kit_type_id) {
+      return NextResponse.json({
+        error: 'Missing required fields: study_id, accession_number, kit_type_id'
       }, { status: 400 })
     }
 
-    const membership = await verifyStudyMembership(kitData.study_id, user.id)
+    const membership = await verifyStudyMembership(study_id, user.id)
     if (!membership.success) return NextResponse.json({ error: membership.error || 'Access denied' }, { status: membership.status || 403 })
 
+    const { data: kitTypeRecord, error: kitTypeError } = await supabase
+      .from('study_kit_types')
+      .select('id, study_id, name, description, is_active')
+      .eq('id', kit_type_id)
+      .maybeSingle()
+
+    if (kitTypeError || !kitTypeRecord || (kitTypeRecord as any).study_id !== study_id) {
+      return NextResponse.json({ error: 'Kit type not found for this study' }, { status: 400 })
+    }
+
     // Check for global duplicate accession number
+    const accessionNumber = kitData.accession_number.trim()
+
     const { data: existingKit } = await supabase
       .from('lab_kits')
       .select('id')
-      .eq('accession_number', kitData.accession_number)
+      .eq('accession_number', accessionNumber)
       .maybeSingle()
 
     if (existingKit) {
@@ -224,13 +269,23 @@ export async function POST(request: NextRequest) {
     }
 
     // Insert lab kit
-    const { data: labKit, error } = await supabase
+    const insertPayload: LabKitInsert = {
+      study_id,
+      visit_schedule_id: kitData.visit_schedule_id || null,
+      accession_number: accessionNumber,
+      kit_type: ((kitTypeRecord as any).name as string | null) || null,
+      kit_type_id,
+      lot_number: kitData.lot_number || null,
+      status: kitData.status || 'available',
+      expiration_date: kitData.expiration_date || null,
+      received_date: kitData.received_date || null,
+      notes: kitData.notes || null
+    }
+
+    const { data: labKit, error } = await (supabase as any)
       .from('lab_kits')
-      .insert({
-        ...kitData,
-        status: kitData.status || 'available'
-      })
-      .select()
+      .insert(insertPayload)
+      .select(`*, study_kit_types(id, name, description, is_active), visit_schedules(visit_name, visit_number)`) 
       .single()
 
     if (error) {

@@ -3,8 +3,10 @@
 import { useState, useEffect, useCallback, Fragment } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import ScheduleVisitModal from '@/components/visits/ScheduleVisitModal'
+import RescheduleModal from '@/components/visits/RescheduleModal'
 import { formatDateUTC, parseDateUTC, todayLocalISODate } from '@/lib/date-utils'
 import { calculateVisitDate } from '@/lib/visit-calculator'
+import type { VisitKitRequirement } from '@/types/database'
 
 interface VisitSchedule {
   id: string
@@ -14,6 +16,7 @@ interface VisitSchedule {
   window_before_days: number | null
   window_after_days: number | null
   procedures: string[] | null
+  kit_requirements?: VisitKitRequirement[]
   // Optional: section to which this schedule belongs
   section_id?: string | null
 }
@@ -60,6 +63,14 @@ interface TimelineVisit {
   visit_not_needed: boolean | null
   is_unscheduled?: boolean | null
   unscheduled_reason?: string | null
+  visit_schedule_id?: string | null
+  subject_section_id?: string | null
+  reschedule_history?: Array<{
+    old_date: string | null
+    new_date: string | null
+    reason: string | null
+    changed_at: string | null
+  }>
   // Section grouping/ordering
   section_code?: string | null
   section_order?: number | null
@@ -121,10 +132,11 @@ export default function SubjectVisitTimelineTable({
   const [loading, setLoading] = useState(true)
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
   const [_editingCell, setEditingCell] = useState<{visitId: string, field: string} | null>(null)
-  const [showEditModal, setShowEditModal] = useState<{visitId: string, type: 'ip' | 'note' | 'reschedule'} | null>(null)
+  const [showEditModal, setShowEditModal] = useState<{visitId: string, type: 'ip' | 'note'} | null>(null)
   const [sectionAnchors, setSectionAnchors] = useState<Array<{ id: string; study_section_id: string | null; anchor_date: string; section_code: string | null; section_order: number | null }>>([])
   const [showScheduleModal, setShowScheduleModal] = useState(false)
   const [preSchedule, setPreSchedule] = useState<{ scheduleId: string | null; date: string | null; sectionId: string | null }>({ scheduleId: null, date: null, sectionId: null })
+  const [rescheduleVisit, setRescheduleVisit] = useState<TimelineVisit | null>(null)
 
   const loadTimelineData = useCallback(async () => {
     try {
@@ -292,6 +304,49 @@ export default function SubjectVisitTimelineTable({
       // Final sort: by scheduled date only (oldest first)
       timeline.sort((a, b) => new Date(a.scheduled_date).getTime() - new Date(b.scheduled_date).getTime())
 
+      const actualVisitIds = timeline
+        .filter(v => !v.id.startsWith('schedule-'))
+        .map(v => v.id)
+
+      if (actualVisitIds.length > 0 && token) {
+        try {
+          const historyResponse = await fetch('/api/visit-schedule-history', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ visit_ids: actualVisitIds })
+          })
+
+          if (historyResponse.ok) {
+            const { history } = await historyResponse.json()
+            if (Array.isArray(history) && history.length > 0) {
+              const grouped = (history as Array<{ visit_id: string; old_date: string | null; new_date: string | null; reason: string | null; changed_at: string | null }>).reduce((acc, row) => {
+                const visitId = row.visit_id
+                if (!acc.has(visitId)) acc.set(visitId, [])
+                acc.get(visitId)!.push({
+                  old_date: row.old_date,
+                  new_date: row.new_date,
+                  reason: row.reason,
+                  changed_at: row.changed_at
+                })
+                return acc
+              }, new Map<string, Array<{ old_date: string | null; new_date: string | null; reason: string | null; changed_at: string | null }>>())
+
+              timeline = timeline.map(v => grouped.has(v.id)
+                ? { ...v, reschedule_history: grouped.get(v.id) }
+                : v
+              )
+            }
+          } else {
+            console.error('Failed to load reschedule history', await historyResponse.text())
+          }
+        } catch (historyErr) {
+          console.error('Error fetching reschedule history', historyErr)
+        }
+      }
+
       setTimelineVisits(timeline)
 
     } catch (error) {
@@ -311,7 +366,7 @@ export default function SubjectVisitTimelineTable({
     anchorDate: string,
     anchorDay: number
   ): TimelineVisit[] => {
-    const timeline: TimelineVisit[] = []
+    let timeline: TimelineVisit[] = []
     const anchorDateObj = parseDateUTC(anchorDate) || new Date(anchorDate)
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -345,7 +400,7 @@ export default function SubjectVisitTimelineTable({
         windowBefore,
         windowAfter
       )
-      const scheduledDate = calc.scheduledDate
+      const scheduledCalcDate = calc.scheduledDate
       const windowStart = calc.windowStart
       const windowEnd = calc.windowEnd
 
@@ -355,21 +410,22 @@ export default function SubjectVisitTimelineTable({
       let status: TimelineVisit['status'] = 'not_scheduled'
       let isOverdue = false
       let isWithinWindow = true
+      const actualVisitDate = actualVisit ? actualVisit.visit_date : null
 
       if (actualVisit) {
         status = actualVisit.status
         const visitDate = parseDateUTC(actualVisit.visit_date) || new Date(actualVisit.visit_date)
-        
-        // Check if within window
+
+        // Check if within window using the adjusted bounds
         isWithinWindow = visitDate >= windowStart && visitDate <= windowEnd
-        
+
         // Check if overdue
         if (actualVisit.status === 'scheduled' && visitDate < today) {
           isOverdue = true
         }
       } else {
         // No actual visit scheduled yet
-        if (scheduledDate < today) {
+        if (scheduledCalcDate < today) {
           status = 'not_scheduled'
           isOverdue = true
         } else {
@@ -382,8 +438,8 @@ export default function SubjectVisitTimelineTable({
         visit_name: schedule.visit_name,
         visit_number: schedule.visit_number,
         visit_day: schedule.visit_day,
-        scheduled_date: scheduledDate.toISOString(),
-        actual_date: actualVisit && actualVisit.status === 'completed' ? actualVisit.visit_date : null,
+        scheduled_date: scheduledCalcDate.toISOString(),
+        actual_date: actualVisitDate,
         status,
         window_start: windowStart.toISOString(),
         window_end: windowEnd.toISOString(),
@@ -400,7 +456,10 @@ export default function SubjectVisitTimelineTable({
         is_compliant: null,
         visit_not_needed: actualVisit?.visit_not_needed || null,
         is_unscheduled: (actualVisit as any)?.is_unscheduled ?? null,
-        unscheduled_reason: (actualVisit as any)?.unscheduled_reason || null
+        unscheduled_reason: (actualVisit as any)?.unscheduled_reason || null,
+        visit_schedule_id: schedule.id,
+        subject_section_id: (actualVisit as any)?.subject_section_id || null,
+        reschedule_history: []
       })
     })
 
@@ -418,7 +477,7 @@ export default function SubjectVisitTimelineTable({
         visit_number: null,
         visit_day: null,
         scheduled_date: visitIso,
-        actual_date: visit.status === 'completed' ? visit.visit_date : null,
+        actual_date: visit.status === 'scheduled' || visit.status === 'completed' ? visit.visit_date : null,
         status,
         window_start: visitIso,
         window_end: visitIso,
@@ -436,6 +495,9 @@ export default function SubjectVisitTimelineTable({
         visit_not_needed: visit.visit_not_needed || null,
         is_unscheduled: visit.is_unscheduled ?? true,
         unscheduled_reason: visit.unscheduled_reason || null,
+        visit_schedule_id: null,
+        subject_section_id: visit.subject_section_id || null,
+        reschedule_history: [],
         section_code: sectionMeta?.section_code || null,
         section_order: sectionMeta?.section_order ?? null
       })
@@ -633,7 +695,13 @@ export default function SubjectVisitTimelineTable({
   }
 
   const handleReschedule = (visitId: string) => {
-    setShowEditModal({ visitId, type: 'reschedule' })
+    const visit = timelineVisits.find(v => v.id === visitId)
+    if (!visit) return
+    if (visitId.startsWith('schedule-')) {
+      alert('Schedule the visit before rescheduling it.')
+      return
+    }
+    setRescheduleVisit(visit)
   }
 
   const closeEditModal = () => {
@@ -680,6 +748,26 @@ export default function SubjectVisitTimelineTable({
           onSchedule={async () => {
             setShowScheduleModal(false)
             setPreSchedule({ scheduleId: null, date: null, sectionId: null })
+            await loadTimelineData()
+          }}
+        />
+      )}
+      {rescheduleVisit && (
+        <RescheduleModal
+          visit={{
+            id: rescheduleVisit.id,
+            visit_name: rescheduleVisit.visit_name,
+            visit_date: rescheduleVisit.actual_date || rescheduleVisit.scheduled_date,
+            scheduled_date: rescheduleVisit.scheduled_date,
+            status: rescheduleVisit.status,
+            window_start: rescheduleVisit.window_start,
+            window_end: rescheduleVisit.window_end,
+            visit_schedule_id: rescheduleVisit.visit_schedule_id || null,
+            subject_section_id: rescheduleVisit.subject_section_id || null
+          }}
+          onClose={() => setRescheduleVisit(null)}
+          onRescheduled={async () => {
+            setRescheduleVisit(null)
             await loadTimelineData()
           }}
         />
@@ -953,6 +1041,30 @@ export default function SubjectVisitTimelineTable({
                               </div>
                             )}
 
+                            {visit.reschedule_history && visit.reschedule_history.length > 0 && (
+                              <div>
+                                <h5 className="text-white font-medium mb-2">Reschedule History</h5>
+                                <div className="space-y-2">
+                                  {visit.reschedule_history.map((entry, idx) => (
+                                    <div key={`${visit.id}-history-${idx}`} className="bg-gray-800/40 border border-gray-700 rounded p-3 text-sm">
+                                      <div className="flex justify-between text-xs text-gray-400">
+                                        <span>Changed {entry.changed_at ? formatDateUTC(entry.changed_at) : 'N/A'}</span>
+                                        <span>
+                                          {entry.old_date ? `from ${formatDateUTC(entry.old_date)}` : ''}
+                                          {entry.new_date ? ` to ${formatDateUTC(entry.new_date)}` : ''}
+                                        </span>
+                                      </div>
+                                      <p className="mt-2 text-gray-300 whitespace-pre-line">
+                                        {entry.reason && entry.reason.trim().length > 0
+                                          ? entry.reason
+                                          : 'No reason provided'}
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
                             {/* Notes */}
                             {visit.notes && (
                               <div>
@@ -1005,12 +1117,10 @@ export default function SubjectVisitTimelineTable({
             <h3 className="text-white font-medium mb-4">
               {showEditModal.type === 'ip' && 'Edit IP Data'}
               {showEditModal.type === 'note' && 'Add Note'}
-              {showEditModal.type === 'reschedule' && 'Reschedule Visit'}
             </h3>
             <p className="text-gray-400 mb-4">
               {showEditModal.type === 'ip' && 'IP data editing functionality will be implemented here.'}
               {showEditModal.type === 'note' && 'Note adding functionality will be implemented here.'}
-              {showEditModal.type === 'reschedule' && 'Visit rescheduling functionality will be implemented here.'}
             </p>
             <div className="flex justify-end space-x-3">
               <button

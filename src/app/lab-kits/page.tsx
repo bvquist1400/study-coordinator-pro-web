@@ -12,6 +12,7 @@ import ShipmentsList from '@/components/lab-kits/ShipmentsList'
 import CreateShipmentModal from '@/components/lab-kits/CreateShipmentModal'
 import LabKitAlertsPanel from '@/components/lab-kits/LabKitAlertsPanel'
 import { useSite } from '@/components/site/SiteProvider'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 interface Study {
   id: string
@@ -22,8 +23,15 @@ interface Study {
 type ViewMode = 'inventory' | 'expired' | 'shipments' | 'alerts'
 
 export default function LabKitsPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const initialStudyIdParam = searchParams.get('studyId')
+  const initialSearchParam = searchParams.get('search') || ''
+  const initialStatusParam = searchParams.get('status') || ''
   const [studies, setStudies] = useState<Study[]>([])
-  const [selectedStudyId, setSelectedStudyId] = useState<string>('all')
+  const [selectedStudyId, setSelectedStudyId] = useState<string>(() => initialStudyIdParam || 'all')
+  const [inventorySearch, setInventorySearch] = useState<string>(() => initialSearchParam)
+  const [inventoryStatus, setInventoryStatus] = useState<string>(() => initialStatusParam || 'available')
   const [viewMode, setViewMode] = useState<ViewMode>('inventory')
   const [showAddModal, setShowAddModal] = useState(false)
   const [showCreateShipment, setShowCreateShipment] = useState(false)
@@ -32,6 +40,24 @@ export default function LabKitsPage() {
   const [showExpiringOnly, setShowExpiringOnly] = useState(false)
   const [alertsCount, setAlertsCount] = useState(0)
   const { currentSiteId } = useSite()
+
+  useEffect(() => {
+    const paramStudy = searchParams.get('studyId')
+    const normalizedStudy = paramStudy || 'all'
+    if (normalizedStudy !== selectedStudyId) {
+      setSelectedStudyId(normalizedStudy)
+    }
+
+    const paramSearch = searchParams.get('search') || ''
+    if (paramSearch !== inventorySearch) {
+      setInventorySearch(paramSearch)
+    }
+
+    const paramStatus = searchParams.get('status') || 'available'
+    if (paramStatus !== inventoryStatus) {
+      setInventoryStatus(paramStatus)
+    }
+  }, [searchParams, selectedStudyId, inventorySearch, inventoryStatus])
 
   // Load studies on mount
   const loadStudies = useCallback(async () => {
@@ -63,9 +89,55 @@ export default function LabKitsPage() {
     loadStudies()
   }, [loadStudies])
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     setRefreshKey(prev => prev + 1)
-  }
+  }, [])
+
+  const updateQueryParams = useCallback((next: { studyId?: string | null; search?: string | null; status?: string | null }) => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (next.studyId !== undefined) {
+      if (!next.studyId || next.studyId === 'all') {
+        params.delete('studyId')
+      } else {
+        params.set('studyId', next.studyId)
+      }
+    }
+    if (next.search !== undefined) {
+      if (next.search) {
+        params.set('search', next.search)
+      } else {
+        params.delete('search')
+      }
+    }
+    if (next.status !== undefined) {
+      if (next.status && next.status !== 'available') {
+        params.set('status', next.status)
+      } else {
+        params.delete('status')
+      }
+    }
+    const queryString = params.toString()
+    router.replace(`/lab-kits${queryString ? `?${queryString}` : ''}`)
+  }, [router, searchParams])
+
+  const handleStudySelect = useCallback((studyId: string) => {
+    setSelectedStudyId(studyId)
+    if (inventorySearch) {
+      setInventorySearch('')
+    }
+    updateQueryParams({ studyId, search: inventorySearch ? '' : undefined, status: inventoryStatus })
+  }, [inventorySearch, inventoryStatus, updateQueryParams])
+
+  const handleLocateKit = useCallback(({ studyId, accessionNumber }: { studyId?: string | null; accessionNumber?: string | null }) => {
+    const nextStudy = studyId || selectedStudyId || 'all'
+    setSelectedStudyId(nextStudy)
+    setInventorySearch(accessionNumber || '')
+    const status = 'all'
+    setInventoryStatus(status)
+    setViewMode('inventory')
+    updateQueryParams({ studyId: nextStudy, search: accessionNumber ? accessionNumber : null, status })
+    handleRefresh()
+  }, [selectedStudyId, updateQueryParams, handleRefresh])
 
   const handleAddComplete = () => {
     setShowAddModal(false)
@@ -107,7 +179,7 @@ export default function LabKitsPage() {
             {/* Study Hot Buttons */}
             <div className="flex items-center gap-2 overflow-x-auto pb-1">
               <button
-                onClick={() => setSelectedStudyId('all')}
+                onClick={() => handleStudySelect('all')}
                 className={`px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap ${
                   selectedStudyId === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-700/50 text-gray-300 hover:bg-gray-600/50'
                 }`}
@@ -117,7 +189,7 @@ export default function LabKitsPage() {
               {studies.map((study) => (
                 <button
                   key={study.id}
-                  onClick={() => setSelectedStudyId(study.id)}
+                  onClick={() => handleStudySelect(study.id)}
                   className={`px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap ${
                     selectedStudyId === study.id ? 'bg-blue-600 text-white' : 'bg-gray-700/50 text-gray-300 hover:bg-gray-600/50'
                   }`}
@@ -231,6 +303,8 @@ export default function LabKitsPage() {
                   refreshKey={refreshKey}
                   onRefresh={handleRefresh}
                   showExpiringOnly={showExpiringOnly}
+                  initialSearchTerm={inventorySearch}
+                  initialStatus={inventoryStatus}
                 />
               </div>
             )}
@@ -248,6 +322,7 @@ export default function LabKitsPage() {
                 studyId={selectedStudyId === 'all' ? null : selectedStudyId}
                 refreshKey={refreshKey}
                 onRefresh={handleRefresh}
+                onLocateKit={handleLocateKit}
               />
             )}
 

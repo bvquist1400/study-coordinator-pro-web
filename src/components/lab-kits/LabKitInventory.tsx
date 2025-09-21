@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
-import { LabKit } from '@/types/database'
+import { LabKit, StudyKitType } from '@/types/database'
 import { formatDateUTC, parseDateUTC } from '@/lib/date-utils'
 
 interface LabKitInventoryProps {
@@ -10,6 +10,8 @@ interface LabKitInventoryProps {
   refreshKey?: number
   onRefresh: () => void
   showExpiringOnly?: boolean
+  initialSearchTerm?: string
+  initialStatus?: string
 }
 
 interface LabKitWithVisit extends LabKit {
@@ -18,28 +20,38 @@ interface LabKitWithVisit extends LabKit {
     visit_number: number
   }
   studies?: { protocol_number?: string | null; study_title?: string | null } | null
+  kit_type_label?: string | null
+  kit_type_info?: {
+    id: string
+    name: string | null
+    description: string | null
+    is_active: boolean | null
+  } | null
   subject_assignment?: {
     visit_id: string | null
     visit_date: string | null
     subject_id: string | null
     subject_number: string | null
+    visit_name?: string | null
   } | null
   latest_shipment?: {
     id: string | null
     airway_bill_number: string | null
+    carrier: string | null
     tracking_status: string | null
     shipped_date: string | null
+    estimated_delivery: string | null
     actual_delivery: string | null
     accession_number: string | null
   } | null
 }
 
-export default function LabKitInventory({ studyId, refreshKey, onRefresh, showExpiringOnly }: LabKitInventoryProps) {
+export default function LabKitInventory({ studyId, refreshKey, onRefresh, showExpiringOnly, initialSearchTerm, initialStatus }: LabKitInventoryProps) {
   const [labKits, setLabKits] = useState<LabKitWithVisit[]>([])
   const [loading, setLoading] = useState(true)
   // Default to showing Available kits
-  const [statusFilter, setStatusFilter] = useState<string>('available')
-  const [searchTerm, setSearchTerm] = useState('')
+  const [statusFilter, setStatusFilter] = useState<string>(initialStatus || 'available')
+  const [searchTerm, setSearchTerm] = useState(initialSearchTerm || '')
   const [selectedKit, setSelectedKit] = useState<LabKitWithVisit | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [selectedKits, setSelectedKits] = useState<Set<string>>(new Set())
@@ -47,6 +59,10 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
   const [showBulkEditModal, setShowBulkEditModal] = useState(false)
   const [showPendingModal, setShowPendingModal] = useState(false)
   const [groupByVisit, setGroupByVisit] = useState(true)
+
+  const getKitTypeLabel = useCallback((kit: LabKitWithVisit) => {
+    return kit.kit_type_info?.name || kit.kit_type_label || kit.kit_type || '—'
+  }, [])
 
   const loadLabKits = useCallback(async () => {
     try {
@@ -77,6 +93,18 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
   useEffect(() => {
     loadLabKits()
   }, [loadLabKits, refreshKey])
+
+  useEffect(() => {
+    if (typeof initialSearchTerm === 'string') {
+      setSearchTerm(initialSearchTerm)
+    }
+  }, [initialSearchTerm])
+
+  useEffect(() => {
+    if (typeof initialStatus === 'string') {
+      setStatusFilter(initialStatus)
+    }
+  }, [initialStatus])
 
   const getStatusBadge = (status: string) => {
     const baseClasses = "px-2 py-1 text-xs font-medium rounded-full"
@@ -123,9 +151,10 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
     if (kit.status === 'destroyed' || kit.status === 'archived') return false
     
     const matchesStatus = statusFilter === 'all' || kit.status === statusFilter
+    const kitTypeLabel = getKitTypeLabel(kit)
     const matchesSearch = searchTerm === '' || 
       kit.accession_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (kit.kit_type && kit.kit_type.toLowerCase().includes(searchTerm.toLowerCase()))
+      (kitTypeLabel && kitTypeLabel.toLowerCase().includes(searchTerm.toLowerCase()))
     
     // If showExpiringOnly is true, only show kits expiring within 30 days
     const matchesExpiring = !showExpiringOnly || (kit.expiration_date && isExpiringSoon(kit.expiration_date))
@@ -509,6 +538,12 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
                           Visit Assignment
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                          Subject
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                          Shipment
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                           Status
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
@@ -545,7 +580,7 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
                   </td>
                   <td className="px-6 py-4">
                     <div className="text-sm text-gray-300">
-                      {kit.kit_type || '-'}
+                      {getKitTypeLabel(kit)}
                     </div>
                   </td>
                   <td className="px-6 py-4">
@@ -555,6 +590,39 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
                         : 'Unassigned'
                       }
                     </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    {kit.subject_assignment ? (
+                      <div className="text-sm text-gray-200">
+                        <div className="font-medium text-white">
+                          {kit.subject_assignment.subject_number || kit.subject_assignment.subject_id || 'Subject'}
+                        </div>
+                        <div className="text-xs text-gray-400">
+                          {kit.subject_assignment.visit_name || 'Visit'}
+                          {kit.subject_assignment.visit_date ? ` • ${formatDateUTC(kit.subject_assignment.visit_date)}` : ''}
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-500">Unassigned</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4">
+                    {kit.latest_shipment ? (
+                      <div className="text-xs text-gray-300 space-y-1">
+                        <div className="font-medium text-white uppercase tracking-wide">
+                          {(kit.latest_shipment.tracking_status || 'pending').replace(/_/g, ' ')}
+                        </div>
+                        <div className="text-gray-400">
+                          AWB {kit.latest_shipment.airway_bill_number || '—'}
+                        </div>
+                        <div className="text-gray-500">
+                          {kit.latest_shipment.shipped_date ? `Ship ${formatDateUTC(kit.latest_shipment.shipped_date)}` : 'Ship date unknown'}
+                          {kit.latest_shipment.estimated_delivery ? ` · ETA ${formatDateUTC(kit.latest_shipment.estimated_delivery)}` : ''}
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-500">No shipment</span>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={getStatusBadge(kit.status)}>
@@ -656,6 +724,12 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
                     Visit Assignment
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                    Subject
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                    Shipment
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                     Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
@@ -700,7 +774,7 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-300">
-                        {kit.kit_type || '-'}
+                        {getKitTypeLabel(kit)}
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -710,6 +784,39 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
                           : 'Unassigned'
                         }
                       </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      {kit.subject_assignment ? (
+                        <div className="text-sm text-gray-200">
+                          <div className="font-medium text-white">
+                            {kit.subject_assignment.subject_number || kit.subject_assignment.subject_id || 'Subject'}
+                          </div>
+                          <div className="text-xs text-gray-400">
+                            {kit.subject_assignment.visit_name || 'Visit'}
+                            {kit.subject_assignment.visit_date ? ` • ${formatDateUTC(kit.subject_assignment.visit_date)}` : ''}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-500">Unassigned</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      {kit.latest_shipment ? (
+                        <div className="text-xs text-gray-300 space-y-1">
+                          <div className="font-medium text-white uppercase tracking-wide">
+                            {(kit.latest_shipment.tracking_status || 'pending').replace(/_/g, ' ')}
+                          </div>
+                          <div className="text-gray-400">
+                            AWB {kit.latest_shipment.airway_bill_number || '—'}
+                          </div>
+                          <div className="text-gray-500">
+                            {kit.latest_shipment.shipped_date ? `Ship ${formatDateUTC(kit.latest_shipment.shipped_date)}` : 'Ship date unknown'}
+                            {kit.latest_shipment.estimated_delivery ? ` · ETA ${formatDateUTC(kit.latest_shipment.estimated_delivery)}` : ''}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-500">No shipment</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={getStatusBadge(kit.status)}>
@@ -811,7 +918,7 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-400 mb-1">Kit Name</label>
-                    <p className="text-gray-100">{selectedKit.kit_type || 'N/A'}</p>
+                    <p className="text-gray-100">{getKitTypeLabel(selectedKit)}</p>
                   </div>
 
                   <div>
@@ -1034,7 +1141,7 @@ interface BulkEditModalProps {
 
 function BulkEditModal({ selectedKits, onClose, onSave }: BulkEditModalProps) {
   const [bulkData, setBulkData] = useState({
-    kit_type: '',
+    kit_type_id: '',
     lot_number: '',
     expiration_date: '',
     status: '',
@@ -1043,7 +1150,7 @@ function BulkEditModal({ selectedKits, onClose, onSave }: BulkEditModalProps) {
   })
   const [saving, setSaving] = useState(false)
   const [updateFields, setUpdateFields] = useState({
-    kit_type: false,
+    kit_type_id: false,
     lot_number: false,
     expiration_date: false,
     status: false,
@@ -1052,6 +1159,9 @@ function BulkEditModal({ selectedKits, onClose, onSave }: BulkEditModalProps) {
   })
   const [visitSchedules, setVisitSchedules] = useState<Array<{id: string, visit_name: string, visit_number: string}>>([])
   const [loadingVisits, setLoadingVisits] = useState(true)
+  const [kitTypes, setKitTypes] = useState<StudyKitType[]>([])
+  const [kitTypesLoading, setKitTypesLoading] = useState(true)
+  const [kitTypeError, setKitTypeError] = useState<string | null>(null)
 
   // Load visit schedules for the study
   useEffect(() => {
@@ -1082,6 +1192,39 @@ function BulkEditModal({ selectedKits, onClose, onSave }: BulkEditModalProps) {
     loadVisitSchedules()
   }, [selectedKits])
 
+  useEffect(() => {
+    const loadKitTypes = async () => {
+      if (selectedKits.length === 0) return
+      try {
+        setKitTypesLoading(true)
+        setKitTypeError(null)
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
+        if (!token) return
+
+        const response = await fetch(`/api/study-kit-types?study_id=${selectedKits[0].study_id}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+
+        if (response.ok) {
+          const { kitTypes: serverKitTypes } = await response.json()
+          setKitTypes(Array.isArray(serverKitTypes) ? serverKitTypes : [])
+        } else {
+          setKitTypes([])
+          setKitTypeError('Failed to load kit types')
+        }
+      } catch (error) {
+        console.error('Error loading study kit types:', error)
+        setKitTypes([])
+        setKitTypeError('Failed to load kit types')
+      } finally {
+        setKitTypesLoading(false)
+      }
+    }
+
+    loadKitTypes()
+  }, [selectedKits])
+
   const handleSave = async () => {
     try {
       setSaving(true)
@@ -1092,13 +1235,22 @@ function BulkEditModal({ selectedKits, onClose, onSave }: BulkEditModalProps) {
       if (!token) return
 
       // Only send fields that are marked for update and have values
-      const updateData: Partial<LabKit> = {}
+      const updateData: Partial<LabKit> & { kit_type?: string | null } = {}
+      const kitTypeMap = new Map(kitTypes.map(type => [type.id, type]))
       Object.entries(updateFields).forEach(([field, shouldUpdate]) => {
         if (shouldUpdate) {
           const value = bulkData[field as keyof typeof bulkData]
           if (field === 'visit_schedule_id') {
             // Handle visit assignment specially - allow null/empty values
             ;(updateData as Record<string, any>)[field] = value === 'null' || value === '' ? null : value
+          } else if (field === 'kit_type_id') {
+            const nextId = value === 'null' || value === '' ? null : value
+            ;(updateData as Record<string, any>).kit_type_id = nextId
+            if (nextId) {
+              updateData.kit_type = kitTypeMap.get(nextId)?.name ?? null
+            } else {
+              updateData.kit_type = null
+            }
           } else if (value) {
             // For other fields, only include if they have a value
             ;(updateData as Record<string, any>)[field] = value
@@ -1153,26 +1305,41 @@ function BulkEditModal({ selectedKits, onClose, onSave }: BulkEditModalProps) {
           </div>
 
           {/* Form Fields */}
-          <div className="space-y-6">
-            <div className="flex items-center space-x-4">
-              <input
-                type="checkbox"
-                checked={updateFields.kit_type}
-                onChange={(e) => setUpdateFields(prev => ({ ...prev, kit_type: e.target.checked }))}
-                className="w-4 h-4 text-blue-600 border-gray-600 rounded focus:ring-blue-500 bg-gray-700"
-              />
-              <div className="flex-1">
-                <label className="block text-sm font-medium text-gray-300 mb-2">Kit Name</label>
-                <input
-                  type="text"
-                  value={bulkData.kit_type}
-                  onChange={(e) => setBulkData(prev => ({ ...prev, kit_type: e.target.value }))}
-                  disabled={!updateFields.kit_type}
-                  placeholder="e.g., Visit 2 Week 4"
-                  className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-                />
-              </div>
+        <div className="space-y-6">
+          <div className="flex items-center space-x-4">
+            <input
+              type="checkbox"
+              checked={updateFields.kit_type_id}
+              onChange={(e) => setUpdateFields(prev => ({ ...prev, kit_type_id: e.target.checked }))}
+              className="w-4 h-4 text-blue-600 border-gray-600 rounded focus:ring-blue-500 bg-gray-700"
+            />
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-300 mb-2">Kit Type</label>
+              <select
+                value={bulkData.kit_type_id}
+                onChange={(e) => setBulkData(prev => ({ ...prev, kit_type_id: e.target.value }))}
+                disabled={!updateFields.kit_type_id || kitTypesLoading}
+                className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              >
+                <option value="">Select kit type…</option>
+                <option value="null">Remove kit type</option>
+                {kitTypes.map(type => (
+                  <option key={type.id} value={type.id}>
+                    {type.name}{!type.is_active ? ' (Inactive)' : ''}
+                  </option>
+                ))}
+              </select>
+              {kitTypesLoading && (
+                <p className="text-xs text-gray-400 mt-1">Loading kit types…</p>
+              )}
+              {kitTypeError && (
+                <p className="text-xs text-red-400 mt-1">{kitTypeError}</p>
+              )}
+              {!kitTypesLoading && kitTypes.length === 0 && !kitTypeError && (
+                <p className="text-xs text-yellow-400 mt-1">No catalog kit types defined for this study.</p>
+              )}
             </div>
+          </div>
 
             <div className="flex items-center space-x-4">
               <input

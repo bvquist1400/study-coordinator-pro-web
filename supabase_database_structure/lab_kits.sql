@@ -4,6 +4,7 @@ create table public.lab_kits (
   visit_schedule_id uuid null,
   accession_number text not null,
   kit_type text null,
+  kit_type_id uuid null references public.study_kit_types (id) on delete set null,
   lot_number text null,
   expiration_date date null,
   status text null default 'available'::text,
@@ -39,6 +40,8 @@ create index IF not exists idx_lab_kits_study_id on public.lab_kits using btree 
 create index IF not exists idx_lab_kits_status on public.lab_kits using btree (status) TABLESPACE pg_default;
 
 create index IF not exists idx_lab_kits_expiration_date on public.lab_kits using btree (expiration_date) TABLESPACE pg_default;
+
+create index IF not exists idx_lab_kits_kit_type_id on public.lab_kits using btree (kit_type_id) TABLESPACE pg_default;
 
 create index IF not exists idx_lab_kits_accession_number on public.lab_kits using btree (accession_number) TABLESPACE pg_default;
 

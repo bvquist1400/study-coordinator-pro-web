@@ -1,12 +1,22 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase/client'
-import type { VisitSchedule, Study, StudySection } from '@/types/database'
+import type { VisitSchedule, Study, StudySection, StudyKitType, VisitKitRequirementInsert, VisitKitRequirementUpdate } from '@/types/database'
 
 interface ScheduleOfEventsBuilderProps {
   study: Study
   onSave?: (schedules: VisitSchedule[]) => void
+}
+
+interface VisitKitRequirementDraft {
+  id?: string
+  tempId?: string
+  kit_type_id: string | null
+  kit_type_name?: string | null
+  quantity: number
+  is_optional: boolean
+  notes: string | null
 }
 
 interface Visit {
@@ -19,6 +29,8 @@ interface Visit {
   visitWindowAfter: number
   isNew?: boolean
   originalVisitNumber?: string // Preserve original DB visit number text for updates
+  kitRequirements: VisitKitRequirementDraft[]
+  requirementsToDelete: string[]
 }
 
 interface Procedure {
@@ -28,7 +40,9 @@ interface Procedure {
   visits: { [visitId: string]: boolean | 'X' | null }
 }
 
-const defaultVisits: Omit<Visit, 'id'>[] = [
+type VisitTemplate = Omit<Visit, 'id' | 'kitRequirements' | 'requirementsToDelete'>
+
+const defaultVisitTemplates: VisitTemplate[] = [
   { visitNumber: 'S1', visitName: 'Screening', timingValue: -14, timingUnit: 'days', visitWindowBefore: 30, visitWindowAfter: 0 },
   { visitNumber: 'V1', visitName: 'Baseline', timingValue: 1, timingUnit: 'days', visitWindowBefore: 0, visitWindowAfter: 0 },
   { visitNumber: 'V2', visitName: 'Visit 2', timingValue: 4, timingUnit: 'weeks', visitWindowBefore: 7, visitWindowAfter: 7 },
@@ -39,6 +53,12 @@ const defaultVisits: Omit<Visit, 'id'>[] = [
   { visitNumber: 'ET', visitName: 'Early Term', timingValue: 0, timingUnit: 'days', visitWindowBefore: 0, visitWindowAfter: 0 },
   { visitNumber: 'FU', visitName: 'Follow-up', timingValue: 30, timingUnit: 'days', visitWindowBefore: 0, visitWindowAfter: 7 }
 ]
+
+const defaultVisits: Omit<Visit, 'id'>[] = defaultVisitTemplates.map(v => ({
+  ...v,
+  kitRequirements: [],
+  requirementsToDelete: []
+}))
 
 const defaultProcedures: Omit<Procedure, 'id'>[] = [
   // Laboratory
@@ -62,6 +82,22 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
   const [showAddSection, setShowAddSection] = useState(false)
   const [newSectionCode, setNewSectionCode] = useState('')
   const [newSectionName, setNewSectionName] = useState('')
+  const [kitTypes, setKitTypes] = useState<StudyKitType[]>([])
+  const [kitTypesLoading, setKitTypesLoading] = useState(true)
+  const [kitTypeError, setKitTypeError] = useState<string | null>(null)
+  const [newKitTypeName, setNewKitTypeName] = useState('')
+  const [newKitTypeDescription, setNewKitTypeDescription] = useState('')
+  const [creatingKitType, setCreatingKitType] = useState(false)
+  const [kitModalVisitId, setKitModalVisitId] = useState<string | null>(null)
+  const [kitDrafts, setKitDrafts] = useState<VisitKitRequirementDraft[]>([])
+  const [kitRemovedIds, setKitRemovedIds] = useState<string[]>([])
+
+  const generateTempId = () => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID()
+    }
+    return `tmp-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  }
 
   // Initialize with default data
   useEffect(() => {
@@ -201,6 +237,17 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
             visitWindowBefore: schedule.window_before_days,
             visitWindowAfter: schedule.window_after_days,
             originalVisitNumber: schedule.visit_number // Preserve original DB visit number
+            ,
+            kitRequirements: (schedule.kit_requirements || []).map((req: any) => ({
+              id: req.id as string,
+              tempId: req.id as string,
+              kit_type_id: req.kit_type_id as string | null,
+              kit_type_name: (req.study_kit_types as any)?.name || null,
+              quantity: typeof req.quantity === 'number' ? req.quantity : 1,
+              is_optional: !!req.is_optional,
+              notes: req.notes || null
+            })),
+            requirementsToDelete: []
           }
         })
         
@@ -228,7 +275,9 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
         // Use default data for new studies
         visitsToUse = defaultVisits.map((v, i) => ({
           ...v,
-          id: `visit-${i}`
+          id: `visit-${i}`,
+          kitRequirements: [],
+          requirementsToDelete: []
         }))
         
         proceduresToUse = defaultProcedures.map((p, i) => {
@@ -263,11 +312,226 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
     } catch (error) {
       console.error('Error loading schedule:', error)
       // Use defaults on error
-      setVisits(defaultVisits.map((v, i) => ({ ...v, id: `visit-${i}` })))
+      setVisits(defaultVisits.map((v, i) => ({ ...v, id: `visit-${i}`, kitRequirements: [], requirementsToDelete: [] })))
       setProcedures(defaultProcedures.map((p, i) => ({ ...p, id: `proc-${i}`, visits: {} })))
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const loadKitTypes = useCallback(async () => {
+    try {
+      setKitTypesLoading(true)
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) {
+        setKitTypes([])
+        return
+      }
+
+      const response = await fetch(`/api/study-kit-types?study_id=${study.id}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      if (!response.ok) {
+        setKitTypes([])
+        return
+      }
+
+      const { kitTypes: serverKitTypes } = await response.json()
+      setKitTypes(Array.isArray(serverKitTypes) ? serverKitTypes : [])
+    } catch (error) {
+      console.error('Failed to load study kit types', error)
+      setKitTypes([])
+    } finally {
+      setKitTypesLoading(false)
+    }
+  }, [study.id])
+
+  useEffect(() => {
+    loadKitTypes()
+  }, [loadKitTypes])
+
+  const kitTypeMap = useMemo(() => new Map(kitTypes.map(type => [type.id, type.name])), [kitTypes])
+  const activeKitTypes = useMemo(() => kitTypes.filter(type => type.is_active), [kitTypes])
+
+  const openKitModal = (visitId: string) => {
+    const visit = visits.find(v => v.id === visitId)
+    if (!visit) return
+    const drafts = visit.kitRequirements.map(req => ({
+      id: req.id,
+      tempId: req.tempId || generateTempId(),
+      kit_type_id: req.kit_type_id || null,
+      kit_type_name: req.kit_type_name || null,
+      quantity: req.quantity,
+      is_optional: req.is_optional,
+      notes: req.notes
+    }))
+    setKitDrafts(drafts)
+    setKitRemovedIds([])
+    setKitModalVisitId(visitId)
+  }
+
+  const closeKitModal = () => {
+    setKitModalVisitId(null)
+    setKitDrafts([])
+    setKitRemovedIds([])
+    setKitTypeError(null)
+    setNewKitTypeName('')
+    setNewKitTypeDescription('')
+  }
+
+  const updateKitDraft = (tempId: string, field: keyof VisitKitRequirementDraft, value: string | number | boolean | null) => {
+    setKitDrafts(current => current.map(draft => {
+      if ((draft.tempId || draft.id) === tempId) {
+        if (field === 'quantity' && typeof value === 'number') {
+          return { ...draft, quantity: value }
+        }
+        if (field === 'notes' && (typeof value === 'string' || value === null)) {
+          return { ...draft, notes: value ? value : null }
+        }
+        if (field === 'kit_type_id' && (typeof value === 'string' || value === null)) {
+          const kitTypeId = value || null
+          const kitTypeName = kitTypeId ? kitTypeMap.get(kitTypeId) || null : null
+          return { ...draft, kit_type_id: kitTypeId, kit_type_name: kitTypeName }
+        }
+        if (field === 'is_optional' && typeof value === 'boolean') {
+          return { ...draft, is_optional: value }
+        }
+      }
+      return draft
+    }))
+  }
+
+  const addKitDraft = () => {
+    setKitDrafts(current => ([
+      ...current,
+      {
+        tempId: generateTempId(),
+        kit_type_id: activeKitTypes[0]?.id || null,
+        kit_type_name: activeKitTypes[0]?.name || null,
+        quantity: 1,
+        is_optional: false,
+        notes: null
+      }
+    ]))
+  }
+
+  const removeKitDraft = (tempId: string) => {
+    setKitDrafts(current => {
+      const draft = current.find(d => (d.tempId || d.id) === tempId)
+      if (draft?.id) {
+        setKitRemovedIds(prev => Array.from(new Set([...prev, draft.id!])))
+      }
+      return current.filter(d => (d.tempId || d.id) !== tempId)
+    })
+  }
+
+  const handleCreateKitType = useCallback(async () => {
+    const name = newKitTypeName.trim()
+    const description = newKitTypeDescription.trim()
+    if (!name) {
+      setKitTypeError('Kit type name is required')
+      return
+    }
+
+    try {
+      setCreatingKitType(true)
+      setKitTypeError(null)
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) throw new Error('Authentication required')
+
+      const response = await fetch('/api/study-kit-types', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          study_id: study.id,
+          name,
+          description: description || null
+        })
+      })
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}))
+        setKitTypeError(error.error || 'Failed to create kit type')
+        return
+      }
+
+      const { kitType } = await response.json()
+      setNewKitTypeName('')
+      setNewKitTypeDescription('')
+      await loadKitTypes()
+      setKitDrafts(current => current.map(draft => {
+        if (!draft.kit_type_id) {
+          return {
+            ...draft,
+            kit_type_id: kitType.id as string,
+            kit_type_name: kitType.name as string
+          }
+        }
+        return draft
+      }))
+    } catch (error) {
+      setKitTypeError(error instanceof Error ? error.message : 'Failed to create kit type')
+    } finally {
+      setCreatingKitType(false)
+    }
+  }, [loadKitTypes, newKitTypeDescription, newKitTypeName, study.id])
+
+  const applyKitDrafts = () => {
+    if (!kitModalVisitId) return
+    // Validate kit types and quantities
+    for (const draft of kitDrafts) {
+      if (!draft.kit_type_id) {
+        alert('Select a kit type for each entry')
+        return
+      }
+      if (!draft.quantity || draft.quantity < 1) {
+        alert('Quantity must be at least 1')
+        return
+      }
+    }
+
+    setVisits(prev => prev.map(visit => {
+      if (visit.id !== kitModalVisitId) return visit
+      return {
+        ...visit,
+        kitRequirements: kitDrafts.map(draft => ({
+          id: draft.id,
+          tempId: draft.tempId || draft.id || generateTempId(),
+          kit_type_id: draft.kit_type_id,
+          kit_type_name: draft.kit_type_id ? (kitTypeMap.get(draft.kit_type_id) || draft.kit_type_name || null) : (draft.kit_type_name || null),
+          quantity: draft.quantity,
+          is_optional: !!draft.is_optional,
+          notes: draft.notes ? draft.notes.trim() : null
+        })),
+        requirementsToDelete: Array.from(new Set([...(visit.requirementsToDelete || []), ...kitRemovedIds]))
+      }
+    }))
+
+    setKitRemovedIds([])
+    closeKitModal()
+  }
+
+  const summarizeKitRequirements = (visit: Visit) => {
+    if (!visit.kitRequirements.length) {
+      return 'None'
+    }
+    return visit.kitRequirements
+      .map(req => {
+        const name = req.kit_type_id ? (kitTypeMap.get(req.kit_type_id) || req.kit_type_name || 'Kit') : (req.kit_type_name || 'Kit')
+        const parts: string[] = [name]
+        if (req.quantity > 1) parts.push(`×${req.quantity}`)
+        if (req.is_optional) parts.push('(Optional)')
+        return parts.join(' ')
+      })
+      .join(', ')
   }
 
   const toggleProcedure = (procedureId: string, visitId: string) => {
@@ -298,7 +562,9 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
       visitWindowBefore: 7,
       visitWindowAfter: 7,
       isNew: true,
-      originalVisitNumber: undefined // This is a new visit, no original number
+      originalVisitNumber: undefined, // This is a new visit, no original number
+      kitRequirements: [],
+      requirementsToDelete: []
     }
     setVisits([...visits, newVisit])
   }
@@ -391,6 +657,118 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
         console.error('Response status:', response.status)
         throw new Error(errorData.details || errorData.error || 'Failed to save schedule')
       }
+
+      // Sync kit requirements after schedule save
+      const sectionQuery = selectedSectionId ? `&section_id=${selectedSectionId}` : ''
+      const visitLookupKey = (visitNumber: string, visitName: string) => `${visitNumber}|||${visitName}`
+      const visitDraftMap = new Map<string, Visit>
+      visits.forEach(v => {
+        const key = visitLookupKey(v.originalVisitNumber || v.visitNumber, v.visitName)
+        visitDraftMap.set(key, v)
+      })
+
+      const latestResponse = await fetch(`/api/visit-schedules?study_id=${study.id}${sectionQuery}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      if (latestResponse.ok) {
+        const { visitSchedules: latestSchedules = [] } = await latestResponse.json()
+
+        const kitOps: Promise<Response>[] = []
+        const headers = {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+
+        latestSchedules.forEach((schedule: any) => {
+          const key = visitLookupKey(schedule.visit_number, schedule.visit_name)
+          const visitDraft = visitDraftMap.get(key)
+          if (!visitDraft) return
+
+          const desired = visitDraft.kitRequirements || []
+          const existing: any[] = schedule.kit_requirements || []
+
+          const desiredById = new Map<string, VisitKitRequirementDraft>()
+          desired.forEach(req => {
+            if (req.id) desiredById.set(req.id, req)
+          })
+
+          const existingById = new Map<string, any>()
+          existing.forEach(req => {
+            existingById.set(req.id as string, req)
+          })
+
+          const deleteIds = new Set<string>((visitDraft.requirementsToDelete || []))
+          existing.forEach(req => {
+            if (!desiredById.has(req.id as string)) {
+              deleteIds.add(req.id as string)
+            }
+          })
+
+          deleteIds.forEach(id => {
+            kitOps.push(fetch(`/api/visit-kit-requirements?id=${id}&study_id=${study.id}`, {
+              method: 'DELETE',
+              headers: { 'Authorization': `Bearer ${token}` }
+            }))
+          })
+
+          desired.filter(req => !req.id).forEach(req => {
+            kitOps.push(fetch('/api/visit-kit-requirements', {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({
+                study_id: study.id,
+                visit_schedule_id: schedule.id,
+                kit_type_id: req.kit_type_id,
+                quantity: req.quantity,
+                is_optional: req.is_optional,
+                notes: req.notes
+              } as VisitKitRequirementInsert)
+            }))
+          })
+
+          desired.filter(req => req.id).forEach(req => {
+            const existingReq = existingById.get(req.id!)
+            if (!existingReq) return
+            const hasChanges = (existingReq.kit_type_id as string | null) !== (req.kit_type_id || null)
+              || Number(existingReq.quantity ?? 1) !== req.quantity
+              || !!existingReq.is_optional !== !!req.is_optional
+              || (existingReq.notes || null) !== (req.notes || null)
+            if (hasChanges) {
+              kitOps.push(fetch('/api/visit-kit-requirements', {
+                method: 'PUT',
+                headers,
+                body: JSON.stringify({
+                  id: req.id,
+                  study_id: study.id,
+                  visit_schedule_id: schedule.id,
+                  kit_type_id: req.kit_type_id,
+                  quantity: req.quantity,
+                  is_optional: req.is_optional,
+                  notes: req.notes
+                } as VisitKitRequirementUpdate)
+              }))
+            }
+          })
+        })
+
+        if (kitOps.length > 0) {
+          const results = await Promise.all(kitOps)
+          const failures = results.filter(res => !res.ok)
+          if (failures.length > 0) {
+            console.warn('Some kit requirement operations failed')
+            alert('Warning: Some kit requirement updates failed. Please review the kit requirements and try again.')
+          }
+        }
+      } else {
+        console.warn('Unable to refresh visit schedules for kit requirements sync')
+      }
+
+      setIsLoading(true)
+      await loadScheduleData(selectedSectionId || null)
+      setIsLoading(false)
 
       // Save notes if any
       if (notes.trim()) {
@@ -725,6 +1103,27 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
                 ))}
                 <th></th>
               </tr>
+
+              <tr className="bg-gray-900/30 border-b border-gray-700">
+                <th colSpan={2} className="text-left px-4 py-2 font-semibold text-gray-300 border-r border-gray-700">
+                  Kit Requirements
+                </th>
+                {visits.map(visit => (
+                  <th key={visit.id} className="px-2 py-2 text-center border-r border-gray-600">
+                    <div className="text-xs text-gray-300 min-h-[32px] flex items-center justify-center text-center px-1">
+                      {summarizeKitRequirements(visit)}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => openKitModal(visit.id)}
+                      className="mt-2 text-xs px-2 py-1 border border-gray-600 text-gray-200 rounded hover:bg-gray-700 transition-colors"
+                    >
+                      Manage
+                    </button>
+                  </th>
+                ))}
+                <th></th>
+              </tr>
             </thead>
             
             {/* Procedures Body */}
@@ -804,6 +1203,177 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
             className="w-full h-32 bg-gray-700/50 text-gray-200 rounded-lg p-3 border border-gray-600 focus:border-blue-500 focus:outline-none resize-none"
           />
           <div className="mt-3 text-xs text-gray-400">
+          </div>
+        </div>
+      )}
+
+      {kitModalVisitId && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800/95 border border-gray-700 rounded-2xl max-w-2xl w-full shadow-xl overflow-hidden">
+            <div className="p-6 space-y-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold text-white">Manage Kit Requirements</h2>
+                  <p className="text-sm text-gray-400 mt-1">
+                    Specify required kit types for this visit. Quantities reflect kits needed per subject.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeKitModal}
+                  className="text-gray-400 hover:text-white transition-colors"
+                  aria-label="Close"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="bg-gray-900/60 border border-gray-700 rounded-lg p-4 space-y-3">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium text-gray-400 mb-1">New Kit Type</label>
+                    <input
+                      type="text"
+                      value={newKitTypeName}
+                      onChange={(e) => setNewKitTypeName(e.target.value)}
+                      placeholder="e.g., Q12 Lab Kit"
+                      className="w-full bg-gray-700/60 border border-gray-600 text-gray-100 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium text-gray-400 mb-1">Description (optional)</label>
+                    <input
+                      type="text"
+                      value={newKitTypeDescription}
+                      onChange={(e) => setNewKitTypeDescription(e.target.value)}
+                      placeholder="Notes about handling, cadence, etc."
+                      className="w-full bg-gray-700/60 border border-gray-600 text-gray-100 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      onClick={handleCreateKitType}
+                      disabled={creatingKitType}
+                      className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium transition-colors disabled:opacity-50"
+                    >
+                      {creatingKitType ? 'Adding…' : 'Add Kit Type'}
+                    </button>
+                  </div>
+                </div>
+                {kitTypeError && (
+                  <div className="text-sm text-red-400">{kitTypeError}</div>
+                )}
+              </div>
+
+              <div className="space-y-3 max-h-[45vh] overflow-y-auto pr-1">
+                {kitDrafts.length === 0 && (
+                  <div className="text-sm text-gray-400 bg-gray-900/50 border border-dashed border-gray-700 rounded-lg p-4 text-center">
+                    No kit requirements yet. Add one below.
+                  </div>
+                )}
+
+                {kitDrafts.map(draft => (
+                  <div key={draft.tempId || draft.id} className="bg-gray-900/60 border border-gray-700 rounded-lg p-4 space-y-3">
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <div className="flex-1">
+                        <label className="block text-xs font-medium text-gray-400 mb-1">Kit Type *</label>
+                        <select
+                          value={draft.kit_type_id || ''}
+                          onChange={(e) => updateKitDraft(draft.tempId || draft.id || '', 'kit_type_id', e.target.value || null)}
+                          className="w-full bg-gray-700/60 border border-gray-600 text-gray-100 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="">Select a kit type</option>
+                          {kitTypes.map(type => (
+                            <option key={type.id} value={type.id}>
+                              {type.name}{!type.is_active ? ' (Inactive)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                        {kitTypesLoading && (
+                          <p className="text-xs text-gray-500 mt-1">Loading kit types…</p>
+                        )}
+                        {!kitTypesLoading && !kitTypes.length && (
+                          <p className="text-xs text-gray-500 mt-1">Add a kit type above to start tracking requirements.</p>
+                        )}
+                        {draft.kit_type_id && !kitTypeMap.get(draft.kit_type_id) && (
+                          <p className="text-xs text-yellow-400 mt-1">Kit type no longer available. Select another.</p>
+                        )}
+                      </div>
+                      <div className="w-full sm:w-28">
+                        <label className="block text-xs font-medium text-gray-400 mb-1">Quantity *</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={draft.quantity}
+                          onChange={(e) => updateKitDraft(draft.tempId || draft.id || '', 'quantity', parseInt(e.target.value) || 1)}
+                          className="w-full bg-gray-700/60 border border-gray-600 text-gray-100 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between flex-wrap gap-3">
+                      <label className="inline-flex items-center space-x-2 text-sm text-gray-300">
+                        <input
+                          type="checkbox"
+                          checked={draft.is_optional}
+                          onChange={(e) => updateKitDraft(draft.tempId || draft.id || '', 'is_optional', e.target.checked)}
+                          className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                        />
+                        <span>Optional kit</span>
+                      </label>
+
+                      <button
+                        type="button"
+                        className="text-xs text-red-400 hover:text-red-300"
+                        onClick={() => removeKitDraft(draft.tempId || draft.id || '')}
+                      >
+                        Remove
+                      </button>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-400 mb-1">Notes</label>
+                      <textarea
+                        value={draft.notes || ''}
+                        onChange={(e) => updateKitDraft(draft.tempId || draft.id || '', 'notes', e.target.value)}
+                        rows={2}
+                        className="w-full bg-gray-700/60 border border-gray-600 text-gray-100 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Special handling, storage, etc."
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={addKitDraft}
+                  className="px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                >
+                  + Add Kit Requirement
+                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={closeKitModal}
+                    className="px-4 py-2 text-sm text-gray-300 hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applyKitDrafts}
+                    className="px-4 py-2 text-sm bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

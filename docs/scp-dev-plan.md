@@ -60,7 +60,7 @@ These are blocking user workflows and need immediate attention:
 ### 2. **Lab Kit Management System Integration**
 Multiple issues need resolution in the lab kit workflow:
 
-#### A. **Lab Kit Linking Issue** (Priority: LOW)
+#### A. **Lab Kit Linking Issue** (Priority: LOW) ✅
 - **Problem**: Shipping updates are surfaced in `/lab-kits` and `/shipments` independently, and the latest status is not always reflected in both views.
 - **Actions**:
   ```typescript
@@ -70,6 +70,7 @@ Multiple issues need resolution in the lab kit workflow:
   - Surface assigned subject/visit details in both LabKitInventory and ShipmentsList panes for at-a-glance reconciliation
   - Add optimistic UI updates when marking shipments delivered so both pages refresh consistently
   ```
+- **Status**: Completed — shipment APIs now return kit + subject context via a shared helper, the lab kit inventory UI surfaces subject and shipment columns, the shipments page groups kits by airway bill with expandable rows, and Locate Kit deep-links back to inventory (forcing `status=all`) with optimistic delivery handling.
 - **Supabase Notes**:
   - Relationships already exist via `lab_kit_shipments`; evaluate if we need a materialized view or denormalized fields after wiring the APIs.
 
@@ -93,6 +94,7 @@ Multiple issues need resolution in the lab kit workflow:
     is_optional BOOLEAN DEFAULT FALSE
   );
   ```
+- **Progress**: Added a dedicated `visit_kit_requirements` table, exposed CRUD APIs, surfaced requirements on visit schedule reads, and introduced a “Manage Kit Requirements” editor inside the Schedule of Events builder (with optimistic syncing to the new API). Inventory forecasting now rolls up kit demand per shared kit type (buffer/deficit alerts and the Inventory panel consume the enriched data), and Add Lab Kit defaults align with protocol requirements. Next follow-up: wire the bulk import / bulk edit flows to the shared kit catalog and extend forecasting with adjustable safety buffers.
 
 #### C. **Inventory Forecast UI** (Priority: LOW)
 - **Problem**: Alerts overwhelming on Lab Kit management page
@@ -119,36 +121,27 @@ Multiple issues need resolution in the lab kit workflow:
 
 ## 🗓️ PHASE 2: Visit Management Enhancements (Week 2-3)
 
-### 3. **Unscheduled Visit Support** (Priority: MEDIUM)
-- **Problem**: Cannot schedule unscheduled/ad-hoc visits
-- **Actions**:
-  ```typescript
-  // Add unscheduled visit functionality
-  - Create "Add Unscheduled Visit" button
-  - Template system for common unscheduled visit types
-  - Include lab accession and drug accountability fields
-  - Allow custom visit naming
-  ```
-- **Supabase Changes**:
-  ```sql
-  ALTER TABLE visits 
-  ADD COLUMN is_unscheduled BOOLEAN DEFAULT FALSE,
-  ADD COLUMN unscheduled_reason TEXT;
-  ```
+### 3. **Unscheduled Visit Support** (Priority: MEDIUM) ✅
+- **Current state**: Timeline now exposes an "Add Unscheduled Visit" entry, ScheduleVisitModal supports custom/unscheduled mode with templates + mandatory reason, and subject_visits stores `is_unscheduled` / `unscheduled_reason`.
+- **Follow-up checks**:
+  - QA: schedule a protocol visit, then create an unscheduled entry and confirm badges + reason display.
+  - Supabase: ensure the columns exist in `subject_visits` (already applied via migration).
 
-### 4. **Visit Rescheduling Feature** (Priority: MEDIUM)
-- **Problem**: No ability to reschedule visits
-- **Actions**:
+### 4. **Visit Rescheduling Feature** (Priority: MEDIUM) ✅
+- **Current state**: Users can reschedule from the timeline via the new `RescheduleModal`, which captures the new date + optional reason, recalculates timing, and logs changes in `visit_schedule_history`.
+- **Implementation highlights**:
   ```typescript
-  // Implement rescheduling workflow
-  - Add "Reschedule" action to visit cards and timeline
-  - Date picker with window validation
-  - Cascade updates to dependent visits
-  - Audit trail for schedule changes
+  // SubjectVisitTimelineTable
+  - Launch dedicated RescheduleModal with window context
+  - Refresh timeline after successful PUT /api/subject-visits/[id]
+
+  // API
+  - Accept `reschedule_reason` alongside `visit_date`
+  - Insert audit rows into `visit_schedule_history`
+  - Preserve timing calculations for completed visits
   ```
-- **Components to create**:
-  - `/components/visits/RescheduleModal.tsx`
-  - `/lib/visits/rescheduleLogic.ts`
+- **Supabase**: Created `visit_schedule_history` (audit trail) — run the SQL snippet below if not already applied.
+- **Follow-up**: Cascading adjustments for dependent visits remain a future enhancement (backlog).
 
 ---
 
@@ -217,7 +210,7 @@ Multiple issues need resolution in the lab kit workflow:
 
 ### **Week 2: Visit Management**
 4. ✅ Add unscheduled visit support
-5. ⬜ Implement visit rescheduling
+5. ✅ Implement visit rescheduling
 6. ⬜ Fix accession number display
 
 ### **Week 3: Lab Kit Enhancements**
@@ -248,13 +241,12 @@ CREATE TABLE visit_kit_requirements (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. Unscheduled Visits Support
-ALTER TABLE visits 
+-- 2. Unscheduled Visits Support ✅ (applied)
+ALTER TABLE subject_visits 
 ADD COLUMN is_unscheduled BOOLEAN DEFAULT FALSE,
-ADD COLUMN unscheduled_reason TEXT,
-ADD COLUMN original_scheduled_date DATE;
+ADD COLUMN unscheduled_reason TEXT;
 
--- 3. Visit Reschedule Audit
+-- 3. Visit Reschedule Audit ✅ (applied)
 CREATE TABLE visit_schedule_history (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   visit_id UUID REFERENCES visits(id),

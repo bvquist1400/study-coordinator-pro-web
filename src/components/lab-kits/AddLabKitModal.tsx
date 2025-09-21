@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { todayLocalISODate, parseDateUTC } from '@/lib/date-utils'
 
@@ -10,16 +10,35 @@ interface AddLabKitModalProps {
   onAdd: () => void
 }
 
+interface StudyKitType {
+  id: string
+  name: string
+  description: string | null
+  is_active: boolean
+}
+
+interface VisitKitRequirementSummary {
+  kit_type_id: string
+  quantity: number
+  is_optional: boolean
+  study_kit_types?: {
+    id: string
+    name: string
+  } | null
+  visit_schedule_id?: string
+}
+
 interface VisitSchedule {
   id: string
   visit_name: string
   visit_number: number
   visit_type: string
+  kit_requirements?: VisitKitRequirementSummary[]
 }
 
 interface LabKitFormData {
   accession_number: string
-  kit_type: string
+  kit_type_id: string
   visit_schedule_id: string
   expiration_date: string
   received_date: string
@@ -28,12 +47,14 @@ interface LabKitFormData {
 
 export default function AddLabKitModal({ studyId, onClose, onAdd }: AddLabKitModalProps) {
   const [visitSchedules, setVisitSchedules] = useState<VisitSchedule[]>([])
+  const [kitTypes, setKitTypes] = useState<StudyKitType[]>([])
+  const [kitTypesLoading, setKitTypesLoading] = useState(true)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   
   const [formData, setFormData] = useState<LabKitFormData>({
     accession_number: '',
-    kit_type: '',
+    kit_type_id: '',
     visit_schedule_id: '',
     expiration_date: '',
     received_date: todayLocalISODate(), // Default to today (local)
@@ -41,6 +62,7 @@ export default function AddLabKitModal({ studyId, onClose, onAdd }: AddLabKitMod
   })
   
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [requirementsByKitType, setRequirementsByKitType] = useState<Record<string, VisitKitRequirementSummary[]>>({})
 
   const loadVisitSchedules = useCallback(async () => {
     try {
@@ -49,7 +71,7 @@ export default function AddLabKitModal({ studyId, onClose, onAdd }: AddLabKitMod
       
       if (!token) return
 
-      const response = await fetch(`/api/visit-schedules?studyId=${studyId}`, {
+      const response = await fetch(`/api/visit-schedules?study_id=${studyId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
 
@@ -64,26 +86,106 @@ export default function AddLabKitModal({ studyId, onClose, onAdd }: AddLabKitMod
     }
   }, [studyId])
 
+  const loadKitTypes = useCallback(async () => {
+    try {
+      setKitTypesLoading(true)
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) return
+
+      const response = await fetch(`/api/study-kit-types?study_id=${studyId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+
+      if (response.ok) {
+        const { kitTypes } = await response.json()
+        setKitTypes(Array.isArray(kitTypes) ? kitTypes : [])
+      }
+    } catch (error) {
+      console.error('Error loading kit types:', error)
+    } finally {
+      setKitTypesLoading(false)
+    }
+  }, [studyId])
+
   useEffect(() => {
     loadVisitSchedules()
-  }, [loadVisitSchedules])
+    loadKitTypes()
+  }, [loadVisitSchedules, loadKitTypes])
+
+  useEffect(() => {
+    const loadRequirements = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
+        if (!token) return
+
+        const response = await fetch(`/api/visit-kit-requirements?study_id=${studyId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+
+        if (response.ok) {
+          const { requirements } = await response.json()
+          const grouped = (requirements || []).reduce((acc: Record<string, VisitKitRequirementSummary[]>, req: any) => {
+            const kitTypeId = req.kit_type_id as string | undefined
+            if (!kitTypeId) return acc
+            if (!acc[kitTypeId]) acc[kitTypeId] = []
+            acc[kitTypeId].push({
+              kit_type_id: kitTypeId,
+              quantity: req.quantity ?? 1,
+              is_optional: !!req.is_optional,
+              visit_schedule_id: req.visit_schedule_id as string | undefined,
+              study_kit_types: req.study_kit_types ?? null
+            })
+            return acc
+          }, {})
+          setRequirementsByKitType(grouped)
+        }
+      } catch (error) {
+        console.error('Error loading kit requirements:', error)
+      }
+    }
+
+    loadRequirements()
+  }, [studyId])
+
+  const kitTypeMap = useMemo(() => new Map(kitTypes.map(type => [type.id, type])), [kitTypes])
+  const selectedKitType = formData.kit_type_id ? kitTypeMap.get(formData.kit_type_id) || null : null
+  const visitScheduleMap = useMemo(() => new Map(visitSchedules.map(schedule => [schedule.id, schedule])), [visitSchedules])
+  const recommendedRequirements = formData.kit_type_id ? (requirementsByKitType[formData.kit_type_id] || []) : []
+  const recommendedVisitIds = useMemo(() => new Set(recommendedRequirements.map(req => req.visit_schedule_id).filter(Boolean) as string[]), [recommendedRequirements])
+  const recommendedVisits = visitSchedules.filter(schedule => recommendedVisitIds.has(schedule.id))
+  const otherVisits = visitSchedules.filter(schedule => !recommendedVisitIds.has(schedule.id))
+
+  useEffect(() => {
+    if (!kitTypesLoading && kitTypes.length === 1 && !formData.kit_type_id) {
+      setFormData(prev => ({ ...prev, kit_type_id: kitTypes[0].id }))
+    }
+  }, [kitTypesLoading, kitTypes, formData.kit_type_id])
 
   const handleChange = (field: keyof LabKitFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
-    // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }))
     }
-    
-    // Auto-populate kit type based on visit selection
-    if (field === 'visit_schedule_id' && value) {
+
+    if (field === 'visit_schedule_id') {
       const selectedVisit = visitSchedules.find(v => v.id === value)
-      if (selectedVisit && !formData.kit_type) {
-        setFormData(prev => ({ 
-          ...prev, 
-          kit_type: `${selectedVisit.visit_name} Lab Kit`,
-          visit_schedule_id: value 
-        }))
+      if (selectedVisit) {
+        const requirement = (selectedVisit.kit_requirements || []).find(req => !req.is_optional)
+          || (selectedVisit.kit_requirements || [])[0]
+        if (requirement?.kit_type_id) {
+          setFormData(prev => ({
+            ...prev,
+            kit_type_id: requirement.kit_type_id
+          }))
+        }
+      }
+    } else if (field === 'kit_type_id') {
+      const nextRequirements = value ? requirementsByKitType[value] || [] : []
+      const nextRecommendedIds = new Set(nextRequirements.map(req => req.visit_schedule_id).filter(Boolean) as string[])
+      if (value && formData.visit_schedule_id && !nextRecommendedIds.has(formData.visit_schedule_id)) {
+        setFormData(prev => ({ ...prev, visit_schedule_id: '' }))
       }
     }
   }
@@ -91,13 +193,12 @@ export default function AddLabKitModal({ studyId, onClose, onAdd }: AddLabKitMod
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {}
 
-    // Required fields
     if (!formData.accession_number.trim()) {
       newErrors.accession_number = 'Accession number is required'
     }
 
-    if (!formData.kit_type.trim()) {
-      newErrors.kit_type = 'Kit type is required'
+    if (!formData.kit_type_id) {
+      newErrors.kit_type_id = 'Kit type is required'
     }
 
     if (!formData.received_date) {
@@ -133,10 +234,13 @@ export default function AddLabKitModal({ studyId, onClose, onAdd }: AddLabKitMod
       
       if (!token) return
 
+      const kitType = formData.kit_type_id ? kitTypeMap.get(formData.kit_type_id) : null
+
       const submitData = {
         study_id: studyId,
         accession_number: formData.accession_number.trim(),
-        kit_type: formData.kit_type.trim(),
+        kit_type_id: formData.kit_type_id,
+        kit_type: kitType?.name || null,
         visit_schedule_id: formData.visit_schedule_id || null,
         expiration_date: formData.expiration_date || null,
         received_date: formData.received_date,
@@ -157,11 +261,13 @@ export default function AddLabKitModal({ studyId, onClose, onAdd }: AddLabKitMod
         alert(`Lab kit ${formData.accession_number} added successfully!`)
         onAdd()
       } else {
-        const error = await response.json()
+        const error = await response.json().catch(() => ({ error: 'Failed to add lab kit' }))
         if (response.status === 409) {
-          setErrors({ accession_number: error.error })
+          setErrors({ accession_number: error.error || 'Accession number already exists' })
+        } else if (response.status === 400 && error.error?.toLowerCase().includes('kit type')) {
+          setErrors(prev => ({ ...prev, kit_type_id: error.error }))
         } else {
-          alert(`Error: ${error.details || error.error}`)
+          alert(`Error: ${error.details || error.error || 'Failed to add lab kit'}`)
         }
       }
 
@@ -232,11 +338,29 @@ export default function AddLabKitModal({ studyId, onClose, onAdd }: AddLabKitMod
                 className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
               >
                 <option value="">Not assigned to specific visit</option>
-                {visitSchedules.map((schedule) => (
-                  <option key={schedule.id} value={schedule.id}>
-                    {schedule.visit_name} (V{schedule.visit_number})
-                  </option>
-                ))}
+                {recommendedVisits.length > 0 && (
+                  <optgroup label="Recommended">
+                    {recommendedVisits.map(schedule => (
+                      <option key={schedule.id} value={schedule.id}>
+                        {schedule.visit_name} (V{schedule.visit_number})
+                        {(() => {
+                          const req = recommendedRequirements.find(r => r.visit_schedule_id === schedule.id)
+                          if (!req) return ''
+                          return req.is_optional ? ' · Optional' : ' · Required'
+                        })()}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {otherVisits.length > 0 && (
+                  <optgroup label={recommendedVisits.length > 0 ? 'Other Visits' : 'All Visits'}>
+                    {otherVisits.map(schedule => (
+                      <option key={schedule.id} value={schedule.id}>
+                        {schedule.visit_name} (V{schedule.visit_number})
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
               <p className="text-gray-400 text-xs mt-1">
                 Optional: Assign this kit to a specific visit type from the protocol
@@ -248,15 +372,52 @@ export default function AddLabKitModal({ studyId, onClose, onAdd }: AddLabKitMod
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 Kit Type *
               </label>
-              <input
-                type="text"
-                value={formData.kit_type}
-                onChange={(e) => handleChange('kit_type', e.target.value)}
+              <select
+                value={formData.kit_type_id}
+                onChange={(e) => handleChange('kit_type_id', e.target.value)}
                 className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                placeholder="e.g., Baseline Labs, Week 4 Labs, Safety Labs"
-              />
-              {errors.kit_type && (
-                <p className="text-red-400 text-sm mt-1">{errors.kit_type}</p>
+                disabled={kitTypesLoading || kitTypes.length === 0}
+              >
+                <option value="">Select a kit type</option>
+                {kitTypes.map(type => (
+                  <option key={type.id} value={type.id}>
+                    {type.name}{!type.is_active ? ' (Inactive)' : ''}
+                  </option>
+                ))}
+              </select>
+              {kitTypesLoading && (
+                <p className="text-xs text-gray-400 mt-1">Loading kit types…</p>
+              )}
+              {!kitTypesLoading && kitTypes.length === 0 && (
+                <p className="text-xs text-yellow-400 mt-1">
+                  No kit types defined yet. Add kit types in the Schedule of Events builder.
+                </p>
+              )}
+              {recommendedRequirements.length > 0 && (
+                <div className="mt-2 text-xs text-gray-400 space-y-1">
+                  <p className="font-medium text-gray-300">Used in:</p>
+                  <ul className="space-y-1">
+                    {recommendedRequirements
+                      .map(req => {
+                        const schedule = req.visit_schedule_id ? visitScheduleMap.get(req.visit_schedule_id) : null
+                        const label = schedule ? `${schedule.visit_name} (V${schedule.visit_number})` : 'Unassigned'
+                        const requirementText = req.is_optional ? 'Optional' : `Required ×${req.quantity}`
+                        return `${label} · ${requirementText}`
+                      })
+                      .map((text, index) => (
+                        <li key={index} className="list-none">{text}</li>
+                      ))}
+                  </ul>
+                </div>
+              )}
+              {selectedKitType?.description && (
+                <p className="text-xs text-gray-400 mt-1">{selectedKitType.description}</p>
+              )}
+              {selectedKitType && !selectedKitType.is_active && (
+                <p className="text-xs text-yellow-400 mt-1">This kit type is marked inactive.</p>
+              )}
+              {errors.kit_type_id && (
+                <p className="text-red-400 text-sm mt-1">{errors.kit_type_id}</p>
               )}
             </div>
 

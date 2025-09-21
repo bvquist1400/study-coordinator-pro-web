@@ -8,7 +8,8 @@ interface BulkLabKit {
   study_id: string
   visit_schedule_id: string | null
   accession_number: string
-  kit_type: string
+  kit_type?: string | null
+  kit_type_id?: string | null
   lot_number: string | null
   expiration_date: string | null
   received_date: string | null
@@ -57,11 +58,21 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate each lab kit
+    const kitTypeIds = new Set<string>()
+
     for (const kit of labKits) {
-      if (!kit.study_id || !kit.accession_number || !kit.kit_type) {
+      if (!kit.study_id || !kit.accession_number) {
         return NextResponse.json({ 
-          error: 'Each lab kit must have study_id, accession_number, and kit_type' 
+          error: 'Each lab kit must include study_id and accession_number' 
         }, { status: 400 })
+      }
+      if (!kit.kit_type && !kit.kit_type_id) {
+        return NextResponse.json({
+          error: 'Each lab kit must include either kit_type_id or kit_type name'
+        }, { status: 400 })
+      }
+      if (kit.kit_type_id) {
+        kitTypeIds.add(kit.kit_type_id)
       }
     }
 
@@ -121,19 +132,58 @@ export async function POST(request: NextRequest) {
       }, { status: 409 })
     }
 
+    let kitTypeMeta = new Map<string, { name: string | null; study_id: string }>()
+    if (kitTypeIds.size > 0) {
+      const { data: kitTypeRows, error: kitTypeError } = await supabase
+        .from('study_kit_types')
+        .select('id, study_id, name')
+        .in('id', Array.from(kitTypeIds))
+
+      if (kitTypeError) {
+        console.error('Failed to resolve kit types for bulk insert:', kitTypeError)
+        return NextResponse.json({ error: 'Failed to resolve kit types' }, { status: 500 })
+      }
+
+      for (const row of kitTypeRows || []) {
+        kitTypeMeta.set((row as any).id as string, {
+          name: (row as any).name ?? null,
+          study_id: (row as any).study_id as string
+        })
+      }
+    }
+
+    for (const kit of labKits) {
+      if (kit.kit_type_id) {
+        const meta = kitTypeMeta.get(kit.kit_type_id)
+        if (!meta) {
+          return NextResponse.json({ error: `Kit type ${kit.kit_type_id} not found for study ${kit.study_id}` }, { status: 400 })
+        }
+        if (meta.study_id !== kit.study_id) {
+          return NextResponse.json({ error: `Kit type ${kit.kit_type_id} does not belong to study ${kit.study_id}` }, { status: 400 })
+        }
+      }
+    }
+
     // Prepare lab kits for insertion
-    const kitsToInsert: LabKitInsert[] = labKits.map(kit => ({
-      study_id: kit.study_id,
-      visit_schedule_id: kit.visit_schedule_id,
-      accession_number: kit.accession_number.trim(),
-      kit_type: kit.kit_type.trim(),
-      lot_number: kit.lot_number?.trim() || null,
-      expiration_date: kit.expiration_date || null,
-      received_date: kit.received_date || null,
-      status: normalizeStatus(kit.status),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    }))
+    const kitsToInsert: LabKitInsert[] = labKits.map(kit => {
+      const kitTypeId = kit.kit_type_id || null
+      const normalizedName = kit.kit_type ? kit.kit_type.trim() : null
+      const resolvedName = kitTypeId ? kitTypeMeta.get(kitTypeId)?.name ?? null : normalizedName
+
+      return {
+        study_id: kit.study_id,
+        visit_schedule_id: kit.visit_schedule_id,
+        accession_number: kit.accession_number.trim(),
+        kit_type: resolvedName,
+        kit_type_id: kitTypeId,
+        lot_number: kit.lot_number?.trim() || null,
+        expiration_date: kit.expiration_date || null,
+        received_date: kit.received_date || null,
+        status: normalizeStatus(kit.status),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }
+    })
 
     // Insert all lab kits
     const { data: insertedKits, error: insertError } = await (supabase as any)

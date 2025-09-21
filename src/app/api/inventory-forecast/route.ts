@@ -1,221 +1,377 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseAdmin } from '@/lib/api/auth'
+import { authenticateUser, verifyStudyMembership, createSupabaseAdmin } from '@/lib/api/auth'
+import logger from '@/lib/logger'
 
-interface InventoryForecast {
+const BUFFER_THRESHOLD = 2
+const DEFAULT_WINDOW_DAYS = 30
+
+interface ForecastUpcomingVisit {
+  visit_date: string
+  subject_number: string | null
+  visit_name: string | null
+  quantity_required: number
+}
+
+interface ForecastRequirementBreakdown {
+  requirementId: string
+  visitScheduleId: string
   visitName: string
+  visitNumber: number | string | null
+  quantityPerVisit: number
+  isOptional: boolean
   visitsScheduled: number
+  kitsRequired: number
+  upcomingVisits: ForecastUpcomingVisit[]
+}
+
+interface InventoryForecastItem {
+  key: string
+  kitTypeId: string | null
+  kitTypeName: string
+  visitName: string
+  optional: boolean
+  visitsScheduled: number
+  kitsRequired: number
   kitsAvailable: number
   kitsExpiringSoon: number
   deficit: number
   status: 'ok' | 'warning' | 'critical'
-  upcomingVisits: Array<{
-    visit_date: string
-    subject_number: string
-  }>
+  upcomingVisits: ForecastUpcomingVisit[]
+  requirements: ForecastRequirementBreakdown[]
 }
 
-// GET /api/inventory-forecast?study_id=xxx&days=30 - Get inventory forecast
+interface ForecastSummary {
+  totalVisitsScheduled: number
+  criticalIssues: number
+  warnings: number
+  daysAhead: number
+}
+
+type KitTypeRow = { id: string; name: string | null; is_active: boolean | null }
+type RequirementRow = {
+  id: string
+  visit_schedule_id: string
+  kit_type_id: string | null
+  quantity: number | null
+  is_optional: boolean | null
+  study_kit_types?: { id: string; name: string | null; is_active: boolean | null } | null
+}
+
+type SubjectVisitRow = {
+  id: string
+  visit_date: string
+  visit_schedule_id: string | null
+  visit_name: string | null
+  subjects: { subject_number: string | null } | null
+}
+
+type VisitScheduleRow = { id: string; visit_name: string | null; visit_number: number | string | null }
+
+type LabKitRow = {
+  id: string
+  kit_type_id: string | null
+  kit_type: string | null
+  status: string
+  expiration_date: string | null
+}
+
+const severityWeight: Record<InventoryForecastItem['status'], number> = {
+  critical: 0,
+  warning: 1,
+  ok: 2
+}
+
+function normalizeName(value: string | null | undefined): string | null {
+  if (!value) return null
+  const trimmed = value.trim().toLowerCase()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function isoDateRange(daysAhead: number) {
+  const today = new Date()
+  today.setUTCHours(0, 0, 0, 0)
+  const future = new Date(today)
+  future.setUTCDate(future.getUTCDate() + daysAhead)
+  return {
+    today,
+    todayISO: today.toISOString().slice(0, 10),
+    future,
+    futureISO: future.toISOString().slice(0, 10)
+  }
+}
+
+function withinExpiryWindow(expiration: string | null, reference: Date, cutoff: Date): boolean {
+  if (!expiration) return false
+  const expDate = new Date(expiration)
+  if (Number.isNaN(expDate.getTime())) return false
+  return expDate >= reference && expDate <= cutoff
+}
+
 export async function GET(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 })
-    }
-
-    const token = authHeader.split(' ')[1]
-    
-    // Verify the JWT token
-    const supabase = createSupabaseAdmin()
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+    const { user, error: authError, status: authStatus } = await authenticateUser(request)
     if (authError || !user) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
+      return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
     }
 
     const { searchParams } = new URL(request.url)
     const studyId = searchParams.get('study_id')
-    const days = parseInt(searchParams.get('days') || '30')
-    
+    const daysParam = Number.parseInt(searchParams.get('days') || `${DEFAULT_WINDOW_DAYS}`, 10)
+    const daysAhead = Number.isFinite(daysParam) && daysParam > 0 ? Math.min(daysParam, 180) : DEFAULT_WINDOW_DAYS
+
     if (!studyId) {
       return NextResponse.json({ error: 'study_id parameter is required' }, { status: 400 })
     }
 
-    // Verify user membership on the study
-    type StudyAccessRow = { id: string; site_id: string | null; user_id: string }
-    const { data: study, error: studyError } = await supabase
-      .from('studies')
-      .select('id, site_id, user_id')
-      .eq('id', studyId)
-      .single()
-
-    const studyRow = study as StudyAccessRow | null
-    if (studyError || !studyRow) {
-      return NextResponse.json({ error: 'Study not found' }, { status: 404 })
+    const membership = await verifyStudyMembership(studyId, user.id)
+    if (!membership.success) {
+      return NextResponse.json({ error: membership.error || 'Access denied' }, { status: membership.status || 403 })
     }
-    if (studyRow.site_id) {
-      const { data: member } = await supabase
-        .from('site_members')
-        .select('user_id')
-        .eq('site_id', studyRow.site_id)
-        .eq('user_id', user.id)
-        .maybeSingle()
-      if (!member) {
-        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+
+    const supabase = createSupabaseAdmin()
+
+    const { today, todayISO, future, futureISO } = isoDateRange(daysAhead)
+    const expiryCutoff = new Date(today)
+    const expiryWindowDays = Math.max(1, Math.min(daysAhead, DEFAULT_WINDOW_DAYS))
+    expiryCutoff.setUTCDate(expiryCutoff.getUTCDate() + expiryWindowDays)
+
+    const [{ data: kitTypeRows, error: kitTypeError }, { data: scheduleRows, error: scheduleError }] = await Promise.all([
+      supabase
+        .from('study_kit_types')
+        .select('id, name, is_active')
+        .eq('study_id', studyId),
+      supabase
+        .from('visit_schedules')
+        .select('id, visit_name, visit_number')
+        .eq('study_id', studyId)
+    ])
+
+    if (kitTypeError) {
+      logger.error('inventory-forecast: failed to load study kit types', kitTypeError, { studyId })
+      return NextResponse.json({ error: 'Failed to load kit types' }, { status: 500 })
+    }
+    if (scheduleError) {
+      logger.error('inventory-forecast: failed to load visit schedules', scheduleError, { studyId })
+      return NextResponse.json({ error: 'Failed to load visit schedules' }, { status: 500 })
+    }
+
+    const kitTypes = (kitTypeRows || []) as KitTypeRow[]
+    const schedules = (scheduleRows || []) as VisitScheduleRow[]
+    const scheduleById = new Map<string, VisitScheduleRow>()
+    for (const schedule of schedules) {
+      scheduleById.set(schedule.id, schedule)
+    }
+
+    const kitTypeById = new Map<string, KitTypeRow>()
+    const kitTypeKeyByName = new Map<string, string>()
+    for (const kitType of kitTypes) {
+      kitTypeById.set(kitType.id, kitType)
+      const nameKey = normalizeName(kitType.name)
+      if (nameKey) {
+        kitTypeKeyByName.set(nameKey, kitType.id)
       }
-    } else if (studyRow.user_id !== user.id) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
-    // Calculate date range
-    const today = new Date()
-    const futureDate = new Date()
-    futureDate.setDate(today.getDate() + days)
-
-    // Load visit schedule kit requirements (SOE indicates whether a lab kit is required)
-    const { data: visitSchedules } = await supabase
-      .from('visit_schedules')
-      .select('visit_name, procedures')
+    const { data: requirementRows, error: requirementsError } = await supabase
+      .from('visit_kit_requirements')
+      .select('id, visit_schedule_id, kit_type_id, quantity, is_optional, study_kit_types(id, name, is_active)')
       .eq('study_id', studyId)
 
-    const requiresKitByName = new Set<string>()
-    for (const vs of (visitSchedules || []) as Array<{ visit_name: string; procedures: string[] | null }>) {
-      const names = (vs.procedures || []).map(p => String(p).toLowerCase())
-      const requiresKit = names.includes('lab kit') || names.includes('labkit')
-      if (requiresKit) requiresKitByName.add(vs.visit_name)
+    if (requirementsError) {
+      logger.error('inventory-forecast: failed to load visit kit requirements', requirementsError, { studyId })
+      return NextResponse.json({ error: 'Failed to load kit requirements' }, { status: 500 })
     }
 
-    // Query upcoming visits by visit type (only consider visit types that require kits)
-    const { data: upcomingVisits, error: visitsError } = await supabase
+    const requirements = (requirementRows || []) as RequirementRow[]
+    if (requirements.length === 0) {
+      const summary: ForecastSummary = {
+        totalVisitsScheduled: 0,
+        criticalIssues: 0,
+        warnings: 0,
+        daysAhead
+      }
+      return NextResponse.json({ forecast: [] as InventoryForecastItem[], summary })
+    }
+
+    const entryByKey = new Map<string, InventoryForecastItem>()
+    const keyByKitTypeId = new Map<string, string>()
+    const keyByName = new Map<string, string>()
+
+    const ensureEntry = (kitTypeId: string | null, fallbackName: string): InventoryForecastItem => {
+      const normalizedName = normalizeName(fallbackName) || 'uncategorized kit'
+      const key = kitTypeId ?? `name:${normalizedName}`
+      const existing = entryByKey.get(key)
+      if (existing) return existing
+
+      const entry: InventoryForecastItem = {
+        key,
+        kitTypeId,
+        kitTypeName: fallbackName,
+        visitName: fallbackName,
+        optional: true,
+        visitsScheduled: 0,
+        kitsRequired: 0,
+        kitsAvailable: 0,
+        kitsExpiringSoon: 0,
+        deficit: 0,
+        status: 'ok',
+        upcomingVisits: [],
+        requirements: []
+      }
+
+      entryByKey.set(key, entry)
+      if (kitTypeId) {
+        keyByKitTypeId.set(kitTypeId, key)
+      }
+      if (normalizedName) {
+        keyByName.set(normalizedName, key)
+      }
+      return entry
+    }
+
+    for (const requirement of requirements) {
+      const schedule = scheduleById.get(requirement.visit_schedule_id) || null
+      const linkedKitType = requirement.kit_type_id ? kitTypeById.get(requirement.kit_type_id) || null : null
+      const kitTypeName = linkedKitType?.name
+        ?? requirement.study_kit_types?.name
+        ?? 'Uncategorized kit'
+
+      const entry = ensureEntry(requirement.kit_type_id, kitTypeName || 'Uncategorized kit')
+
+      const breakdown: ForecastRequirementBreakdown = {
+        requirementId: requirement.id,
+        visitScheduleId: requirement.visit_schedule_id,
+        visitName: schedule?.visit_name ?? 'Unscheduled Visit',
+        visitNumber: schedule?.visit_number ?? null,
+        quantityPerVisit: Math.max(1, requirement.quantity ?? 1),
+        isOptional: !!requirement.is_optional,
+        visitsScheduled: 0,
+        kitsRequired: 0,
+        upcomingVisits: []
+      }
+
+      entry.requirements.push(breakdown)
+    }
+
+    const { data: subjectVisitRows, error: visitsError } = await supabase
       .from('subject_visits')
-      .select(`
-        visit_name,
-        visit_date,
-        subjects!inner(subject_number)
-      `)
+      .select('id, visit_date, visit_schedule_id, visit_name, subjects(subject_number)')
       .eq('study_id', studyId)
       .eq('status', 'scheduled')
-      .gte('visit_date', today.toISOString().split('T')[0])
-      .lte('visit_date', futureDate.toISOString().split('T')[0])
+      .gte('visit_date', todayISO)
+      .lte('visit_date', futureISO)
 
     if (visitsError) {
-      logger.error('Visits error in inventory forecast', visitsError)
-      return NextResponse.json({ error: 'Failed to fetch upcoming visits' }, { status: 500 })
+      logger.error('inventory-forecast: failed to load upcoming subject visits', visitsError, { studyId })
+      return NextResponse.json({ error: 'Failed to load upcoming visits' }, { status: 500 })
     }
 
-    // Query available kits by visit assignment
-    const { data: labKits, error: kitsError } = await supabase
+    const visitsBySchedule = new Map<string, SubjectVisitRow[]>()
+    for (const row of (subjectVisitRows || []) as SubjectVisitRow[]) {
+      if (!row.visit_schedule_id) continue
+      if (!visitsBySchedule.has(row.visit_schedule_id)) {
+        visitsBySchedule.set(row.visit_schedule_id, [])
+      }
+      visitsBySchedule.get(row.visit_schedule_id)!.push(row)
+    }
+
+    for (const entry of entryByKey.values()) {
+      for (const breakdown of entry.requirements) {
+        const scheduledVisits = visitsBySchedule.get(breakdown.visitScheduleId) || []
+        breakdown.visitsScheduled = scheduledVisits.length
+        breakdown.kitsRequired = breakdown.visitsScheduled * breakdown.quantityPerVisit
+        breakdown.upcomingVisits = scheduledVisits.map(visit => ({
+          visit_date: visit.visit_date,
+          subject_number: visit.subjects?.subject_number ?? null,
+          visit_name: visit.visit_name ?? breakdown.visitName,
+          quantity_required: breakdown.quantityPerVisit
+        }))
+
+        entry.visitsScheduled += breakdown.visitsScheduled
+        entry.kitsRequired += breakdown.kitsRequired
+        entry.upcomingVisits.push(...breakdown.upcomingVisits)
+        if (!breakdown.isOptional) {
+          entry.optional = false
+        }
+      }
+    }
+
+    const { data: kitRows, error: kitError } = await supabase
       .from('lab_kits')
-      .select(`
-        *,
-        visit_schedules(visit_name, visit_number)
-      `)
+      .select('id, kit_type_id, kit_type, status, expiration_date')
       .eq('study_id', studyId)
       .in('status', ['available', 'assigned'])
 
-    if (kitsError) {
-      logger.error('Kits error in inventory forecast', kitsError)
-      return NextResponse.json({ error: 'Failed to fetch lab kits' }, { status: 500 })
+    if (kitError) {
+      logger.error('inventory-forecast: failed to load lab kits', kitError, { studyId })
+      return NextResponse.json({ error: 'Failed to load lab kits' }, { status: 500 })
     }
 
-    // Group upcoming visits by visit name
-    type UpcomingVisitRow = { visit_name: string; visit_date: string; subjects: { subject_number: string } }
-    const uVisits = ((upcomingVisits || []) as UpcomingVisitRow[])
-      // Only track visits that require lab kits per SOE
-      .filter(v => requiresKitByName.has(v.visit_name))
-    const visitGroups = uVisits.reduce((groups, visit) => {
-      const visitName = visit.visit_name
-      if (!groups[visitName]) {
-        groups[visitName] = []
-      }
-      groups[visitName].push({
-        visit_date: visit.visit_date,
-        subject_number: visit.subjects.subject_number
-      })
-      return groups
-    }, {} as Record<string, Array<{ visit_date: string, subject_number: string }>>)
+    for (const kit of (kitRows || []) as LabKitRow[]) {
+      const kitTypeId = kit.kit_type_id
+      let key = kitTypeId ? keyByKitTypeId.get(kitTypeId) : undefined
 
-    // Group available kits by visit assignment
-    type KitRow = { status: string; expiration_date: string | null; visit_schedules?: { visit_name?: string | null } | null }
-    const kits = (labKits || []) as KitRow[]
-    const kitGroups = kits.reduce((groups, kit) => {
-      const visitName = kit.visit_schedules?.visit_name || 'Unassigned'
-      if (!groups[visitName]) {
-        groups[visitName] = {
-          available: 0,
-          expiringSoon: 0
+      if (!key) {
+        const fallbackNameKey = normalizeName(kit.kit_type)
+        if (fallbackNameKey) {
+          key = keyByName.get(fallbackNameKey)
         }
       }
-      
+
+      if (!key) {
+        continue // Kit does not align with any requirement entry
+      }
+
+      const entry = entryByKey.get(key)
+      if (!entry) continue
+
       if (kit.status === 'available') {
-        groups[visitName].available++
-        
-        // Check if expiring within 30 days
-        if (kit.expiration_date) {
-          const expDate = new Date(kit.expiration_date)
-          const thirtyDaysFromNow = new Date()
-          thirtyDaysFromNow.setDate(today.getDate() + 30)
-          
-          if (expDate <= thirtyDaysFromNow && expDate >= today) {
-            groups[visitName].expiringSoon++
-          }
+        entry.kitsAvailable += 1
+        if (withinExpiryWindow(kit.expiration_date, today, expiryCutoff)) {
+          entry.kitsExpiringSoon += 1
         }
       }
-      
-      return groups
-    }, {} as Record<string, { available: number, expiringSoon: number }>)
-
-    // Calculate forecast for each visit type
-    const forecast: InventoryForecast[] = []
-
-    // Get all unique visit names from both visits and kits
-    const allVisitNames = new Set(
-      [
-        ...Object.keys(visitGroups),
-        ...Object.keys(kitGroups).filter(name => name !== 'Unassigned')
-      ].filter(name => requiresKitByName.has(name))
-    )
-
-    for (const visitName of allVisitNames) {
-      const visitsScheduled = visitGroups[visitName]?.length || 0
-      const kitsData = kitGroups[visitName] || { available: 0, expiringSoon: 0 }
-      const deficit = Math.max(0, visitsScheduled - kitsData.available)
-      
-      let status: 'ok' | 'warning' | 'critical' = 'ok'
-      
-      if (deficit > 0) {
-        status = 'critical'
-      } else if (kitsData.available - visitsScheduled <= 2 || kitsData.expiringSoon > 0) {
-        status = 'warning'
-      }
-
-      forecast.push({
-        visitName,
-        visitsScheduled,
-        kitsAvailable: kitsData.available,
-        kitsExpiringSoon: kitsData.expiringSoon,
-        deficit,
-        status,
-        upcomingVisits: visitGroups[visitName] || []
-      })
     }
 
-    // Sort by status priority (critical first, then warning, then ok)
+    const forecast: InventoryForecastItem[] = []
+
+    for (const entry of entryByKey.values()) {
+      entry.upcomingVisits.sort((a, b) => a.visit_date.localeCompare(b.visit_date))
+      entry.requirements.sort((a, b) => b.kitsRequired - a.kitsRequired)
+
+      entry.deficit = Math.max(0, entry.kitsRequired - entry.kitsAvailable)
+
+      if (entry.deficit > 0) {
+        entry.status = entry.optional ? 'warning' : 'critical'
+      } else if (entry.kitsRequired === 0) {
+        entry.status = entry.kitsExpiringSoon > 0 ? 'warning' : 'ok'
+      } else if ((entry.kitsAvailable - entry.kitsRequired) <= BUFFER_THRESHOLD || entry.kitsExpiringSoon > 0) {
+        entry.status = 'warning'
+      } else {
+        entry.status = 'ok'
+      }
+
+      forecast.push(entry)
+    }
+
     forecast.sort((a, b) => {
-      const statusOrder = { 'critical': 0, 'warning': 1, 'ok': 2 }
-      return statusOrder[a.status] - statusOrder[b.status]
+      const severityDiff = severityWeight[a.status] - severityWeight[b.status]
+      if (severityDiff !== 0) return severityDiff
+      const deficitDiff = b.deficit - a.deficit
+      if (deficitDiff !== 0) return deficitDiff
+      return b.visitsScheduled - a.visitsScheduled
     })
 
-    return NextResponse.json({ 
-      forecast,
-      summary: {
-        totalVisitsScheduled: Object.values(visitGroups).reduce((sum, visits) => sum + visits.length, 0),
-        criticalIssues: forecast.filter(f => f.status === 'critical').length,
-        warnings: forecast.filter(f => f.status === 'warning').length,
-        daysAhead: days
-      }
-    })
+    const summary: ForecastSummary = {
+      totalVisitsScheduled: forecast.reduce((sum, item) => sum + item.visitsScheduled, 0),
+      criticalIssues: forecast.filter(item => item.status === 'critical').length,
+      warnings: forecast.filter(item => item.status === 'warning').length,
+      daysAhead
+    }
+
+    return NextResponse.json({ forecast, summary })
   } catch (error) {
-    logger.error('API error in inventory forecast', error as any)
+    logger.error('inventory-forecast: unexpected error', error as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-import logger from '@/lib/logger'

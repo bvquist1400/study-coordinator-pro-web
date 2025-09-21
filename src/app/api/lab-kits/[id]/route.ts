@@ -4,7 +4,7 @@ import type { LabKitUpdate } from '@/types/database'
 import logger from '@/lib/logger'
 
 type StudyAccessRow = { id: string; site_id: string | null; user_id: string }
-type LabKitWithStudy = Record<string, unknown> & { studies: StudyAccessRow }
+type LabKitWithStudy = Record<string, unknown> & { studies: StudyAccessRow; study_kit_types?: { id: string; name: string } | null }
 
 // GET /api/lab-kits/[id] - Get specific lab kit details
 export async function GET(
@@ -26,6 +26,7 @@ export async function GET(
       .select(`
         *,
         visit_schedules(visit_name, visit_number),
+        study_kit_types(id, name, description, is_active),
         studies!inner(id, site_id, user_id)
       `)
       .eq('id', kitId)
@@ -85,6 +86,7 @@ export async function PUT(
         id,
         study_id,
         accession_number,
+        kit_type_id,
         studies!inner(id, site_id, user_id)
       `)
       .eq('id', kitId)
@@ -128,14 +130,45 @@ export async function PUT(
     }
 
     // Update the lab kit
+    const updatePayload: LabKitUpdate = {
+      ...updateData,
+      updated_at: new Date().toISOString()
+    }
+
+    delete (updatePayload as any).study_id
+
+    if (updateData.kit_type_id !== undefined) {
+      if (updateData.kit_type_id) {
+        type KitTypeLookupRow = { id: string; study_id: string; name: string | null }
+        const { data: kitTypeRecordRaw, error: kitTypeError } = await supabase
+          .from('study_kit_types')
+          .select('id, study_id, name')
+          .eq('id', updateData.kit_type_id)
+          .single()
+        const kitTypeRecord = kitTypeRecordRaw as KitTypeLookupRow | null
+        if (kitTypeError || !kitTypeRecord || kitTypeRecord.study_id !== (existingKit as { study_id: string }).study_id) {
+          return NextResponse.json({ error: 'Kit type not found for this study' }, { status: 400 })
+        }
+        updatePayload.kit_type_id = kitTypeRecord.id
+        updatePayload.kit_type = kitTypeRecord.name ?? null
+      } else {
+        updatePayload.kit_type_id = null
+        updatePayload.kit_type = null
+      }
+    }
+
+    if (updatePayload.accession_number) {
+      updatePayload.accession_number = updatePayload.accession_number.trim()
+    }
+    if (typeof updatePayload.kit_type === 'string') {
+      updatePayload.kit_type = updatePayload.kit_type.trim()
+    }
+
     const { data: updatedKit, error: updateError } = await (supabase as any)
       .from('lab_kits')
-      .update({
-        ...updateData,
-        updated_at: new Date().toISOString()
-      } as LabKitUpdate)
+      .update(updatePayload)
       .eq('id', kitId)
-      .select()
+      .select(`*, visit_schedules(visit_name, visit_number), study_kit_types(id, name, description, is_active)`)
       .single()
 
     if (updateError) {

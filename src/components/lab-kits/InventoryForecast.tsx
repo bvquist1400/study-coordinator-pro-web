@@ -4,17 +4,39 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { formatDateUTC } from '@/lib/date-utils'
 
-interface InventoryForecast {
+interface ForecastUpcomingVisit {
+  visit_date: string
+  subject_number: string | null
+  visit_name: string | null
+  quantity_required: number
+}
+
+interface ForecastRequirementBreakdown {
+  requirementId: string
+  visitScheduleId: string
   visitName: string
+  visitNumber: number | string | null
+  quantityPerVisit: number
+  isOptional: boolean
   visitsScheduled: number
+  kitsRequired: number
+  upcomingVisits?: ForecastUpcomingVisit[]
+}
+
+interface InventoryForecastItem {
+  key: string
+  kitTypeId: string | null
+  kitTypeName: string
+  visitName: string
+  optional: boolean
+  visitsScheduled: number
+  kitsRequired: number
   kitsAvailable: number
   kitsExpiringSoon: number
   deficit: number
   status: 'ok' | 'warning' | 'critical'
-  upcomingVisits: Array<{
-    visit_date: string
-    subject_number: string
-  }>
+  upcomingVisits: ForecastUpcomingVisit[]
+  requirements: ForecastRequirementBreakdown[]
 }
 
 interface ForecastSummary {
@@ -30,7 +52,7 @@ interface InventoryForecastProps {
 }
 
 export default function InventoryForecast({ studyId, daysAhead = 30 }: InventoryForecastProps) {
-  const [forecast, setForecast] = useState<InventoryForecast[]>([])
+  const [forecast, setForecast] = useState<InventoryForecastItem[]>([])
   const [summary, setSummary] = useState<ForecastSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -89,25 +111,26 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
     }
   }
 
-  const getStatusMessage = (forecast: InventoryForecast) => {
-    if (forecast.deficit > 0) {
-      return `${forecast.deficit} kit${forecast.deficit > 1 ? 's' : ''} short for upcoming visits`
+  const getStatusMessage = (item: InventoryForecastItem) => {
+    if (item.deficit > 0) {
+      return `${item.deficit} kit${item.deficit === 1 ? '' : 's'} short (need ${item.kitsRequired})`
     }
-    if (forecast.kitsExpiringSoon > 0) {
-      return `${forecast.kitsExpiringSoon} kit${forecast.kitsExpiringSoon > 1 ? 's' : ''} expiring soon`
+    if (item.kitsExpiringSoon > 0) {
+      return `${item.kitsExpiringSoon} kit${item.kitsExpiringSoon === 1 ? '' : 's'} expiring soon`
     }
-    if (forecast.kitsAvailable - forecast.visitsScheduled <= 2) {
-      return `Low buffer: only ${forecast.kitsAvailable - forecast.visitsScheduled} extra kit${forecast.kitsAvailable - forecast.visitsScheduled > 1 ? 's' : ''}`
+    const buffer = item.kitsAvailable - item.kitsRequired
+    if (buffer <= 2) {
+      return `Low buffer: ${buffer} extra kit${buffer === 1 ? '' : 's'} ready`
     }
-    return `${forecast.kitsAvailable - forecast.visitsScheduled} extra kit${forecast.kitsAvailable - forecast.visitsScheduled > 1 ? 's' : ''} available`
+    return `${buffer} extra kit${buffer === 1 ? '' : 's'} ready`
   }
 
-  const toggleExpanded = (visitName: string) => {
+  const toggleExpanded = (key: string) => {
     const newExpanded = new Set(expanded)
-    if (expanded.has(visitName)) {
-      newExpanded.delete(visitName)
+    if (expanded.has(key)) {
+      newExpanded.delete(key)
     } else {
-      newExpanded.add(visitName)
+      newExpanded.add(key)
     }
     setExpanded(newExpanded)
   }
@@ -186,15 +209,22 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
           </div>
         ) : (
           visible.map((item) => (
-            <div key={item.visitName} className="p-6">
+            <div key={item.key} className="p-6">
               <div 
                 className="flex items-center justify-between cursor-pointer"
-                onClick={() => toggleExpanded(item.visitName)}
+                onClick={() => toggleExpanded(item.key)}
               >
                 <div className="flex items-center space-x-4">
                   {getStatusIcon(item.status)}
                   <div>
-                    <h4 className="text-lg font-semibold text-white">{item.visitName}</h4>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-lg font-semibold text-white">{item.kitTypeName}</h4>
+                      {item.optional && (
+                        <span className="text-xs uppercase tracking-wide text-gray-300 bg-gray-700/60 px-2 py-0.5 rounded-full border border-gray-600">
+                          Optional
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm text-gray-400">{getStatusMessage(item)}</p>
                   </div>
                 </div>
@@ -202,16 +232,16 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
                 <div className="flex items-center space-x-6">
                   <div className="text-right">
                     <div className="text-sm font-medium text-white">
-                      {item.visitsScheduled} visits / {item.kitsAvailable} kits
+                      {item.kitsAvailable} kits ready · need {item.kitsRequired}
                     </div>
                     <div className="text-xs text-gray-400">
-                      scheduled / available
+                      {item.visitsScheduled} visit{item.visitsScheduled === 1 ? '' : 's'} scheduled
                     </div>
                   </div>
                   
                   <svg 
                     className={`w-5 h-5 text-gray-400 transition-transform ${
-                      expanded.has(item.visitName) ? 'rotate-180' : ''
+                      expanded.has(item.key) ? 'rotate-180' : ''
                     }`} 
                     fill="none" 
                     stroke="currentColor" 
@@ -223,17 +253,51 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
               </div>
 
               {/* Expanded Details */}
-              {expanded.has(item.visitName) && item.upcomingVisits.length > 0 && (
-                <div className="mt-4 ml-9 bg-gray-700/30 rounded-lg p-4">
-                  <h5 className="text-sm font-semibold text-gray-300 mb-3">Upcoming Visits</h5>
-                  <div className="space-y-2 max-h-40 overflow-y-auto">
-                    {item.upcomingVisits.map((visit, index) => (
-                      <div key={index} className="flex justify-between text-sm">
-                        <span className="text-gray-300">{visit.subject_number}</span>
-                        <span className="text-gray-400">{formatDateUTC(visit.visit_date)}</span>
-                      </div>
-                    ))}
+              {expanded.has(item.key) && (
+                <div className="mt-4 ml-9 space-y-4">
+                  <div className="bg-gray-700/30 rounded-lg p-4">
+                    <h5 className="text-sm font-semibold text-gray-300 mb-3">Visit Requirements</h5>
+                    <div className="space-y-2">
+                      {item.requirements.map(req => (
+                        <div key={req.requirementId} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                          <div className="text-gray-200">
+                            {req.visitName}
+                            {req.visitNumber !== null && (
+                              <span className="text-gray-400">
+                                {' '}
+                                · {typeof req.visitNumber === 'number' ? `V${req.visitNumber}` : req.visitNumber}
+                              </span>
+                            )}
+                            <span className="text-gray-400"> · {req.quantityPerVisit} kit{req.quantityPerVisit === 1 ? '' : 's'}/visit</span>
+                            {req.isOptional && <span className="ml-2 text-xs text-gray-400">(optional)</span>}
+                          </div>
+                          <div className="text-xs text-gray-400">
+                            {req.visitsScheduled} visit{req.visitsScheduled === 1 ? '' : 's'} · {req.kitsRequired} total
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
+
+                  {item.upcomingVisits.length > 0 && (
+                    <div className="bg-gray-700/30 rounded-lg p-4">
+                      <h5 className="text-sm font-semibold text-gray-300 mb-3">Upcoming Visits</h5>
+                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                        {item.upcomingVisits.map((visit, index) => (
+                          <div key={`${visit.visit_date}-${visit.subject_number ?? 'subject'}-${index}`} className="flex flex-wrap justify-between gap-2 text-sm">
+                            <div className="text-gray-300">
+                              {visit.subject_number || 'Subject'}
+                              {visit.visit_name && <span className="text-gray-400"> · {visit.visit_name}</span>}
+                            </div>
+                            <div className="text-xs text-gray-400 flex items-center gap-3">
+                              <span>{formatDateUTC(visit.visit_date)}</span>
+                              <span>×{visit.quantity_required}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

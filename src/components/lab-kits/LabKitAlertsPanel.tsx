@@ -13,12 +13,15 @@ interface LabKitAlertsPanelProps {
 }
 
 type ForecastItem = {
-  visitName: string
+  key: string
+  kitTypeName: string
   visitsScheduled: number
   kitsAvailable: number
+  kitsRequired: number
   kitsExpiringSoon: number
   deficit: number
   status: 'ok' | 'warning' | 'critical'
+  optional: boolean
 }
 
 export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate, onCountChange }: LabKitAlertsPanelProps) {
@@ -95,7 +98,15 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
   const pendingAging = kits.filter(k => k.status === 'pending_shipment' && ageInDays((k as any).updated_at || (k as any).created_at) >= PENDING_AGING_DAYS)
   const shippedStuck = kits.filter(k => k.status === 'shipped' && ageInDays((k as any).updated_at || (k as any).created_at) >= SHIPPED_AGING_DAYS)
   const supplyDeficit = forecast.filter(f => f.deficit > 0)
-  const lowBuffer = forecast.filter(f => f.deficit <= 0 && (f.kitsAvailable - f.visitsScheduled) <= 2)
+  const lowBuffer = forecast.filter(f => f.deficit <= 0 && (f.kitsAvailable - f.kitsRequired) <= 2)
+
+  const getKitTypeLabel = (kit: LabKit) => {
+    const enriched = kit as LabKit & {
+      kit_type_info?: { name?: string | null } | null
+      kit_type_label?: string | null
+    }
+    return enriched.kit_type_info?.name || enriched.kit_type_label || kit.kit_type || ''
+  }
 
   const totalAlerts = expiringSoon.length + expired.length + pendingAging.length + shippedStuck.length + supplyDeficit.length + lowBuffer.length
 
@@ -179,8 +190,11 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
 
       <Section id="supplyDeficit" title="Critical supply issues (deficit)" count={supplyDeficit.length} tone="red" actionLabel="Go to Inventory" onAction={() => onNavigate?.('inventory') }>
         {supplyDeficit.map(item => (
-          <div key={item.visitName} className="flex items-center justify-between text-sm">
-            <div className="text-gray-200">{item.visitName}</div>
+          <div key={item.key} className="flex items-center justify-between text-sm">
+            <div className="text-gray-200">
+              {item.kitTypeName}
+              {item.optional && <span className="ml-2 text-xs text-gray-400">(optional)</span>}
+            </div>
             <div className="text-red-400 font-semibold">-{item.deficit} kits</div>
           </div>
         ))}
@@ -189,7 +203,10 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
       <Section id="expiringSoon" title={`Expiring within ${EXPIRING_DAYS} days`} count={expiringSoon.length} tone="yellow" actionLabel="View in Inventory" onAction={() => onNavigate?.('inventory', { expiringOnly: true }) }>
         {expiringSoon.slice(0, 10).map(k => (
           <div key={k.id} className="flex items-center justify-between text-sm">
-            <div className="text-gray-200">{k.accession_number} <span className="text-gray-400">{k.kit_type || ''}</span></div>
+            <div className="text-gray-200">
+              {k.accession_number}
+              <span className="text-gray-400"> {getKitTypeLabel(k)}</span>
+            </div>
             <div className="text-yellow-300">{k.expiration_date ? formatDateUTC(k.expiration_date) : '—'}</div>
           </div>
         ))}
@@ -224,9 +241,9 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
 
       <Section id="lowBuffer" title="Low buffer (<= 2 extra kits)" count={lowBuffer.length} tone="yellow" actionLabel="Go to Inventory" onAction={() => onNavigate?.('inventory')}>
         {lowBuffer.map(item => (
-          <div key={item.visitName} className="flex items-center justify-between text-sm">
-            <div className="text-gray-200">{item.visitName}</div>
-            <div className="text-yellow-300">buffer {item.kitsAvailable - item.visitsScheduled}</div>
+          <div key={item.key} className="flex items-center justify-between text-sm">
+            <div className="text-gray-200">{item.kitTypeName}</div>
+            <div className="text-yellow-300">buffer {item.kitsAvailable - item.kitsRequired}</div>
           </div>
         ))}
       </Section>

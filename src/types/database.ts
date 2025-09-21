@@ -581,6 +581,99 @@ export interface Database {
           notes?: string | null
           created_by?: string | null
           created_at?: string
+         updated_at?: string
+       }
+      }
+      visit_schedule_history: {
+        Row: {
+          id: string
+          visit_id: string
+          old_date: string | null
+          new_date: string | null
+          reason: string | null
+          changed_by: string | null
+          changed_at: string | null
+        }
+        Insert: {
+          id?: string
+          visit_id: string
+          old_date?: string | null
+          new_date?: string | null
+          reason?: string | null
+          changed_by?: string | null
+          changed_at?: string | null
+        }
+        Update: {
+          id?: string
+          visit_id?: string
+          old_date?: string | null
+          new_date?: string | null
+          reason?: string | null
+          changed_by?: string | null
+          changed_at?: string | null
+        }
+      }
+      study_kit_types: {
+        Row: {
+          id: string
+          study_id: string
+          name: string
+          description: string | null
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          study_id: string
+          name: string
+          description?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          study_id?: string
+          name?: string
+          description?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      visit_kit_requirements: {
+        Row: {
+          id: string
+          study_id: string
+          visit_schedule_id: string
+          kit_type_id: string
+          quantity: number
+          is_optional: boolean
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          study_id: string
+          visit_schedule_id: string
+          kit_type_id: string
+          quantity?: number
+          is_optional?: boolean
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          study_id?: string
+          visit_schedule_id?: string
+          kit_type_id?: string
+          quantity?: number
+          is_optional?: boolean
+          notes?: string | null
+          created_at?: string
           updated_at?: string
         }
       }
@@ -665,6 +758,7 @@ export interface Database {
           visit_schedule_id: string | null
           accession_number: string
           kit_type: string | null
+          kit_type_id: string | null
           lot_number: string | null
           expiration_date: string | null
           status: 'available' | 'assigned' | 'used' | 'pending_shipment' | 'shipped' | 'delivered' | 'expired' | 'destroyed' | 'archived'
@@ -679,6 +773,8 @@ export interface Database {
           visit_schedule_id?: string | null
           accession_number: string
           kit_type?: string | null
+          kit_type_id?: string | null
+          lot_number?: string | null
           expiration_date?: string | null
           status?: 'available' | 'assigned' | 'used' | 'pending_shipment' | 'shipped' | 'delivered' | 'expired' | 'destroyed' | 'archived'
           received_date?: string | null
@@ -692,6 +788,8 @@ export interface Database {
           visit_schedule_id?: string | null
           accession_number?: string
           kit_type?: string | null
+          kit_type_id?: string | null
+          lot_number?: string | null
           expiration_date?: string | null
           status?: 'available' | 'assigned' | 'used' | 'pending_shipment' | 'shipped' | 'delivered' | 'expired' | 'destroyed' | 'archived'
           received_date?: string | null
@@ -843,3 +941,15 @@ export type LabKitShipmentUpdate = Database['public']['Tables']['lab_kit_shipmen
 export type LabKitUsage = Database['public']['Tables']['lab_kit_usage']['Row']
 export type LabKitUsageInsert = Database['public']['Tables']['lab_kit_usage']['Insert']
 export type LabKitUsageUpdate = Database['public']['Tables']['lab_kit_usage']['Update']
+
+export type VisitScheduleHistory = Database['public']['Tables']['visit_schedule_history']['Row']
+export type VisitScheduleHistoryInsert = Database['public']['Tables']['visit_schedule_history']['Insert']
+export type VisitScheduleHistoryUpdate = Database['public']['Tables']['visit_schedule_history']['Update']
+
+export type StudyKitType = Database['public']['Tables']['study_kit_types']['Row']
+export type StudyKitTypeInsert = Database['public']['Tables']['study_kit_types']['Insert']
+export type StudyKitTypeUpdate = Database['public']['Tables']['study_kit_types']['Update']
+
+export type VisitKitRequirement = Database['public']['Tables']['visit_kit_requirements']['Row']
+export type VisitKitRequirementInsert = Database['public']['Tables']['visit_kit_requirements']['Insert']
+export type VisitKitRequirementUpdate = Database['public']['Tables']['visit_kit_requirements']['Update']

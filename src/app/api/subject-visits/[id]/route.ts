@@ -3,7 +3,7 @@ import { authenticateUser, createSupabaseAdmin } from '@/lib/api/auth'
 import { isWithinVisitWindow, getDaysFromScheduled, calculateVisitDate } from '@/lib/visit-calculator'
 import { parseDateUTC } from '@/lib/date-utils'
 import logger from '@/lib/logger'
-import type { SubjectVisitInsert, SubjectVisitUpdate } from '@/types/database'
+import type { SubjectVisitInsert, SubjectVisitUpdate, VisitScheduleHistoryInsert } from '@/types/database'
 
 // GET /api/subject-visits/[id] - Get specific subject visit
 export async function GET(
@@ -86,16 +86,16 @@ export async function PUT(
     // Verify the JWT token
     const supabase = createSupabaseAdmin()
 
-    const updateData = await request.json()
+    const rawUpdate = await request.json()
     const resolvedParams = await params
 
     // If this is an upsert (new visit), we need to create it
-    if (updateData.id === resolvedParams.id && updateData.study_id && updateData.visit_name && updateData.visit_date) {
+    if (rawUpdate.id === resolvedParams.id && rawUpdate.study_id && rawUpdate.visit_name && rawUpdate.visit_date) {
       // Verify user owns the study
       const { data: study, error: studyError } = await supabase
         .from('studies')
         .select('id')
-        .eq('id', updateData.study_id)
+        .eq('id', rawUpdate.study_id)
         .eq('user_id', user.id)
         .single()
 
@@ -107,7 +107,7 @@ export async function PUT(
       const { data: subjectVisit, error } = await (supabase as any)
         .from('subject_visits')
         .upsert({
-          ...updateData,
+          ...rawUpdate,
           user_id: user.id,
           updated_at: new Date().toISOString()
         } as SubjectVisitInsert)
@@ -125,7 +125,7 @@ export async function PUT(
       // Verify membership based on record
       const { data: existing } = await supabase
         .from('subject_visits')
-        .select('study_id')
+        .select('study_id, visit_date')
         .eq('id', resolvedParams.id)
         .single()
       if (!existing) {
@@ -150,9 +150,13 @@ export async function PUT(
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
 
+      const previousVisitDate: string | null = (existing as any)?.visit_date || null
+      const { reschedule_reason, ...updateData } = rawUpdate as Record<string, unknown>
+      const updateFields = updateData as SubjectVisitUpdate
+
       // Calculate/clear visit timing fields based on status
       let windowCalculation: any = {}
-      if (updateData.status === 'completed' && updateData.visit_date) {
+      if (updateFields.status === 'completed' && updateFields.visit_date) {
         // Fetch required context: visit info, schedule, subject, and study anchor
         const { data: visitInfo } = await supabase
           .from('subject_visits')
@@ -161,7 +165,7 @@ export async function PUT(
           .single()
 
         if (visitInfo) {
-          const actualDate = new Date(updateData.visit_date)
+          const actualDate = new Date(updateFields.visit_date)
 
           // Default fallback values
           let targetDate: Date | null = null
@@ -231,7 +235,7 @@ export async function PUT(
             is_within_window: isWithinVisitWindow(actualDate, targetDate, windowBefore, windowAfter)
           }
         }
-      } else if (updateData.status === 'cancelled' || updateData.status === 'missed') {
+      } else if (updateFields.status === 'cancelled' || updateFields.status === 'missed') {
         // Ensure cancelled/missed do not retain timing flags
         windowCalculation = {
           days_from_scheduled: null,
@@ -242,7 +246,7 @@ export async function PUT(
       const { data: subjectVisit, error } = await (supabase as any)
         .from('subject_visits')
         .update({
-          ...updateData,
+          ...updateFields,
           ...windowCalculation,
           updated_at: new Date().toISOString()
         } as SubjectVisitUpdate)
@@ -253,6 +257,22 @@ export async function PUT(
       if (error) {
         logger.error('Database error updating subject visit', error as any)
         return NextResponse.json({ error: 'Failed to update subject visit' }, { status: 500 })
+      }
+
+      if (updateFields.visit_date && previousVisitDate && updateFields.visit_date !== previousVisitDate) {
+        try {
+          await (supabase as any)
+            .from('visit_schedule_history')
+            .insert({
+              visit_id: resolvedParams.id,
+              old_date: previousVisitDate,
+              new_date: updateFields.visit_date,
+              reason: typeof reschedule_reason === 'string' && reschedule_reason.trim() ? reschedule_reason.trim() : null,
+              changed_by: user.id
+            } as VisitScheduleHistoryInsert)
+        } catch (historyError) {
+          logger.error('Failed to record visit reschedule history', historyError as any)
+        }
       }
 
       if (!subjectVisit) {

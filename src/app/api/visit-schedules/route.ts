@@ -40,7 +40,37 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch visit schedules' }, { status: 500 })
     }
 
-    return NextResponse.json({ visitSchedules })
+    let enrichedSchedules = visitSchedules || []
+
+    if (enrichedSchedules.length > 0) {
+      const ids = enrichedSchedules.map((s: any) => s.id).filter(Boolean)
+      if (ids.length > 0) {
+        const { data: requirements, error: requirementsError } = await supabase
+          .from('visit_kit_requirements')
+          .select('*, study_kit_types(id, name, description, is_active)')
+          .in('visit_schedule_id', ids)
+          .order('created_at', { ascending: true })
+
+        if (requirementsError) {
+          logger.error('Failed to fetch visit kit requirements', requirementsError as any)
+        } else if (requirements) {
+          const requirementRows = (requirements as any[]) as Array<{ visit_schedule_id: string }>
+          const grouped = requirementRows.reduce((acc, row) => {
+            const key = row.visit_schedule_id
+            if (!acc.has(key)) acc.set(key, [])
+            acc.get(key)!.push(row)
+            return acc
+          }, new Map<string, any[]>())
+
+          enrichedSchedules = enrichedSchedules.map((schedule: any) => ({
+            ...schedule,
+            kit_requirements: grouped.get(schedule.id as string) || []
+          }))
+        }
+      }
+    }
+
+    return NextResponse.json({ visitSchedules: enrichedSchedules })
   } catch (error) {
     logger.error('API error in visit schedules GET', error as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
