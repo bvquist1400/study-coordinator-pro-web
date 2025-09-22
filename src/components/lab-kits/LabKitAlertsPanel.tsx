@@ -1,16 +1,17 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { FormEvent } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { LabKit } from '@/types/database'
 import { formatDateUTC, parseDateUTC } from '@/lib/date-utils'
+import LabKitOrderModal from './LabKitOrderModal'
 
 interface LabKitAlertsPanelProps {
   studyId: string
   daysAhead?: number
   onNavigate?: (dest: 'inventory' | 'expired', options?: { expiringOnly?: boolean }) => void
   onCountChange?: (count: number) => void
+  onOrderReceived?: (details: { study_id: string; kit_type_id: string | null; received_date: string | null; kit_type_name: string | null }) => void
 }
 
 type ForecastItem = {
@@ -65,7 +66,7 @@ function SummaryPill({ label, count, tone }: { label: string; count: number; ton
   )
 }
 
-export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate, onCountChange }: LabKitAlertsPanelProps) {
+export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate, onCountChange, onOrderReceived }: LabKitAlertsPanelProps) {
   const [loading, setLoading] = useState(true)
   const [kits, setKits] = useState<LabKit[]>([])
   const [forecast, setForecast] = useState<ForecastItem[]>([])
@@ -250,7 +251,9 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
     () => supplyDeficit.filter(item => item.deficit > 0),
     [supplyDeficit]
   )
-  const lowBuffer = forecast.filter(f => f.deficit <= 0 && (f.kitsAvailable - f.kitsRequired) <= 2)
+  const lowBufferAll = forecast.filter(f => f.deficit <= 0 && (f.kitsAvailable - f.kitsRequired) <= 2)
+  const lowBuffer = lowBufferAll
+  const lowBufferCovered = lowBufferAll.filter(item => (item.pendingOrderQuantity ?? 0) > 0)
 
   const getKitTypeLabel = (kit: LabKit) => {
     const enriched = kit as LabKit & {
@@ -321,7 +324,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
     setOrderTarget(null)
   }, [])
 
-  const markOrderReceived = useCallback(async (orderId: string) => {
+  const markOrderReceived = useCallback(async (orderId: string, kitTypeId: string | null, kitTypeName: string | null) => {
     try {
       setProcessingOrderId(orderId)
       setPanelNotice(null)
@@ -343,6 +346,16 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
         throw new Error(body.error || 'Failed to update order status')
       }
 
+      const body = await response.json().catch(() => ({}))
+      const receivedDate = body?.order?.received_date || new Date().toISOString().slice(0, 10)
+
+      onOrderReceived?.({
+        study_id: studyId,
+        kit_type_id: kitTypeId,
+        received_date: receivedDate,
+        kit_type_name: kitTypeName
+      })
+
       await load()
       setPanelNotice({ type: 'success', message: 'Order marked as received.' })
     } catch (error) {
@@ -350,7 +363,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
     } finally {
       setProcessingOrderId(null)
     }
-  }, [load])
+  }, [load, onOrderReceived])
 
   const Section = ({
     id,
@@ -440,172 +453,6 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
     )
   }
 
-  const OrderModal = ({
-    studyId: targetStudyId,
-    item,
-    onClose,
-    onSuccess
-  }: {
-    studyId: string
-    item: ForecastItem
-    onClose: () => void
-    onSuccess: (message?: string) => Promise<void> | void
-  }) => {
-    const [quantityInput, setQuantityInput] = useState(() => `${Math.max(item.deficit, 1)}`)
-    const [vendor, setVendor] = useState(() => item.pendingOrders.find(order => order.vendor)?.vendor ?? '')
-    const [expectedArrival, setExpectedArrival] = useState('')
-    const [notes, setNotes] = useState('')
-    const [submitting, setSubmitting] = useState(false)
-    const [error, setError] = useState<string | null>(null)
-
-    const outstanding = item.deficit
-    const pending = item.pendingOrderQuantity
-    const original = item.originalDeficit
-
-    const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault()
-      if (!item.kitTypeId) {
-        setError('Kit type metadata is missing for this forecast item.')
-        return
-      }
-
-      const quantity = Number.parseInt(quantityInput, 10)
-      if (!Number.isFinite(quantity) || quantity <= 0) {
-        setError('Quantity must be a positive integer.')
-        return
-      }
-
-      try {
-        setSubmitting(true)
-        setError(null)
-        const { data: { session } } = await supabase.auth.getSession()
-        const token = session?.access_token
-        if (!token) throw new Error('Authentication required. Please sign in again.')
-
-        const payload = {
-          studyId: targetStudyId,
-          kitTypeId: item.kitTypeId,
-          quantity,
-          vendor: vendor || null,
-          expectedArrival: expectedArrival || null,
-          notes: notes ? notes.trim() : null
-        }
-
-        const response = await fetch('/api/lab-kit-orders', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`
-          },
-          body: JSON.stringify(payload)
-        })
-
-        if (!response.ok) {
-          const body = await response.json().catch(() => ({}))
-          throw new Error(body.error || 'Failed to create lab kit order')
-        }
-
-        await onSuccess(`Order placed for ${quantity} kit${quantity === 1 ? '' : 's'}.`)
-        onClose()
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to create lab kit order.')
-      } finally {
-        setSubmitting(false)
-      }
-    }
-
-    return (
-      <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
-        onClick={onClose}
-      >
-        <div
-          className="w-full max-w-md rounded-lg border border-gray-700 bg-gray-900 shadow-xl"
-          onClick={event => event.stopPropagation()}
-        >
-          <div className="flex items-start justify-between border-b border-gray-700 px-5 py-4">
-            <div>
-              <h4 className="text-lg font-semibold text-white">Order kits</h4>
-              <p className="text-xs text-gray-400">{item.kitTypeName}</p>
-            </div>
-            <button onClick={onClose} className="text-gray-400 hover:text-white text-sm">Close</button>
-          </div>
-          <form onSubmit={handleSubmit} className="space-y-4 px-5 py-4">
-            <div className="rounded-md border border-gray-700 bg-gray-800/60 px-3 py-2 text-xs text-gray-300">
-              <div>Original deficit: {original}</div>
-              <div>Outstanding now: {outstanding}</div>
-              <div>Pending orders: {pending}</div>
-            </div>
-
-            <label className="block text-sm text-gray-200">
-              Quantity
-              <input
-                type="number"
-                min={1}
-                inputMode="numeric"
-                value={quantityInput}
-                onChange={event => setQuantityInput(event.target.value)}
-                className="mt-1 w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none"
-              />
-            </label>
-
-            <label className="block text-sm text-gray-200">
-              Vendor (optional)
-              <input
-                type="text"
-                value={vendor}
-                onChange={event => setVendor(event.target.value)}
-                placeholder="e.g. Central Lab"
-                className="mt-1 w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none"
-              />
-            </label>
-
-            <label className="block text-sm text-gray-200">
-              Expected arrival (optional)
-              <input
-                type="date"
-                value={expectedArrival}
-                onChange={event => setExpectedArrival(event.target.value)}
-                className="mt-1 w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none"
-              />
-            </label>
-
-            <label className="block text-sm text-gray-200">
-              Notes (optional)
-              <textarea
-                value={notes}
-                onChange={event => setNotes(event.target.value)}
-                rows={3}
-                maxLength={500}
-                className="mt-1 w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none"
-              />
-            </label>
-
-            {error && <div className="text-sm text-red-400">{error}</div>}
-
-            <div className="flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="text-sm text-gray-300 hover:text-white"
-                disabled={submitting}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-900"
-              >
-                {submitting ? 'Placing…' : 'Place order'}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    )
-  }
-
   if (studyId === 'all') {
     return (
       <div className="bg-gray-800/50 rounded-lg border border-gray-700 p-6 text-gray-400">
@@ -632,11 +479,21 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
   return (
     <>
       {orderTarget && (
-        <OrderModal
+        <LabKitOrderModal
           studyId={studyId}
-          item={orderTarget}
+          isOpen={!!orderTarget}
           onClose={closeOrderModal}
           onSuccess={handleOrderSuccess}
+          defaultKitTypeId={orderTarget.kitTypeId || undefined}
+          defaultKitTypeName={orderTarget.kitTypeName}
+          defaultQuantity={Math.max(orderTarget.deficit, 1)}
+          defaultVendor={orderTarget.pendingOrders.find(order => order.vendor)?.vendor ?? undefined}
+          allowKitTypeChange={false}
+          deficitSummary={{
+            original: orderTarget.originalDeficit ?? orderTarget.deficit,
+            outstanding: orderTarget.deficit,
+            pending: orderTarget.pendingOrderQuantity ?? 0
+          }}
         />
       )}
       <div className="bg-gray-800/50 rounded-lg border border-gray-700">
@@ -738,7 +595,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
                             type="button"
                             onClick={event => {
                               event.stopPropagation()
-                              markOrderReceived(order.id)
+                              markOrderReceived(order.id, item.kitTypeId ?? null, item.kitTypeName)
                             }}
                             disabled={processingOrderId === order.id}
                             className={`text-xs font-semibold ${processingOrderId === order.id ? 'text-gray-500' : 'text-green-300 hover:text-green-200'}`}
@@ -844,12 +701,26 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
           actionLabel="Go to Inventory"
           onAction={() => onNavigate?.('inventory')}
         >
-          {lowBuffer.map(item => (
-            <div key={item.key} className="flex items-center justify-between text-sm">
-              <div className="text-gray-200">{item.kitTypeName}</div>
-              <div className="text-yellow-300">buffer {item.kitsAvailable - item.kitsRequired}</div>
-            </div>
-          ))}
+          {lowBuffer.map(item => {
+            const hasCoverage = (item.pendingOrderQuantity ?? 0) > 0
+            return (
+              <div
+                key={item.key}
+                className={`flex items-center justify-between gap-3 rounded px-3 py-2 text-sm ${hasCoverage ? 'border border-blue-500/30 bg-blue-500/10' : ''}`}
+              >
+                <div>
+                  <div className="text-gray-200">{item.kitTypeName}</div>
+                  <div className="text-[11px] text-gray-400">
+                    Buffer {item.kitsAvailable - item.kitsRequired}
+                    {hasCoverage && ` • ${item.pendingOrderQuantity} on order`}
+                  </div>
+                </div>
+                {hasCoverage && (
+                  <span className="text-xs font-semibold text-blue-200">Pending order</span>
+                )}
+              </div>
+            )
+          })}
         </Section>
       )}
 

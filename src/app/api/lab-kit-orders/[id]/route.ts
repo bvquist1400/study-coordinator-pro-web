@@ -12,6 +12,11 @@ const sanitizeText = (value: unknown) => {
   return trimmed.length === 0 ? null : trimmed
 }
 
+const parsePositiveInt = (value: unknown) => {
+  const parsed = Number.parseInt(String(value ?? ''), 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
 const parseDateISO = (value: unknown) => {
   if (typeof value !== 'string') return null
   const trimmed = value.trim()
@@ -60,6 +65,8 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     const statusRaw = sanitizeText(body?.status)
     const vendor = sanitizeText(body?.vendor)
     const notesRaw = sanitizeText(body?.notes)
+    const kitTypeIdRaw = body?.kitTypeId === undefined ? undefined : sanitizeText(body?.kitTypeId)
+    const quantityRaw = body?.quantity
 
     const expectedArrivalInput = body?.expectedArrival
     const expectedArrival = parseDateISO(expectedArrivalInput)
@@ -75,6 +82,44 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
 
     const update: Partial<LabKitOrderUpdate> = {}
 
+    if (kitTypeIdRaw !== undefined) {
+      if (!kitTypeIdRaw) {
+        return NextResponse.json({ error: 'kitTypeId is required when provided' }, { status: 400 })
+      }
+      if ((existingRow as any).status !== 'pending') {
+        return NextResponse.json({ error: 'Only pending orders can change kit type' }, { status: 400 })
+      }
+      if (kitTypeIdRaw !== (existingRow as any).kit_type_id) {
+        const { data: kitTypeRow, error: kitTypeError } = await supabase
+          .from('study_kit_types')
+          .select('id, study_id')
+          .eq('id', kitTypeIdRaw)
+          .maybeSingle()
+
+        if (kitTypeError) {
+          logger.error('lab-kit-orders:update failed to validate kit type', kitTypeError, { orderId, kitTypeId: kitTypeIdRaw, userId: user.id })
+          return NextResponse.json({ error: 'Failed to validate kit type' }, { status: 500 })
+        }
+
+        if (!kitTypeRow || (kitTypeRow as any).study_id !== studyId) {
+          return NextResponse.json({ error: 'Kit type does not belong to study' }, { status: 400 })
+        }
+
+        update.kit_type_id = kitTypeIdRaw
+      }
+    }
+
+    if (quantityRaw !== undefined) {
+      if ((existingRow as any).status !== 'pending') {
+        return NextResponse.json({ error: 'Only pending orders can change quantity' }, { status: 400 })
+      }
+      const quantityValue = parsePositiveInt(quantityRaw)
+      if (!quantityValue) {
+        return NextResponse.json({ error: 'quantity must be a positive integer' }, { status: 400 })
+      }
+      update.quantity = quantityValue
+    }
+
     if (statusRaw) {
       if (!STATUS_SET.has(statusRaw)) {
         return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
@@ -89,6 +134,10 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
 
     if (typeof vendor === 'string') {
       update.vendor = vendor
+    }
+
+    if (body?.vendor === null) {
+      update.vendor = null
     }
 
     if (typeof notesRaw === 'string') {

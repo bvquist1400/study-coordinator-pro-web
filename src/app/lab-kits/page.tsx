@@ -11,8 +11,11 @@ import InventoryForecast from '@/components/lab-kits/InventoryForecast'
 import ShipmentsList from '@/components/lab-kits/ShipmentsList'
 import CreateShipmentModal from '@/components/lab-kits/CreateShipmentModal'
 import LabKitAlertsPanel from '@/components/lab-kits/LabKitAlertsPanel'
+import LabKitOrdersSection from '@/components/lab-kits/LabKitOrdersSection'
+import LabKitOrderModal from '@/components/lab-kits/LabKitOrderModal'
 import { useSite } from '@/components/site/SiteProvider'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { todayLocalISODate } from '@/lib/date-utils'
 
 function LabKitsPageLoader() {
   return (
@@ -44,26 +47,29 @@ interface Study {
   study_title: string
 }
 
-type ViewMode = 'inventory' | 'expired' | 'shipments' | 'alerts'
+type ViewMode = 'inventory' | 'expired' | 'shipments' | 'alerts' | 'orders'
 
 function LabKitsPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const initialStudyIdParam = searchParams.get('studyId')
-  const initialSearchParam = searchParams.get('search') || ''
-  const initialStatusParam = searchParams.get('status') || ''
   const [studies, setStudies] = useState<Study[]>([])
   const [selectedStudyId, setSelectedStudyId] = useState<string>(() => initialStudyIdParam || 'all')
-  const [inventorySearch, setInventorySearch] = useState<string>(() => initialSearchParam)
-  const [inventoryStatus, setInventoryStatus] = useState<string>(() => initialStatusParam || 'available')
   const [viewMode, setViewMode] = useState<ViewMode>('inventory')
   const [showAddModal, setShowAddModal] = useState(false)
   const [showCreateShipment, setShowCreateShipment] = useState(false)
+  const [showOrderModal, setShowOrderModal] = useState(false)
   const [loading, setLoading] = useState(true)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [ordersRefreshKey, setOrdersRefreshKey] = useState(0)
+  const [ordersNotice, setOrdersNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [showExpiringOnly, setShowExpiringOnly] = useState(false)
   const [alertsCount, setAlertsCount] = useState(0)
+  const [addPrefill, setAddPrefill] = useState<{ kitTypeId?: string | null; receivedDate?: string | null; notes?: string | null } | null>(null)
+  const [inventoryFilter, setInventoryFilter] = useState<{ search: string; status: string; version: number }>({ search: '', status: 'available', version: 0 })
   const { currentSiteId } = useSite()
+
+  const canManageStudy = Boolean(selectedStudyId && selectedStudyId !== 'all')
 
   useEffect(() => {
     const paramStudy = searchParams.get('studyId')
@@ -71,17 +77,7 @@ function LabKitsPageContent() {
     if (normalizedStudy !== selectedStudyId) {
       setSelectedStudyId(normalizedStudy)
     }
-
-    const paramSearch = searchParams.get('search') || ''
-    if (paramSearch !== inventorySearch) {
-      setInventorySearch(paramSearch)
-    }
-
-    const paramStatus = searchParams.get('status') || 'available'
-    if (paramStatus !== inventoryStatus) {
-      setInventoryStatus(paramStatus)
-    }
-  }, [searchParams, selectedStudyId, inventorySearch, inventoryStatus])
+  }, [searchParams, selectedStudyId])
 
   // Load studies on mount
   const loadStudies = useCallback(async () => {
@@ -117,7 +113,15 @@ function LabKitsPageContent() {
     setRefreshKey(prev => prev + 1)
   }, [])
 
-  const updateQueryParams = useCallback((next: { studyId?: string | null; search?: string | null; status?: string | null }) => {
+  const handleOrdersRefresh = useCallback(() => {
+    setOrdersRefreshKey(prev => prev + 1)
+  }, [])
+
+  const clearOrdersNotice = useCallback(() => {
+    setOrdersNotice(null)
+  }, [])
+
+  const updateQueryParams = useCallback((next: { studyId?: string | null }) => {
     const params = new URLSearchParams(searchParams.toString())
     if (next.studyId !== undefined) {
       if (!next.studyId || next.studyId === 'all') {
@@ -126,52 +130,62 @@ function LabKitsPageContent() {
         params.set('studyId', next.studyId)
       }
     }
-    if (next.search !== undefined) {
-      if (next.search) {
-        params.set('search', next.search)
-      } else {
-        params.delete('search')
-      }
-    }
-    if (next.status !== undefined) {
-      if (next.status && next.status !== 'available') {
-        params.set('status', next.status)
-      } else {
-        params.delete('status')
-      }
-    }
     const queryString = params.toString()
     router.replace(`/lab-kits${queryString ? `?${queryString}` : ''}`)
   }, [router, searchParams])
 
   const handleStudySelect = useCallback((studyId: string) => {
     setSelectedStudyId(studyId)
-    if (inventorySearch) {
-      setInventorySearch('')
-    }
-    updateQueryParams({ studyId, search: inventorySearch ? '' : undefined, status: inventoryStatus })
-  }, [inventorySearch, inventoryStatus, updateQueryParams])
+    setInventoryFilter(prev => ({ search: '', status: 'available', version: prev.version + 1 }))
+    updateQueryParams({ studyId })
+  }, [updateQueryParams])
 
   const handleLocateKit = useCallback(({ studyId, accessionNumber }: { studyId?: string | null; accessionNumber?: string | null }) => {
     const nextStudy = studyId || selectedStudyId || 'all'
-    setSelectedStudyId(nextStudy)
-    setInventorySearch(accessionNumber || '')
-    const status = 'all'
-    setInventoryStatus(status)
+    if (nextStudy !== selectedStudyId) {
+      setSelectedStudyId(nextStudy)
+      updateQueryParams({ studyId: nextStudy })
+    }
+    setInventoryFilter(prev => ({ search: accessionNumber || '', status: 'all', version: prev.version + 1 }))
     setViewMode('inventory')
-    updateQueryParams({ studyId: nextStudy, search: accessionNumber ? accessionNumber : null, status })
     handleRefresh()
   }, [selectedStudyId, updateQueryParams, handleRefresh])
 
   const handleAddComplete = () => {
     setShowAddModal(false)
+    setAddPrefill(null)
     handleRefresh()
   }
+
+  const handleAddModalClose = useCallback(() => {
+    setShowAddModal(false)
+    setAddPrefill(null)
+  }, [])
 
   const handleFilterExpiring = () => {
     setShowExpiringOnly(!showExpiringOnly)
     setViewMode('inventory') // Ensure we're on inventory view
   }
+
+  const handleOrderReceived = useCallback((details: { study_id: string; kit_type_id: string | null; received_date: string | null; kit_type_name: string | null }) => {
+    const targetStudyId = details.study_id || selectedStudyId
+    if (!targetStudyId || targetStudyId === 'all') {
+      setOrdersNotice({ type: 'error', message: 'Select a study to add inventory for this order.' })
+      return
+    }
+
+    if (targetStudyId !== selectedStudyId) {
+      setSelectedStudyId(targetStudyId)
+      updateQueryParams({ studyId: targetStudyId })
+    }
+
+    const receivedDate = details.received_date || todayLocalISODate()
+    setAddPrefill({ kitTypeId: details.kit_type_id, receivedDate })
+    setInventoryFilter(prev => ({ search: '', status: 'available', version: prev.version + 1 }))
+    setShowAddModal(true)
+    setViewMode('inventory')
+    setOrdersNotice({ type: 'success', message: `Order${details.kit_type_name ? ` for ${details.kit_type_name}` : ''} marked as received. Inventory entry prefilled.` })
+  }, [selectedStudyId, updateQueryParams])
 
   if (loading) {
     return <LabKitsPageLoader />
@@ -181,15 +195,49 @@ function LabKitsPageContent() {
     <DashboardLayout>
       <div className="space-y-6">
         {/* Page Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-white">Lab Kit Management</h1>
-            <p className="text-gray-400 mt-1">Manage lab kit inventory, shipping, and usage tracking</p>
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-white">Lab Kit Management</h1>
+              <p className="text-gray-400 mt-1">Manage lab kit inventory, ordering, and shipment tracking</p>
+            </div>
+            <div className="flex flex-wrap items-center justify-start gap-2 md:justify-end">
+              <button
+                onClick={() => window.location.href = '/lab-kits/bulk-import'}
+                disabled={!canManageStudy}
+                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                </svg>
+                Add Inventory
+              </button>
+              <button
+                onClick={() => {
+                  if (!canManageStudy) return
+                  setViewMode('orders')
+                  setShowOrderModal(true)
+                }}
+                disabled={!canManageStudy}
+                className="rounded-lg border border-blue-500/50 px-4 py-2 text-sm font-semibold text-blue-200 transition-colors hover:border-blue-400 hover:text-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Plan Order
+              </button>
+              {viewMode === 'shipments' && (
+                <button
+                  onClick={() => setShowCreateShipment(true)}
+                  disabled={!canManageStudy}
+                  className="rounded-lg border border-purple-500/50 px-4 py-2 text-sm font-semibold text-purple-200 transition-colors hover:border-purple-400 hover:text-purple-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Create Shipment
+                </button>
+              )}
+            </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-3">
-            {/* Study Hot Buttons */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex flex-wrap items-center gap-2 overflow-x-auto pb-1">
+              <span className="text-xs uppercase text-gray-500 tracking-wide">Studies</span>
               <button
                 onClick={() => handleStudySelect('all')}
                 className={`px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap ${
@@ -212,72 +260,63 @@ function LabKitsPageContent() {
               ))}
             </div>
 
-            {/* View Toggle */}
-            <div className="flex bg-gray-700/30 rounded-lg p-1">
-              <button
-                onClick={() => setViewMode('inventory')}
-                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                  viewMode === 'inventory'
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                Inventory
-              </button>
-              <button
-                onClick={() => setViewMode('expired')}
-                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                  viewMode === 'expired'
-                    ? 'bg-red-600 text-white'
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                Expired
-              </button>
-              <button
-                onClick={() => setViewMode('shipments')}
-                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                  viewMode === 'shipments'
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                Shipments
-              </button>
-              <button
-                onClick={() => setViewMode('alerts')}
-                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                  viewMode === 'alerts'
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                Alerts{alertsCount > 0 && (
-                  <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-red-600 text-white">{alertsCount}</span>
-                )}
-              </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs uppercase text-gray-500 tracking-wide">View</span>
+              <div className="flex bg-gray-700/30 rounded-lg p-1">
+                <button
+                  onClick={() => setViewMode('inventory')}
+                  className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                    viewMode === 'inventory'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Inventory
+                </button>
+                <button
+                  onClick={() => setViewMode('expired')}
+                  className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                    viewMode === 'expired'
+                      ? 'bg-red-600 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Expired
+                </button>
+                <button
+                  onClick={() => setViewMode('shipments')}
+                  className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                    viewMode === 'shipments'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Shipments
+                </button>
+                <button
+                  onClick={() => setViewMode('orders')}
+                  className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                    viewMode === 'orders'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Orders
+                </button>
+                <button
+                  onClick={() => setViewMode('alerts')}
+                  className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                    viewMode === 'alerts'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Alerts{alertsCount > 0 && (
+                    <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-red-600 text-white">{alertsCount}</span>
+                  )}
+                </button>
+              </div>
             </div>
-
-            {/* Action Buttons */}
-            <button
-              onClick={() => window.location.href = '/lab-kits/bulk-import'}
-              disabled={!selectedStudyId || selectedStudyId === 'all'}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-              </svg>
-              <span>Add Inventory</span>
-            </button>
-            {viewMode === 'shipments' && (
-              <button
-                onClick={() => setShowCreateShipment(true)}
-                disabled={!selectedStudyId || selectedStudyId === 'all'}
-                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Create Shipment
-              </button>
-            )}
           </div>
         </div>
 
@@ -315,8 +354,7 @@ function LabKitsPageContent() {
                   refreshKey={refreshKey}
                   onRefresh={handleRefresh}
                   showExpiringOnly={showExpiringOnly}
-                  initialSearchTerm={inventorySearch}
-                  initialStatus={inventoryStatus}
+                  prefillFilters={inventoryFilter}
                 />
               </div>
             )}
@@ -338,6 +376,16 @@ function LabKitsPageContent() {
               />
             )}
 
+            {viewMode === 'orders' && (
+              <LabKitOrdersSection
+                studyId={selectedStudyId}
+                refreshKey={ordersRefreshKey}
+                externalNotice={ordersNotice}
+                onClearExternalNotice={clearOrdersNotice}
+                onOrderReceived={handleOrderReceived}
+              />
+            )}
+
             {viewMode === 'alerts' && (
               <LabKitAlertsPanel
                 studyId={selectedStudyId}
@@ -350,6 +398,7 @@ function LabKitsPageContent() {
                   }
                 }}
                 onCountChange={(n) => setAlertsCount(n)}
+                onOrderReceived={handleOrderReceived}
               />
             )}
           </>
@@ -359,8 +408,9 @@ function LabKitsPageContent() {
         {showAddModal && (
           <AddLabKitModal
             studyId={selectedStudyId}
-            onClose={() => setShowAddModal(false)}
+            onClose={handleAddModalClose}
             onAdd={handleAddComplete}
+            prefill={addPrefill ?? undefined}
           />
         )}
         {showCreateShipment && (
@@ -368,6 +418,21 @@ function LabKitsPageContent() {
             studyId={selectedStudyId}
             onClose={() => setShowCreateShipment(false)}
             onSuccess={handleRefresh}
+          />
+        )}
+        {showOrderModal && canManageStudy && (
+          <LabKitOrderModal
+            studyId={selectedStudyId}
+            isOpen={showOrderModal}
+            onClose={() => setShowOrderModal(false)}
+            onSuccess={(message) => {
+              if (message) {
+                setOrdersNotice({ type: 'success', message })
+              }
+              handleOrdersRefresh()
+              handleRefresh()
+            }}
+            allowKitTypeChange
           />
         )}
       </div>

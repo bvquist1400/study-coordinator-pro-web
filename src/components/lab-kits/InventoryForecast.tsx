@@ -234,8 +234,20 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
             <p>{showOnlyIssues ? 'No issues detected' : `No visits scheduled in the next ${daysAhead} days`}</p>
           </div>
         ) : (
-          visible.map((item) => (
-            <div key={item.key} className="p-6">
+          visible.map((item) => {
+            const pendingQty = item.pendingOrderQuantity ?? 0
+            const hasPendingCoverage = pendingQty > 0 && item.deficit <= 0 && (item.originalDeficit ?? 0) > 0
+            const lowBuffer = (item.kitsAvailable - item.kitsRequired)
+            const lowBufferWithPending = pendingQty > 0 && lowBuffer <= 2
+            const highlight = hasPendingCoverage || lowBufferWithPending
+
+            return (
+            <div
+              key={item.key}
+              className={`p-6 transition-colors ${
+                highlight ? 'border-l-4 border-blue-400/70 bg-blue-500/10' : ''
+              }`}
+            >
               <div 
                 className="flex items-center justify-between cursor-pointer"
                 onClick={() => toggleExpanded(item.key)}
@@ -248,6 +260,11 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
                       {item.optional && (
                         <span className="text-xs uppercase tracking-wide text-gray-300 bg-gray-700/60 px-2 py-0.5 rounded-full border border-gray-600">
                           Optional
+                        </span>
+                      )}
+                      {highlight && (
+                        <span className="text-[11px] uppercase tracking-wide text-blue-200 bg-blue-500/20 px-2 py-0.5 rounded-full border border-blue-400/50">
+                          Pending order {pendingQty > 0 ? `(${pendingQty})` : ''}
                         </span>
                       )}
                     </div>
@@ -327,7 +344,7 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
                 </div>
               )}
             </div>
-          ))
+          )})
         )}
         {displayForecast.length > maxItems && (
           <div className="p-4 text-center">
