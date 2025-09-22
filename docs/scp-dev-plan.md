@@ -117,6 +117,19 @@ Multiple issues need resolution in the lab kit workflow:
   - Update prediction calculations to include buffer
   ```
 
+#### E. **Dedicated Kit Orders Workspace** (Priority: MEDIUM) ✅
+- **Problem**: Ordering was reactive and scattered across alerts.
+- **Actions**:
+  ```typescript
+  // Provide proactive ordering tools
+  - Expose GET /api/lab-kit-orders with study/all-studies scopes, kit metadata, and creator info
+  - Add LabKitOrdersSection with filtering, search, and status actions in the Lab Kits page
+  - Reuse LabKitOrderModal for create/edit flows with inline validation
+  - Surface pending orders in Inventory Forecast and Alerts, highlighting when coverage exists
+  - Auto-prefill Add Inventory when marking orders received (study/kit/date)
+  ```
+- **Status**: Completed — users can review, edit, and close orders from the new Orders tab; deficit alerts and the forecast acknowledge pending coverage; received orders jump directly into prefilled inventory entry. All-studies view now aggregates orders across the coordinator's accessible studies.
+
 ---
 
 ## 🗓️ PHASE 2: Visit Management Enhancements (Week 2-3)
