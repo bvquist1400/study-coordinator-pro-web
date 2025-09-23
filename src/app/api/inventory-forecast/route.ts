@@ -164,19 +164,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: membership.error || 'Access denied' }, { status: membership.status || 403 })
     }
 
-    const supabase = createSupabaseAdmin()
+   const supabase = createSupabaseAdmin()
 
-    type StudyBufferSettings = Pick<Study, 'inventory_buffer_days' | 'visit_window_buffer_days'>
-    const { data: studySettings, error: studySettingsError } = await supabase
-      .from('studies')
-      .select('inventory_buffer_days, visit_window_buffer_days')
-      .eq('id', studyId)
-      .single<StudyBufferSettings>()
+type StudyBufferSettings = Pick<Study, 'inventory_buffer_days' | 'visit_window_buffer_days'>
+const { data: studySettings, error: studySettingsError } = await supabase
+  .from('studies')
+  .select('inventory_buffer_days, visit_window_buffer_days')
+  .eq('id', studyId)
+  .single<StudyBufferSettings>()
 
-    if (studySettingsError) {
-      logger.error('inventory-forecast: failed to load study buffer settings', studySettingsError, { studyId })
-      return NextResponse.json({ error: 'Failed to load study settings' }, { status: 500 })
-    }
+if (studySettingsError) {
+  logger.error('inventory-forecast: failed to load study buffer settings', studySettingsError, { studyId })
+  return NextResponse.json({ error: 'Failed to load study settings' }, { status: 500 })
+}
+
 
     const inventoryBufferDays = Math.max(0, Math.min(120, (studySettings?.inventory_buffer_days ?? 0)))
     const visitWindowBufferDays = Math.max(0, Math.min(60, (studySettings?.visit_window_buffer_days ?? 0)))
