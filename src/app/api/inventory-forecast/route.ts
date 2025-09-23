@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser, verifyStudyMembership, createSupabaseAdmin } from '@/lib/api/auth'
 import logger from '@/lib/logger'
+import type { Study } from '@/types/database'
 
 const BUFFER_THRESHOLD = 2
 const DEFAULT_WINDOW_DAYS = 30
@@ -165,11 +166,12 @@ export async function GET(request: NextRequest) {
 
     const supabase = createSupabaseAdmin()
 
+    type StudyBufferSettings = Pick<Study, 'inventory_buffer_days' | 'visit_window_buffer_days'>
     const { data: studySettings, error: studySettingsError } = await supabase
       .from('studies')
       .select('inventory_buffer_days, visit_window_buffer_days')
       .eq('id', studyId)
-      .single()
+      .single<StudyBufferSettings>()
 
     if (studySettingsError) {
       logger.error('inventory-forecast: failed to load study buffer settings', studySettingsError, { studyId })
