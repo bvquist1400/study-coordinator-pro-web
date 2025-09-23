@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { LabKit, StudyKitType } from '@/types/database'
 import { formatDateUTC, parseDateUTC } from '@/lib/date-utils'
@@ -10,8 +10,7 @@ interface LabKitInventoryProps {
   refreshKey?: number
   onRefresh: () => void
   showExpiringOnly?: boolean
-  initialSearchTerm?: string
-  initialStatus?: string
+  prefillFilters?: { search: string; status: string; version: number }
 }
 
 interface LabKitWithVisit extends LabKit {
@@ -46,12 +45,12 @@ interface LabKitWithVisit extends LabKit {
   } | null
 }
 
-export default function LabKitInventory({ studyId, refreshKey, onRefresh, showExpiringOnly, initialSearchTerm, initialStatus }: LabKitInventoryProps) {
+export default function LabKitInventory({ studyId, refreshKey, onRefresh, showExpiringOnly, prefillFilters }: LabKitInventoryProps) {
   const [labKits, setLabKits] = useState<LabKitWithVisit[]>([])
   const [loading, setLoading] = useState(true)
   // Default to showing Available kits
-  const [statusFilter, setStatusFilter] = useState<string>(initialStatus || 'available')
-  const [searchTerm, setSearchTerm] = useState(initialSearchTerm || '')
+  const [statusFilter, setStatusFilter] = useState<string>('available')
+  const [searchTerm, setSearchTerm] = useState('')
   const [selectedKit, setSelectedKit] = useState<LabKitWithVisit | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [selectedKits, setSelectedKits] = useState<Set<string>>(new Set())
@@ -95,16 +94,10 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
   }, [loadLabKits, refreshKey])
 
   useEffect(() => {
-    if (typeof initialSearchTerm === 'string') {
-      setSearchTerm(initialSearchTerm)
-    }
-  }, [initialSearchTerm])
-
-  useEffect(() => {
-    if (typeof initialStatus === 'string') {
-      setStatusFilter(initialStatus)
-    }
-  }, [initialStatus])
+    if (!prefillFilters) return
+    setSearchTerm(prefillFilters.search ?? '')
+    setStatusFilter(prefillFilters.status || 'available')
+  }, [prefillFilters])
 
   const getStatusBadge = (status: string) => {
     const baseClasses = "px-2 py-1 text-xs font-medium rounded-full"
@@ -173,6 +166,18 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
       return groups
     }, {} as Record<string, LabKitWithVisit[]>) :
     { 'All Kits': filteredLabKits }
+
+  const statusTotals = useMemo(() => {
+    const totals = new Map<string, number>()
+    labKits.forEach(kit => {
+      if (kit.status === 'destroyed' || kit.status === 'archived') return
+      totals.set(kit.status, (totals.get(kit.status) ?? 0) + 1)
+    })
+    totals.set('all', filteredLabKits.length)
+    return totals
+  }, [labKits, filteredLabKits.length])
+
+  const showLogisticsColumns = statusFilter === 'shipped' || statusFilter === 'delivered'
 
   const handleStatusChange = async (kitId: string, newStatus: LabKit['status']) => {
     try {
@@ -354,56 +359,60 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
     <div className="bg-gray-800/50 rounded-lg border border-gray-700">
       {/* Filters and Search */}
       <div className="p-6 border-b border-gray-700">
-        {/* Status Tabs */}
-        <div className="mb-4 flex flex-wrap gap-2">
-          {[
-            { key: 'available', label: 'Available' },
-            { key: 'assigned', label: 'Reserved/Assigned' },
-            { key: 'used', label: 'Used' },
-            { key: 'shipped', label: 'Shipped' },
-            { key: 'delivered', label: 'Delivered' },
-            { key: 'expired', label: 'Expired' },
-            { key: 'all', label: 'All' }
-          ].map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setStatusFilter(tab.key)}
-              className={`px-3 py-1.5 rounded-md text-sm border transition-colors ${
-                statusFilter === tab.key
-                  ? 'bg-blue-600 text-white border-blue-500'
-                  : 'bg-gray-700/40 text-gray-300 border-gray-600 hover:bg-gray-700/60'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1">
-            <input
-              type="text"
-              placeholder="Search by accession number or kit type..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-3 py-2 bg-gray-700/50 border border-gray-600 text-gray-100 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-            />
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] uppercase tracking-wide text-gray-500">Status</span>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { key: 'available', label: 'Available' },
+                { key: 'shipped', label: 'Shipped' },
+                { key: 'delivered', label: 'Delivered' },
+                { key: 'expired', label: 'Expired' },
+                { key: 'all', label: 'All' }
+              ].map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => setStatusFilter(tab.key)}
+                  className={`px-3 py-1.5 rounded-md text-sm border transition-colors ${
+                    statusFilter === tab.key
+                      ? 'bg-blue-600 text-white border-blue-500'
+                      : 'bg-gray-700/40 text-gray-300 border-gray-600 hover:bg-gray-700/60'
+                  }`}
+                >
+                  <span>{tab.label}</span>
+                  <span className="ml-1 text-[11px] text-gray-200/90">
+                    ({statusTotals.get(tab.key) ?? 0})
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
-          {/* Status select retained for accessibility on smaller screens (tabs above) */}
-          <div className="flex gap-3">
+          <div className="flex flex-wrap items-center gap-3 justify-between lg:justify-end">
+            <div className="relative flex-1 min-w-[200px] max-w-sm">
+              <svg className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-4.35-4.35m0 0A7.5 7.5 0 103.5 3.5a7.5 7.5 0 0013.15 13.15z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search accession # or kit type"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9 pr-3 py-2 bg-gray-700/50 border border-gray-600 text-gray-100 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 w-full"
+              />
+            </div>
             <button
               onClick={() => setGroupByVisit(!groupByVisit)}
-              className={`px-4 py-2 rounded-md font-medium transition-colors ${
+              className={`px-4 py-2 rounded-md font-medium transition-colors whitespace-nowrap ${
                 groupByVisit
                   ? 'bg-blue-600 hover:bg-blue-700 text-white'
                   : 'bg-gray-700/50 hover:bg-gray-600 text-gray-300 border border-gray-600'
               }`}
             >
-              {groupByVisit ? '📊 Grouped' : '📋 List'}
+              {groupByVisit ? 'Grouped view' : 'List view'}
             </button>
             <button
               onClick={() => setShowPendingModal(true)}
-              className="px-4 py-2 rounded-md font-medium bg-orange-600 hover:bg-orange-700 text-white transition-colors"
+              className="px-4 py-2 rounded-md font-medium bg-orange-600 hover:bg-orange-700 text-white transition-colors whitespace-nowrap"
               title="Mark selected kits or pasted accessions as pending shipment"
             >
               Mark Pending Shipment
@@ -528,30 +537,34 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
                             className="w-4 h-4 text-blue-600 border-gray-600 rounded focus:ring-blue-500 bg-gray-700"
                           />
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                          Accession Number
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                          Kit Type
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                          Visit Assignment
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                          Subject
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                          Shipment
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                          Status
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                          Expiration
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                          Received Date
-                        </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                      Accession #
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                      Kit Type
+                    </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                    Visit
+                  </th>
+                  {showLogisticsColumns && (
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                      Subject
+                    </th>
+                  )}
+                  {showLogisticsColumns && (
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                      Shipment Status
+                    </th>
+                  )}
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                      Expiration
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                      Received
+                    </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                           Actions
                         </th>
@@ -591,39 +604,43 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
                       }
                     </div>
                   </td>
-                  <td className="px-6 py-4">
-                    {kit.subject_assignment ? (
-                      <div className="text-sm text-gray-200">
-                        <div className="font-medium text-white">
-                          {kit.subject_assignment.subject_number || kit.subject_assignment.subject_id || 'Subject'}
+                  {showLogisticsColumns && (
+                    <td className="px-6 py-4">
+                      {kit.subject_assignment ? (
+                        <div className="text-sm text-gray-200">
+                          <div className="font-medium text-white">
+                            {kit.subject_assignment.subject_number || kit.subject_assignment.subject_id || 'Subject'}
+                          </div>
+                          <div className="text-xs text-gray-400">
+                            {kit.subject_assignment.visit_name || 'Visit'}
+                            {kit.subject_assignment.visit_date ? ` • ${formatDateUTC(kit.subject_assignment.visit_date)}` : ''}
+                          </div>
                         </div>
-                        <div className="text-xs text-gray-400">
-                          {kit.subject_assignment.visit_name || 'Visit'}
-                          {kit.subject_assignment.visit_date ? ` • ${formatDateUTC(kit.subject_assignment.visit_date)}` : ''}
+                      ) : (
+                        <span className="text-xs text-gray-500">Unassigned</span>
+                      )}
+                    </td>
+                  )}
+                  {showLogisticsColumns && (
+                    <td className="px-6 py-4">
+                      {kit.latest_shipment ? (
+                        <div className="text-xs text-gray-300 space-y-1">
+                          <div className="font-medium text-white uppercase tracking-wide">
+                            {(kit.latest_shipment.tracking_status || 'pending').replace(/_/g, ' ')}
+                          </div>
+                          <div className="text-gray-400">
+                            AWB {kit.latest_shipment.airway_bill_number || '—'}
+                          </div>
+                          <div className="text-gray-500">
+                            {kit.latest_shipment.shipped_date ? `Ship ${formatDateUTC(kit.latest_shipment.shipped_date)}` : 'Ship date unknown'}
+                            {kit.latest_shipment.estimated_delivery ? ` · ETA ${formatDateUTC(kit.latest_shipment.estimated_delivery)}` : ''}
+                          </div>
                         </div>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-gray-500">Unassigned</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4">
-                    {kit.latest_shipment ? (
-                      <div className="text-xs text-gray-300 space-y-1">
-                        <div className="font-medium text-white uppercase tracking-wide">
-                          {(kit.latest_shipment.tracking_status || 'pending').replace(/_/g, ' ')}
-                        </div>
-                        <div className="text-gray-400">
-                          AWB {kit.latest_shipment.airway_bill_number || '—'}
-                        </div>
-                        <div className="text-gray-500">
-                          {kit.latest_shipment.shipped_date ? `Ship ${formatDateUTC(kit.latest_shipment.shipped_date)}` : 'Ship date unknown'}
-                          {kit.latest_shipment.estimated_delivery ? ` · ETA ${formatDateUTC(kit.latest_shipment.estimated_delivery)}` : ''}
-                        </div>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-gray-500">No shipment</span>
-                    )}
-                  </td>
+                      ) : (
+                        <span className="text-xs text-gray-500">No shipment</span>
+                      )}
+                    </td>
+                  )}
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={getStatusBadge(kit.status)}>
                       {kit.status.charAt(0).toUpperCase() + kit.status.slice(1)}
@@ -715,19 +732,19 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Study</th>
                   )}
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Accession Number
+                    Accession #
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                     Kit Type
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Visit Assignment
+                    Visit
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                     Subject
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Shipment
+                    Shipment Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                     Status
@@ -736,7 +753,7 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
                     Expiration
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Received Date
+                    Received
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                     Actions
@@ -777,14 +794,15 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
                         {getKitTypeLabel(kit)}
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-gray-300">
-                        {kit.visit_schedules ? 
-                          `${kit.visit_schedules.visit_name} (${kit.visit_schedules.visit_number})` 
-                          : 'Unassigned'
-                        }
-                      </div>
-                    </td>
+                  <td className="px-6 py-4">
+                    <div className="text-sm text-gray-300">
+                      {kit.visit_schedules ? 
+                        `${kit.visit_schedules.visit_name} (${kit.visit_schedules.visit_number})` 
+                        : 'Unassigned'
+                      }
+                    </div>
+                  </td>
+                  {showLogisticsColumns && (
                     <td className="px-6 py-4">
                       {kit.subject_assignment ? (
                         <div className="text-sm text-gray-200">
@@ -800,6 +818,8 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
                         <span className="text-xs text-gray-500">Unassigned</span>
                       )}
                     </td>
+                  )}
+                  {showLogisticsColumns && (
                     <td className="px-6 py-4">
                       {kit.latest_shipment ? (
                         <div className="text-xs text-gray-300 space-y-1">
@@ -818,6 +838,7 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
                         <span className="text-xs text-gray-500">No shipment</span>
                       )}
                     </td>
+                  )}
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={getStatusBadge(kit.status)}>
                         {kit.status.charAt(0).toUpperCase() + kit.status.slice(1)}

@@ -94,7 +94,7 @@ Multiple issues need resolution in the lab kit workflow:
     is_optional BOOLEAN DEFAULT FALSE
   );
   ```
-- **Progress**: Added a dedicated `visit_kit_requirements` table, exposed CRUD APIs, surfaced requirements on visit schedule reads, and introduced a “Manage Kit Requirements” editor inside the Schedule of Events builder (with optimistic syncing to the new API). Inventory forecasting now rolls up kit demand per shared kit type (buffer/deficit alerts and the Inventory panel consume the enriched data), and Add Lab Kit defaults align with protocol requirements. Next follow-up: wire the bulk import / bulk edit flows to the shared kit catalog and extend forecasting with adjustable safety buffers.
+- **Progress**: Added a dedicated `visit_kit_requirements` table, exposed CRUD APIs, surfaced requirements on visit schedule reads, and introduced a “Manage Kit Requirements” editor inside the Schedule of Events builder (with optimistic syncing to the new API). Inventory forecasting now rolls up kit demand per shared kit type, Add Lab Kit / bulk edit / bulk import use the shared catalog with SOE-driven recommendations, and coordinators can leave kits unassigned for multi-visit usage. **Next follow-up**: introduce adjustable safety buffers in forecasting and tighten the inventory alert UX (collapsible groups, dismissals).
 
 #### C. **Inventory Forecast UI** (Priority: LOW)
 - **Problem**: Alerts overwhelming on Lab Kit management page
@@ -116,6 +116,41 @@ Multiple issues need resolution in the lab kit workflow:
   - Create UI control for buffer adjustment
   - Update prediction calculations to include buffer
   ```
+- **Status**: Completed — study settings now manage inventory and visit buffer days; forecasts extend the lookahead and pad kit demand using the configurable buffer targets.
+
+#### F. **Predictive Lab Kit Recommendations & Settings** (Priority: MEDIUM)
+- **Problem**: Coordinators lack a single place to tune inventory behaviour or review proactive reorder guidance.
+- **Actions (in flight)**:
+  ```typescript
+  // Centralised Lab Kit Settings
+  - Add `inventory_buffer_kits` to studies + per-kit overrides table (min kits, buffer days, auto-order flag, vendor lead time)
+  - Expose GET/PUT /api/lab-kit-settings returning study defaults + per-kit overrides with validation
+  - Build Lab Kits → Settings page with study defaults card, per-kit grid, bulk edit, and guidance copy
+
+  // Recommendation Engine
+  - Extend inventory forecast to emit recommendedOrders[] with reasoning (buffer breach, upcoming surge, expiry risk)
+  - Include vendor lead-time heuristics (user-supplied or estimated) to project latest safe order date
+  - Persist recommendation decisions (new/dismissed/ordered) for audit + feedback loops
+
+  // UX Integrations
+  - Add "Recommended Orders" widget on Lab Kits dashboard with CTA to open prefilled order modal
+  - Link forecast alert rows and orders tab to settings for quick buffer adjustments
+  - Allow coordinators to capture dismissal reasons (already covered, vendor delay, etc.)
+  ```
+- **Notes**: Start rule-based; collect telemetry to inform future ML/auto-ordering. Vendor lead times become editable metadata on the new settings page so predictions can convert risk windows into concrete order-by dates.
+
+#### E. **Dedicated Kit Orders Workspace** (Priority: MEDIUM) ✅
+- **Problem**: Ordering was reactive and scattered across alerts.
+- **Actions**:
+  ```typescript
+  // Provide proactive ordering tools
+  - Expose GET /api/lab-kit-orders with study/all-studies scopes, kit metadata, and creator info
+  - Add LabKitOrdersSection with filtering, search, and status actions in the Lab Kits page
+  - Reuse LabKitOrderModal for create/edit flows with inline validation
+  - Surface pending orders in Inventory Forecast and Alerts, highlighting when coverage exists
+  - Auto-prefill Add Inventory when marking orders received (study/kit/date)
+  ```
+- **Status**: Completed — users can review, edit, and close orders from the new Orders tab; deficit alerts and the forecast acknowledge pending coverage; received orders jump directly into prefilled inventory entry. All-studies view now aggregates orders across the coordinator's accessible studies.
 
 ---
 

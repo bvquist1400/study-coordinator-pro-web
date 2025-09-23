@@ -12,6 +12,8 @@ create table public.studies (
   end_date date null,
   target_enrollment integer null,
   visit_window_days integer null default 7,
+  inventory_buffer_days integer not null default 14,
+  visit_window_buffer_days integer not null default 0,
   dosing_frequency text null default 'QD'::text,
   compliance_threshold numeric null default 80.0,
   notes text null,

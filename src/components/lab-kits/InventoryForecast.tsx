@@ -23,6 +23,19 @@ interface ForecastRequirementBreakdown {
   upcomingVisits?: ForecastUpcomingVisit[]
 }
 
+interface ForecastPendingOrder {
+  id: string
+  quantity: number
+  vendor: string | null
+  expectedArrival: string | null
+  status: 'pending' | 'received' | 'cancelled'
+  isOverdue: boolean
+  notes: string | null
+  createdAt: string
+  createdBy: string | null
+  receivedDate: string | null
+}
+
 interface InventoryForecastItem {
   key: string
   kitTypeId: string | null
@@ -31,12 +44,17 @@ interface InventoryForecastItem {
   optional: boolean
   visitsScheduled: number
   kitsRequired: number
+  requiredWithBuffer: number
   kitsAvailable: number
   kitsExpiringSoon: number
   deficit: number
   status: 'ok' | 'warning' | 'critical'
   upcomingVisits: ForecastUpcomingVisit[]
   requirements: ForecastRequirementBreakdown[]
+  originalDeficit: number
+  pendingOrderQuantity: number
+  pendingOrders: ForecastPendingOrder[]
+  bufferKitsNeeded: number
 }
 
 interface ForecastSummary {
@@ -44,6 +62,9 @@ interface ForecastSummary {
   criticalIssues: number
   warnings: number
   daysAhead: number
+  baseWindowDays: number
+  inventoryBufferDays: number
+  visitWindowBufferDays: number
 }
 
 interface InventoryForecastProps {
@@ -112,13 +133,38 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
   }
 
   const getStatusMessage = (item: InventoryForecastItem) => {
-    if (item.deficit > 0) {
-      return `${item.deficit} kit${item.deficit === 1 ? '' : 's'} short (need ${item.kitsRequired})`
+    const outstanding = Math.max(0, item.deficit)
+    const pending = item.pendingOrderQuantity ?? 0
+    const original = Math.max(0, item.originalDeficit ?? outstanding)
+    const totalTarget = item.requiredWithBuffer ?? item.kitsRequired
+    const bufferGoal = item.bufferKitsNeeded ?? Math.max(0, totalTarget - item.kitsRequired)
+    const slackAfterPending = item.kitsAvailable + pending - totalTarget
+    const slackOnHand = item.kitsAvailable - totalTarget
+
+    if (outstanding > 0) {
+      if (pending > 0) {
+        return `${outstanding} kit${outstanding === 1 ? '' : 's'} short after ordering ${pending} (target ${totalTarget}${bufferGoal > 0 ? ` incl. ${bufferGoal} buffer` : ''})`
+      }
+      return `${outstanding} kit${outstanding === 1 ? '' : 's'} short (target ${totalTarget}${bufferGoal > 0 ? ` incl. ${bufferGoal} buffer` : ''})`
     }
+
+    if (original > 0 && pending > 0) {
+      return `${pending} kit${pending === 1 ? '' : 's'} en route to satisfy buffer target (${totalTarget})`
+    }
+
     if (item.kitsExpiringSoon > 0) {
       return `${item.kitsExpiringSoon} kit${item.kitsExpiringSoon === 1 ? '' : 's'} expiring soon`
     }
-    const buffer = item.kitsAvailable - item.kitsRequired
+
+    if (bufferGoal > 0) {
+      const extra = Math.max(0, slackAfterPending)
+      if (extra <= 2) {
+        return `Buffer goal ${bufferGoal}; ${extra} extra kit${extra === 1 ? '' : 's'} after buffer`
+      }
+      return `${extra} extra kit${extra === 1 ? '' : 's'} ready after ${bufferGoal}-kit buffer`
+    }
+
+    const buffer = slackOnHand
     if (buffer <= 2) {
       return `Low buffer: ${buffer} extra kit${buffer === 1 ? '' : 's'} ready`
     }
@@ -164,7 +210,16 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
         <div className="flex justify-between items-center">
           <div>
             <h3 className="text-xl font-bold text-white">Inventory Forecast</h3>
-            <p className="text-gray-400 mt-1">Next {daysAhead} days supply analysis</p>
+            <p className="text-gray-400 mt-1">
+              {summary
+                ? `Next ${summary.daysAhead} days supply analysis${summary.visitWindowBufferDays > 0 ? ` (base ${summary.baseWindowDays} + ${summary.visitWindowBufferDays} buffer)` : ''}`
+                : `Next ${daysAhead} days supply analysis`}
+            </p>
+            {summary && summary.inventoryBufferDays > 0 && (
+              <p className="text-xs text-gray-500 mt-1">
+                Inventory buffer target: {summary.inventoryBufferDays} day{summary.inventoryBufferDays === 1 ? '' : 's'}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-6">
             {/* Compact filter */}
@@ -178,15 +233,20 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
               Only issues
             </label>
             {summary && (
-            <div className="text-right">
-              <div className="text-sm text-gray-400">
-                {summary.totalVisitsScheduled} visit{summary.totalVisitsScheduled !== 1 ? 's' : ''} scheduled
-              </div>
-              {summary.criticalIssues > 0 && (
-                <div className="text-red-400 font-semibold">
-                  {summary.criticalIssues} critical issue{summary.criticalIssues !== 1 ? 's' : ''}
+              <div className="text-right">
+                <div className="text-sm text-gray-400">
+                  {summary.totalVisitsScheduled} visit{summary.totalVisitsScheduled !== 1 ? 's' : ''} scheduled
                 </div>
-              )}
+                {(summary.inventoryBufferDays > 0 || summary.visitWindowBufferDays > 0) && (
+                  <div className="text-xs text-gray-500">
+                    Buffer: {summary.inventoryBufferDays}d inventory · {summary.visitWindowBufferDays}d window
+                  </div>
+                )}
+                {summary.criticalIssues > 0 && (
+                  <div className="text-red-400 font-semibold">
+                    {summary.criticalIssues} critical issue{summary.criticalIssues !== 1 ? 's' : ''}
+                  </div>
+                )}
               {summary.warnings > 0 && (
                 <div className="text-yellow-400">
                   {summary.warnings} warning{summary.warnings !== 1 ? 's' : ''}
@@ -208,8 +268,20 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
             <p>{showOnlyIssues ? 'No issues detected' : `No visits scheduled in the next ${daysAhead} days`}</p>
           </div>
         ) : (
-          visible.map((item) => (
-            <div key={item.key} className="p-6">
+          visible.map((item) => {
+            const pendingQty = item.pendingOrderQuantity ?? 0
+            const hasPendingCoverage = pendingQty > 0 && item.deficit <= 0 && (item.originalDeficit ?? 0) > 0
+            const lowBuffer = (item.kitsAvailable - item.kitsRequired)
+            const lowBufferWithPending = pendingQty > 0 && lowBuffer <= 2
+            const highlight = hasPendingCoverage || lowBufferWithPending
+
+            return (
+            <div
+              key={item.key}
+              className={`p-6 transition-colors ${
+                highlight ? 'border-l-4 border-blue-400/70 bg-blue-500/10' : ''
+              }`}
+            >
               <div 
                 className="flex items-center justify-between cursor-pointer"
                 onClick={() => toggleExpanded(item.key)}
@@ -222,6 +294,11 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
                       {item.optional && (
                         <span className="text-xs uppercase tracking-wide text-gray-300 bg-gray-700/60 px-2 py-0.5 rounded-full border border-gray-600">
                           Optional
+                        </span>
+                      )}
+                      {highlight && (
+                        <span className="text-[11px] uppercase tracking-wide text-blue-200 bg-blue-500/20 px-2 py-0.5 rounded-full border border-blue-400/50">
+                          Pending order {pendingQty > 0 ? `(${pendingQty})` : ''}
                         </span>
                       )}
                     </div>
@@ -301,7 +378,7 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
                 </div>
               )}
             </div>
-          ))
+          )})
         )}
         {displayForecast.length > maxItems && (
           <div className="p-4 text-center">

@@ -8,6 +8,11 @@ interface AddLabKitModalProps {
   studyId: string
   onClose: () => void
   onAdd: () => void
+  prefill?: {
+    kitTypeId?: string | null
+    receivedDate?: string | null
+    notes?: string | null
+  }
 }
 
 interface StudyKitType {
@@ -45,7 +50,7 @@ interface LabKitFormData {
   notes: string
 }
 
-export default function AddLabKitModal({ studyId, onClose, onAdd }: AddLabKitModalProps) {
+export default function AddLabKitModal({ studyId, onClose, onAdd, prefill }: AddLabKitModalProps) {
   const [visitSchedules, setVisitSchedules] = useState<VisitSchedule[]>([])
   const [kitTypes, setKitTypes] = useState<StudyKitType[]>([])
   const [kitTypesLoading, setKitTypesLoading] = useState(true)
@@ -54,11 +59,11 @@ export default function AddLabKitModal({ studyId, onClose, onAdd }: AddLabKitMod
   
   const [formData, setFormData] = useState<LabKitFormData>({
     accession_number: '',
-    kit_type_id: '',
+    kit_type_id: prefill?.kitTypeId || '',
     visit_schedule_id: '',
     expiration_date: '',
-    received_date: todayLocalISODate(), // Default to today (local)
-    notes: ''
+    received_date: prefill?.receivedDate || todayLocalISODate(), // Default to today (local)
+    notes: prefill?.notes || ''
   })
   
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -162,6 +167,16 @@ export default function AddLabKitModal({ studyId, onClose, onAdd }: AddLabKitMod
       setFormData(prev => ({ ...prev, kit_type_id: kitTypes[0].id }))
     }
   }, [kitTypesLoading, kitTypes, formData.kit_type_id])
+
+  useEffect(() => {
+    if (!prefill) return
+    setFormData(prev => ({
+      ...prev,
+      kit_type_id: prefill.kitTypeId || prev.kit_type_id,
+      received_date: prefill.receivedDate || prev.received_date,
+      notes: prefill.notes ?? prev.notes
+    }))
+  }, [prefill])
 
   const handleChange = (field: keyof LabKitFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))

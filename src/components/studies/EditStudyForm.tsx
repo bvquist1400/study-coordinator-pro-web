@@ -28,6 +28,8 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
     dosing_frequency: 'QD',
     compliance_threshold: '80',
     anchor_day: '0',
+    inventory_buffer_days: '14',
+    visit_window_buffer_days: '0',
     notes: ''
   })
   const [sections, setSections] = useState<StudySection[]>([])
@@ -68,6 +70,8 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
         dosing_frequency: study.dosing_frequency || 'QD',
         compliance_threshold: study.compliance_threshold ? String(study.compliance_threshold) : '80',
         anchor_day: study.anchor_day ? String(study.anchor_day) : '0',
+        inventory_buffer_days: study.inventory_buffer_days !== undefined && study.inventory_buffer_days !== null ? String(study.inventory_buffer_days) : '14',
+        visit_window_buffer_days: study.visit_window_buffer_days !== undefined && study.visit_window_buffer_days !== null ? String(study.visit_window_buffer_days) : '0',
         notes: study.notes || ''
       })
     }
@@ -118,6 +122,10 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
     if (!formData.principal_investigator.trim()) newErrors.principal_investigator = 'Principal investigator is required'
     const threshold = Number(formData.compliance_threshold)
     if (isNaN(threshold) || threshold < 1 || threshold > 100) newErrors.compliance_threshold = 'Compliance threshold must be between 1 and 100'
+    const inventoryBuffer = Number(formData.inventory_buffer_days)
+    if (isNaN(inventoryBuffer) || inventoryBuffer < 0 || inventoryBuffer > 120) newErrors.inventory_buffer_days = 'Inventory buffer must be between 0 and 120 days'
+    const visitWindowBuffer = Number(formData.visit_window_buffer_days)
+    if (isNaN(visitWindowBuffer) || visitWindowBuffer < 0 || visitWindowBuffer > 60) newErrors.visit_window_buffer_days = 'Visit window buffer must be between 0 and 60 days'
     if (formData.start_date && formData.end_date) {
       const s = new Date(formData.start_date)
       const e = new Date(formData.end_date)
@@ -151,6 +159,8 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
         dosing_frequency: formData.dosing_frequency,
         compliance_threshold: formData.compliance_threshold,
         anchor_day: formData.anchor_day,
+        inventory_buffer_days: formData.inventory_buffer_days,
+        visit_window_buffer_days: formData.visit_window_buffer_days,
         notes: formData.notes.trim() || null
       }
       const resp = await fetch('/api/studies', {
@@ -194,6 +204,8 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
         protocol_version: formData.protocol_version.trim() || null,
         compliance_threshold: formData.compliance_threshold,
         anchor_day: formData.anchor_day,
+        inventory_buffer_days: formData.inventory_buffer_days,
+        visit_window_buffer_days: formData.visit_window_buffer_days,
         notes: formData.notes.trim() || null,
         status: 'completed'
       }
@@ -554,6 +566,43 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
                 <label className="block text-sm font-medium text-gray-300 mb-2">Compliance Threshold (%)</label>
                 <input name="compliance_threshold" value={formData.compliance_threshold} onChange={handleInputChange} className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2" disabled={isSubmitting} />
                 {errors.compliance_threshold && <p className="text-red-400 text-sm mt-1">{errors.compliance_threshold}</p>}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Inventory Buffer (days)</label>
+                <input
+                  name="inventory_buffer_days"
+                  value={formData.inventory_buffer_days}
+                  onChange={handleInputChange}
+                  type="number"
+                  min={0}
+                  max={120}
+                  className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2"
+                  disabled={isSubmitting}
+                />
+                <p className="text-gray-400 text-xs mt-1">
+                  Keeps extra lab kit inventory by projecting demand this many days beyond the main forecast window.
+                </p>
+                {errors.inventory_buffer_days && <p className="text-red-400 text-sm mt-1">{errors.inventory_buffer_days}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Visit Window Buffer (days)</label>
+                <input
+                  name="visit_window_buffer_days"
+                  value={formData.visit_window_buffer_days}
+                  onChange={handleInputChange}
+                  type="number"
+                  min={0}
+                  max={60}
+                  className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2"
+                  disabled={isSubmitting}
+                />
+                <p className="text-gray-400 text-xs mt-1">
+                  Extends the lookahead for upcoming visits so kit shortages are flagged earlier.
+                </p>
+                {errors.visit_window_buffer_days && <p className="text-red-400 text-sm mt-1">{errors.visit_window_buffer_days}</p>}
               </div>
             </div>
 

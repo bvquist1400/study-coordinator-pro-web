@@ -24,6 +24,19 @@ interface ForecastRequirementBreakdown {
   upcomingVisits: ForecastUpcomingVisit[]
 }
 
+interface ForecastPendingOrder {
+  id: string
+  quantity: number
+  vendor: string | null
+  expectedArrival: string | null
+  status: 'pending' | 'received' | 'cancelled'
+  isOverdue: boolean
+  notes: string | null
+  createdAt: string
+  createdBy: string | null
+  receivedDate: string | null
+}
+
 interface InventoryForecastItem {
   key: string
   kitTypeId: string | null
@@ -32,12 +45,17 @@ interface InventoryForecastItem {
   optional: boolean
   visitsScheduled: number
   kitsRequired: number
+  requiredWithBuffer: number
   kitsAvailable: number
   kitsExpiringSoon: number
   deficit: number
   status: 'ok' | 'warning' | 'critical'
   upcomingVisits: ForecastUpcomingVisit[]
   requirements: ForecastRequirementBreakdown[]
+  originalDeficit: number
+  pendingOrderQuantity: number
+  pendingOrders: ForecastPendingOrder[]
+  bufferKitsNeeded: number
 }
 
 interface ForecastSummary {
@@ -45,6 +63,9 @@ interface ForecastSummary {
   criticalIssues: number
   warnings: number
   daysAhead: number
+  baseWindowDays: number
+  inventoryBufferDays: number
+  visitWindowBufferDays: number
 }
 
 type KitTypeRow = { id: string; name: string | null; is_active: boolean | null }
@@ -73,6 +94,20 @@ type LabKitRow = {
   kit_type: string | null
   status: string
   expiration_date: string | null
+}
+
+type LabKitOrderRow = {
+  id: string
+  study_id: string
+  kit_type_id: string | null
+  quantity: number
+  vendor: string | null
+  expected_arrival: string | null
+  status: 'pending' | 'received' | 'cancelled'
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  received_date: string | null
 }
 
 const severityWeight: Record<InventoryForecastItem['status'], number> = {
@@ -130,9 +165,24 @@ export async function GET(request: NextRequest) {
 
     const supabase = createSupabaseAdmin()
 
-    const { today, todayISO, future, futureISO } = isoDateRange(daysAhead)
+    const { data: studySettings, error: studySettingsError } = await supabase
+      .from('studies')
+      .select('inventory_buffer_days, visit_window_buffer_days')
+      .eq('id', studyId)
+      .single()
+
+    if (studySettingsError) {
+      logger.error('inventory-forecast: failed to load study buffer settings', studySettingsError, { studyId })
+      return NextResponse.json({ error: 'Failed to load study settings' }, { status: 500 })
+    }
+
+    const inventoryBufferDays = Math.max(0, Math.min(120, (studySettings?.inventory_buffer_days ?? 0)))
+    const visitWindowBufferDays = Math.max(0, Math.min(60, (studySettings?.visit_window_buffer_days ?? 0)))
+    const effectiveDaysAhead = Math.min(daysAhead + visitWindowBufferDays, 180)
+
+    const { today, todayISO, future, futureISO } = isoDateRange(effectiveDaysAhead)
     const expiryCutoff = new Date(today)
-    const expiryWindowDays = Math.max(1, Math.min(daysAhead, DEFAULT_WINDOW_DAYS))
+    const expiryWindowDays = Math.max(1, Math.min(effectiveDaysAhead, DEFAULT_WINDOW_DAYS))
     expiryCutoff.setUTCDate(expiryCutoff.getUTCDate() + expiryWindowDays)
 
     const [{ data: kitTypeRows, error: kitTypeError }, { data: scheduleRows, error: scheduleError }] = await Promise.all([
@@ -188,7 +238,10 @@ export async function GET(request: NextRequest) {
         totalVisitsScheduled: 0,
         criticalIssues: 0,
         warnings: 0,
-        daysAhead
+        daysAhead: effectiveDaysAhead,
+        baseWindowDays: daysAhead,
+        inventoryBufferDays,
+        visitWindowBufferDays
       }
       return NextResponse.json({ forecast: [] as InventoryForecastItem[], summary })
     }
@@ -211,12 +264,17 @@ export async function GET(request: NextRequest) {
         optional: true,
         visitsScheduled: 0,
         kitsRequired: 0,
+        requiredWithBuffer: 0,
         kitsAvailable: 0,
         kitsExpiringSoon: 0,
         deficit: 0,
         status: 'ok',
         upcomingVisits: [],
-        requirements: []
+        requirements: [],
+        originalDeficit: 0,
+        pendingOrderQuantity: 0,
+        pendingOrders: [],
+        bufferKitsNeeded: 0
       }
 
       entryByKey.set(key, entry)
@@ -333,19 +391,99 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const { data: orderRows, error: orderError } = await supabase
+      .from('lab_kit_orders')
+      .select('id, study_id, kit_type_id, quantity, vendor, expected_arrival, status, notes, created_by, created_at, received_date')
+      .eq('study_id', studyId)
+
+    if (orderError) {
+      logger.error('inventory-forecast: failed to load lab kit orders', orderError, { studyId })
+      return NextResponse.json({ error: 'Failed to load lab kit orders' }, { status: 500 })
+    }
+
+    const ordersByKey = new Map<string, { totalPending: number; orders: ForecastPendingOrder[] }>()
+
+    for (const row of (orderRows || []) as LabKitOrderRow[]) {
+      const kitTypeId = row.kit_type_id
+      if (!kitTypeId) continue
+
+      let key = keyByKitTypeId.get(kitTypeId)
+      if (!key) {
+        const kitType = kitTypeById.get(kitTypeId)
+        if (kitType) {
+          const entry = ensureEntry(kitTypeId, kitType.name || 'Uncategorized kit')
+          key = entry.key
+        }
+      }
+      if (!key) continue
+
+      const isPending = row.status === 'pending'
+      const expectedArrival = row.expected_arrival
+      const isOverdue = isPending && !!expectedArrival && expectedArrival < todayISO
+
+      if (!ordersByKey.has(key)) {
+        ordersByKey.set(key, { totalPending: 0, orders: [] })
+      }
+      const bucket = ordersByKey.get(key)!
+
+      if (isPending) {
+        bucket.totalPending += row.quantity
+      }
+
+      bucket.orders.push({
+        id: row.id,
+        quantity: row.quantity,
+        vendor: row.vendor ?? null,
+        expectedArrival,
+        status: row.status,
+        isOverdue,
+        notes: row.notes ?? null,
+        createdAt: row.created_at,
+        createdBy: row.created_by ?? null,
+        receivedDate: row.received_date ?? null
+      })
+    }
+
     const forecast: InventoryForecastItem[] = []
 
     for (const entry of entryByKey.values()) {
       entry.upcomingVisits.sort((a, b) => a.visit_date.localeCompare(b.visit_date))
       entry.requirements.sort((a, b) => b.kitsRequired - a.kitsRequired)
 
-      entry.deficit = Math.max(0, entry.kitsRequired - entry.kitsAvailable)
+      const orderBucket = ordersByKey.get(entry.key)
+      if (orderBucket) {
+        entry.pendingOrderQuantity = orderBucket.totalPending
+        entry.pendingOrders = orderBucket.orders.sort((a, b) => {
+          if (a.status === 'pending' && b.status !== 'pending') return -1
+          if (a.status !== 'pending' && b.status === 'pending') return 1
+          const aDate = a.expectedArrival || a.createdAt
+          const bDate = b.expectedArrival || b.createdAt
+          return aDate.localeCompare(bDate)
+        })
+      } else {
+        entry.pendingOrderQuantity = 0
+        entry.pendingOrders = []
+      }
+
+      const bufferKitsNeeded = inventoryBufferDays > 0 && effectiveDaysAhead > 0
+        ? Math.max(0, Math.ceil((entry.kitsRequired / Math.max(1, effectiveDaysAhead)) * inventoryBufferDays))
+        : 0
+
+      entry.bufferKitsNeeded = bufferKitsNeeded
+      entry.requiredWithBuffer = entry.kitsRequired + bufferKitsNeeded
+
+      entry.originalDeficit = Math.max(0, entry.requiredWithBuffer - entry.kitsAvailable)
+      entry.deficit = Math.max(0, entry.requiredWithBuffer - (entry.kitsAvailable + entry.pendingOrderQuantity))
+
+      const slackAfterPending = (entry.kitsAvailable + entry.pendingOrderQuantity) - entry.requiredWithBuffer
 
       if (entry.deficit > 0) {
         entry.status = entry.optional ? 'warning' : 'critical'
-      } else if (entry.kitsRequired === 0) {
+      } else if (entry.originalDeficit > 0 && entry.pendingOrderQuantity > 0) {
+        entry.status = 'warning'
+      } else if (entry.requiredWithBuffer === 0) {
         entry.status = entry.kitsExpiringSoon > 0 ? 'warning' : 'ok'
-      } else if ((entry.kitsAvailable - entry.kitsRequired) <= BUFFER_THRESHOLD || entry.kitsExpiringSoon > 0) {
+      } else if (slackAfterPending <= BUFFER_THRESHOLD || entry.kitsExpiringSoon > 0) {
         entry.status = 'warning'
       } else {
         entry.status = 'ok'
@@ -366,7 +504,10 @@ export async function GET(request: NextRequest) {
       totalVisitsScheduled: forecast.reduce((sum, item) => sum + item.visitsScheduled, 0),
       criticalIssues: forecast.filter(item => item.status === 'critical').length,
       warnings: forecast.filter(item => item.status === 'warning').length,
-      daysAhead
+      daysAhead: effectiveDaysAhead,
+      baseWindowDays: daysAhead,
+      inventoryBufferDays,
+      visitWindowBufferDays
     }
 
     return NextResponse.json({ forecast, summary })
