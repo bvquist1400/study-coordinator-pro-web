@@ -135,6 +135,12 @@ export async function POST(request: NextRequest) {
         target_enrollment: studyData.target_enrollment ? parseInt(studyData.target_enrollment) : null,
         compliance_threshold: studyData.compliance_threshold ? parseInt(studyData.compliance_threshold) : 80,
         visit_window_days: studyData.visit_window_days || 7,
+        inventory_buffer_days: typeof studyData.inventory_buffer_days !== 'undefined'
+          ? Math.max(0, Math.min(120, parseInt(studyData.inventory_buffer_days)))
+          : 14,
+        visit_window_buffer_days: typeof studyData.visit_window_buffer_days !== 'undefined'
+          ? Math.max(0, Math.min(60, parseInt(studyData.visit_window_buffer_days)))
+          : 0,
         anchor_day: studyData.anchor_day ? parseInt(studyData.anchor_day) : 0
       })
       .select()
@@ -198,6 +204,18 @@ export async function PUT(request: NextRequest) {
     if (typeof updateData.anchor_day !== 'undefined') updateObject.anchor_day = updateData.anchor_day ? parseInt(updateData.anchor_day) : 0
     if (typeof updateData.dosing_frequency !== 'undefined') updateObject.dosing_frequency = updateData.dosing_frequency
     if (typeof updateData.notes !== 'undefined') updateObject.notes = updateData.notes
+    if (typeof updateData.inventory_buffer_days !== 'undefined') {
+      const parsed = Number(updateData.inventory_buffer_days)
+      if (Number.isFinite(parsed)) {
+        updateObject.inventory_buffer_days = Math.max(0, Math.min(120, Math.round(parsed)))
+      }
+    }
+    if (typeof updateData.visit_window_buffer_days !== 'undefined') {
+      const parsed = Number(updateData.visit_window_buffer_days)
+      if (Number.isFinite(parsed)) {
+        updateObject.visit_window_buffer_days = Math.max(0, Math.min(60, Math.round(parsed)))
+      }
+    }
 
     // Verify membership before update
     const { data: targetStudy, error: targetErr } = await supabase
@@ -238,9 +256,20 @@ export async function PUT(request: NextRequest) {
     if (error) {
       // Backward-compat: if protocol_version column doesn't exist in DB, retry without it
       const msg = (((error as { message?: string; hint?: string }).message || (error as { message?: string; hint?: string }).hint) || '').toString().toLowerCase()
-      if ((msg.includes('protocol_version') && msg.includes('does not exist')) || (msg.includes('anchor_day') && msg.includes('does not exist'))) {
+      if (
+        (msg.includes('protocol_version') && msg.includes('does not exist')) ||
+        (msg.includes('anchor_day') && msg.includes('does not exist')) ||
+        (msg.includes('inventory_buffer_days') && msg.includes('does not exist')) ||
+        (msg.includes('visit_window_buffer_days') && msg.includes('does not exist'))
+      ) {
         try {
-          const { protocol_version: _pv, anchor_day: _ad, ...fallback } = updateObject as Record<string, unknown>
+          const {
+            protocol_version: _pv,
+            anchor_day: _ad,
+            inventory_buffer_days: _ib,
+            visit_window_buffer_days: _vb,
+            ...fallback
+          } = updateObject as Record<string, unknown>
           const retry = await (supabase as any)
             .from('studies')
             .update(fallback as StudyUpdate)

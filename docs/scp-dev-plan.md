@@ -116,6 +116,28 @@ Multiple issues need resolution in the lab kit workflow:
   - Create UI control for buffer adjustment
   - Update prediction calculations to include buffer
   ```
+- **Status**: Completed — study settings now manage inventory and visit buffer days; forecasts extend the lookahead and pad kit demand using the configurable buffer targets.
+
+#### F. **Predictive Lab Kit Recommendations & Settings** (Priority: MEDIUM)
+- **Problem**: Coordinators lack a single place to tune inventory behaviour or review proactive reorder guidance.
+- **Actions (in flight)**:
+  ```typescript
+  // Centralised Lab Kit Settings
+  - Add `inventory_buffer_kits` to studies + per-kit overrides table (min kits, buffer days, auto-order flag, vendor lead time)
+  - Expose GET/PUT /api/lab-kit-settings returning study defaults + per-kit overrides with validation
+  - Build Lab Kits → Settings page with study defaults card, per-kit grid, bulk edit, and guidance copy
+
+  // Recommendation Engine
+  - Extend inventory forecast to emit recommendedOrders[] with reasoning (buffer breach, upcoming surge, expiry risk)
+  - Include vendor lead-time heuristics (user-supplied or estimated) to project latest safe order date
+  - Persist recommendation decisions (new/dismissed/ordered) for audit + feedback loops
+
+  // UX Integrations
+  - Add "Recommended Orders" widget on Lab Kits dashboard with CTA to open prefilled order modal
+  - Link forecast alert rows and orders tab to settings for quick buffer adjustments
+  - Allow coordinators to capture dismissal reasons (already covered, vendor delay, etc.)
+  ```
+- **Notes**: Start rule-based; collect telemetry to inform future ML/auto-ordering. Vendor lead times become editable metadata on the new settings page so predictions can convert risk windows into concrete order-by dates.
 
 #### E. **Dedicated Kit Orders Workspace** (Priority: MEDIUM) ✅
 - **Problem**: Ordering was reactive and scattered across alerts.

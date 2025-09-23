@@ -95,6 +95,8 @@ export interface Database {
           end_date: string | null
           target_enrollment: number | null
           visit_window_days: number
+          inventory_buffer_days: number
+          visit_window_buffer_days: number
           anchor_day: number
           dosing_frequency: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom'
           compliance_threshold: number
@@ -119,6 +121,8 @@ export interface Database {
           end_date?: string | null
           target_enrollment?: number | null
           visit_window_days?: number
+          inventory_buffer_days?: number
+          visit_window_buffer_days?: number
           anchor_day?: number
           dosing_frequency?: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom'
           compliance_threshold?: number
@@ -143,6 +147,8 @@ export interface Database {
           end_date?: string | null
           target_enrollment?: number | null
           visit_window_days?: number
+          inventory_buffer_days?: number
+          visit_window_buffer_days?: number
           anchor_day?: number
           dosing_frequency?: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom'
           compliance_threshold?: number

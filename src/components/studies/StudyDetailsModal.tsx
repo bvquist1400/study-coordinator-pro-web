@@ -23,6 +23,8 @@ interface Study {
   dosing_frequency: string | null
   compliance_threshold: number
   anchor_day: number
+  inventory_buffer_days: number
+  visit_window_buffer_days: number
   notes: string | null
   protocol_version?: string | null
   updated_at?: string
@@ -123,6 +125,8 @@ export default function StudyDetailsModal({ studyId, onClose }: StudyDetailsModa
       `Dosing: ${dosingLabel(study.dosing_frequency)}`,
       `Compliance Threshold: ${study.compliance_threshold}%`,
       `Visit Windows: ${windowSummary || 'Variable by visit'}`,
+      `Inventory Buffer: ${study.inventory_buffer_days} day${study.inventory_buffer_days === 1 ? '' : 's'}`,
+      `Visit Window Buffer: ${study.visit_window_buffer_days} day${study.visit_window_buffer_days === 1 ? '' : 's'}`,
     ].filter(Boolean).join('\n')
     try {
       await navigator.clipboard.writeText(lines)
@@ -186,6 +190,8 @@ export default function StudyDetailsModal({ studyId, onClose }: StudyDetailsModa
               <div><span className="text-gray-400">Dosing:</span> {dosingLabel(study.dosing_frequency)}</div>
               <div><span className="text-gray-400">Compliance Threshold:</span> {study.compliance_threshold}%</div>
               <div><span className="text-gray-400">Visit Windows:</span> {windowSummary || 'Variable by visit'}</div>
+              <div><span className="text-gray-400">Inventory Buffer:</span> {study.inventory_buffer_days} day{study.inventory_buffer_days === 1 ? '' : 's'}</div>
+              <div><span className="text-gray-400">Visit Window Buffer:</span> {study.visit_window_buffer_days} day{study.visit_window_buffer_days === 1 ? '' : 's'}</div>
             </div>
           </div>
 
