@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
 
     const { data, error: upsertError } = await supabase
       .from('lab_kit_alert_dismissals')
-      .upsert([insert], { onConflict: 'user_id,study_id,alert_hash' })
+      .upsert(insert as any, { onConflict: 'user_id,study_id,alert_hash' })
       .select('id, alert_hash, dismissed_at, expires_at, metadata')
       .single()
 
