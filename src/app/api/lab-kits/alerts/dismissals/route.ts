@@ -86,6 +86,8 @@ export async function POST(request: NextRequest) {
   const ttlDays = typeof payload?.ttlDays === 'number' ? payload.ttlDays : undefined
   const metadata = coerceMetadata(payload?.metadata)
 
+  const expiresAtIso = computeExpiry(ttlDays)
+
   if (!studyId) {
     return NextResponse.json({ error: 'studyId is required' }, { status: 400 })
   }
@@ -105,7 +107,7 @@ export async function POST(request: NextRequest) {
       user_id: user.id,
       study_id: studyId,
       alert_hash: alertHash,
-      expires_at: computeExpiry(ttlDays),
+      expires_at: expiresAtIso,
       metadata: metadata as LabKitAlertDismissalInsert['metadata']
     }
 
@@ -120,13 +122,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to persist dismissal' }, { status: 500 })
     }
 
+    const dismissalRow = data as {
+      id: string
+      alert_hash: string
+      dismissed_at: string
+      expires_at: string
+      metadata: Record<string, unknown> | null
+    } | null
+
+    const normalizedDismissal = dismissalRow ?? {
+      id: insert.id ?? `${user.id}:${alertHash}`,
+      alert_hash: insert.alert_hash,
+      dismissed_at: insert.dismissed_at ?? new Date().toISOString(),
+      expires_at: insert.expires_at ?? expiresAtIso,
+      metadata: (insert.metadata as Record<string, unknown> | null) ?? {}
+    }
+
     return NextResponse.json({
       dismissal: {
-        id: data?.id as string,
-        alertHash: data?.alert_hash as string,
-        dismissedAt: data?.dismissed_at as string,
-        expiresAt: data?.expires_at as string,
-        metadata: (data?.metadata as Record<string, unknown> | null) ?? {}
+        id: normalizedDismissal.id,
+        alertHash: normalizedDismissal.alert_hash,
+        dismissedAt: normalizedDismissal.dismissed_at,
+        expiresAt: normalizedDismissal.expires_at,
+        metadata: normalizedDismissal.metadata ?? {}
       }
     })
   } catch (err) {
