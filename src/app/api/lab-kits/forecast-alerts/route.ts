@@ -189,33 +189,61 @@ export async function GET(request: NextRequest) {
     })
 
     const coveredSupplyDeficitCount = supplyDeficit.length - activeSupplyDeficit.length
+    const supplyDeficitLimited = applyLimit(supplyDeficit.map(serializeSupplyDeficit))
+
     const groups = {
       supplyDeficit: {
         severity: activeSupplyDeficit.length > 0 ? ('critical' as const) : ('warning' as const),
         active: activeSupplyDeficit.length,
         total: supplyDeficit.length,
-        ...applyLimit(supplyDeficit.map(serializeSupplyDeficit))
+        items: supplyDeficitLimited.items,
+        hasMore: supplyDeficitLimited.hasMore
       },
-      expiringSoon: {
-        severity: 'warning' as const,
-        ...applyLimit(expiringSoon.map(serializeKit))
-      },
-      pendingShipment: {
-        severity: 'warning' as const,
-        ...applyLimit(pendingAging.map(serializeKit))
-      },
-      shippedWithoutDelivery: {
-        severity: 'warning' as const,
-        ...applyLimit(shippedStuck.map(serializeKit))
-      },
-      lowBuffer: {
-        severity: 'warning' as const,
-        ...applyLimit(lowBuffer.map(serializeLowBuffer))
-      },
-      expired: {
-        severity: 'info' as const,
-        ...applyLimit(expired.map(serializeKit))
-      }
+      expiringSoon: (() => {
+        const limited = applyLimit(expiringSoon.map(serializeKit))
+        return {
+          severity: 'warning' as const,
+          total: expiringSoon.length,
+          items: limited.items,
+          hasMore: limited.hasMore
+        }
+      })(),
+      pendingShipment: (() => {
+        const limited = applyLimit(pendingAging.map(serializeKit))
+        return {
+          severity: 'warning' as const,
+          total: pendingAging.length,
+          items: limited.items,
+          hasMore: limited.hasMore
+        }
+      })(),
+      shippedWithoutDelivery: (() => {
+        const limited = applyLimit(shippedStuck.map(serializeKit))
+        return {
+          severity: 'warning' as const,
+          total: shippedStuck.length,
+          items: limited.items,
+          hasMore: limited.hasMore
+        }
+      })(),
+      lowBuffer: (() => {
+        const limited = applyLimit(lowBuffer.map(serializeLowBuffer))
+        return {
+          severity: 'warning' as const,
+          total: lowBuffer.length,
+          items: limited.items,
+          hasMore: limited.hasMore
+        }
+      })(),
+      expired: (() => {
+        const limited = applyLimit(expired.map(serializeKit))
+        return {
+          severity: 'info' as const,
+          total: expired.length,
+          items: limited.items,
+          hasMore: limited.hasMore
+        }
+      })()
     }
 
     const summary = {
