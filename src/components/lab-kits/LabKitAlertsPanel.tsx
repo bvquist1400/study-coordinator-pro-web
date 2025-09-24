@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
-import { LabKit } from '@/types/database'
-import { formatDateUTC, parseDateUTC } from '@/lib/date-utils'
+import { formatDateUTC } from '@/lib/date-utils'
 import LabKitOrderModal from './LabKitOrderModal'
+import { useLabKitAlertDismissals } from '@/hooks/useLabKitAlertDismissals'
+import { useGroupedLabKitAlerts, type SupplyDeficitAlert } from '@/hooks/useGroupedLabKitAlerts'
 
 interface LabKitAlertsPanelProps {
   studyId: string
@@ -12,35 +13,6 @@ interface LabKitAlertsPanelProps {
   onNavigate?: (dest: 'inventory' | 'expired', options?: { expiringOnly?: boolean }) => void
   onCountChange?: (count: number) => void
   onOrderReceived?: (details: { study_id: string; kit_type_id: string | null; received_date: string | null; kit_type_name: string | null }) => void
-}
-
-type ForecastItem = {
-  key: string
-  kitTypeId: string | null
-  kitTypeName: string
-  visitsScheduled: number
-  kitsAvailable: number
-  kitsRequired: number
-  kitsExpiringSoon: number
-  deficit: number
-  status: 'ok' | 'warning' | 'critical'
-  optional: boolean
-  originalDeficit: number
-  pendingOrderQuantity: number
-  pendingOrders: ForecastPendingOrder[]
-}
-
-type ForecastPendingOrder = {
-  id: string
-  quantity: number
-  vendor: string | null
-  expectedArrival: string | null
-  status: 'pending' | 'received' | 'cancelled'
-  isOverdue: boolean
-  notes: string | null
-  createdAt: string
-  createdBy: string | null
-  receivedDate: string | null
 }
 
 type AlertTone = 'red' | 'yellow' | 'blue' | 'purple' | 'gray'
@@ -67,142 +39,76 @@ function SummaryPill({ label, count, tone }: { label: string; count: number; ton
 }
 
 export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate, onCountChange, onOrderReceived }: LabKitAlertsPanelProps) {
-  const [loading, setLoading] = useState(true)
-  const [kits, setKits] = useState<LabKit[]>([])
-  const [forecast, setForecast] = useState<ForecastItem[]>([])
   const [open, setOpen] = useState<Set<string>>(new Set())
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set())
   const [panelNotice, setPanelNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
-  const [orderTarget, setOrderTarget] = useState<ForecastItem | null>(null)
+  const [orderTarget, setOrderTarget] = useState<SupplyDeficitAlert | null>(null)
   const [processingOrderId, setProcessingOrderId] = useState<string | null>(null)
 
   const EXPIRING_DAYS = 30
   const PENDING_AGING_DAYS = 7
   const SHIPPED_AGING_DAYS = 10
-  const storageKey = useMemo(() => `lab-kit-alerts:${studyId}`, [studyId])
+  const dismissalScope = studyId === 'all' ? null : studyId
+  const {
+    dismissedHashes,
+    isLoading: dismissalsLoading,
+    error: dismissalsError,
+    dismiss: persistDismissal,
+    restore: restoreDismissals
+  } = useLabKitAlertDismissals(dismissalScope)
+  const groupHash = useCallback((key: string) => `group:${key}`, [])
+  const isDismissed = useCallback((key: string) => dismissedHashes.has(groupHash(key)), [dismissedHashes, groupHash])
 
-  const load = useCallback(async () => {
-    if (studyId === 'all') {
-      // For multi-study view, keep panel minimal until multi-study alert API is added
-      setForecast([])
-      setKits([])
-      setLoading(false)
-      onCountChange && onCountChange(0)
-      return
-    }
-    try {
-      setLoading(true)
-      const { data: { session } } = await supabase.auth.getSession()
-      const token = session?.access_token
-      if (!token) return
+  const {
+    data: groupedData,
+    error: groupedError,
+    isLoading: groupedLoading,
+    refresh: refreshGroupedAlerts
+  } = useGroupedLabKitAlerts({
+    studyId: dismissalScope,
+    limit: 25,
+    daysAhead,
+    expiringDays: EXPIRING_DAYS,
+    pendingAgingDays: PENDING_AGING_DAYS,
+    shippedAgingDays: SHIPPED_AGING_DAYS
+  })
 
-      const [kitsRes, fcRes] = await Promise.all([
-        fetch(`/api/lab-kits?studyId=${studyId}`, { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`/api/inventory-forecast?study_id=${studyId}&days=${daysAhead}`, { headers: { Authorization: `Bearer ${token}` } })
-      ])
-
-      if (kitsRes.ok) {
-        const json = await kitsRes.json()
-        setKits(json.labKits || [])
-      } else {
-        setKits([])
-      }
-
-      if (fcRes.ok) {
-        const json = await fcRes.json()
-        const sanitized: ForecastItem[] = (json.forecast || []).map((raw: any) => {
-          const pendingOrdersRaw = Array.isArray(raw?.pendingOrders) ? raw.pendingOrders : []
-          const pendingOrders: ForecastPendingOrder[] = pendingOrdersRaw
-            .map((order: any) => {
-              const id = String(order?.id ?? '').trim()
-              if (!id) return null
-              const quantity = Number.parseInt(String(order?.quantity ?? '0'), 10)
-              const expectedArrival = typeof order?.expectedArrival === 'string'
-                ? order.expectedArrival
-                : typeof order?.expected_arrival === 'string'
-                  ? order.expected_arrival
-                  : null
-              const receivedDate = typeof order?.receivedDate === 'string'
-                ? order.receivedDate
-                : typeof order?.received_date === 'string'
-                  ? order.received_date
-                  : null
-              const status = (order?.status === 'received' || order?.status === 'cancelled') ? order.status : 'pending'
-
-              if (!Number.isFinite(quantity) || quantity <= 0) return null
-
-              return {
-                id,
-                quantity,
-                vendor: order?.vendor ?? null,
-                expectedArrival,
-                status,
-                isOverdue: Boolean(order?.isOverdue),
-                notes: order?.notes ?? null,
-                createdAt: typeof order?.createdAt === 'string' ? order.createdAt : (typeof order?.created_at === 'string' ? order.created_at : ''),
-                createdBy: order?.createdBy ?? order?.created_by ?? null,
-                receivedDate
-              } as ForecastPendingOrder
-            })
-            .filter(Boolean) as ForecastPendingOrder[]
-          const pendingOrderQuantity = typeof raw?.pendingOrderQuantity === 'number' ? raw.pendingOrderQuantity : 0
-          const originalDeficit = typeof raw?.originalDeficit === 'number'
-            ? raw.originalDeficit
-            : Math.max(0, raw?.deficit ?? 0)
-
-          return {
-            ...raw,
-            pendingOrders,
-            pendingOrderQuantity,
-            originalDeficit
-          }
-        })
-        setForecast(sanitized)
-      } else {
-        setForecast([])
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [studyId, daysAhead])
-
-  useEffect(() => { load() }, [load])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    try {
-      const raw = window.localStorage.getItem(storageKey)
-      if (raw) {
-        const parsed = JSON.parse(raw)
-        if (Array.isArray(parsed)) {
-          setDismissed(new Set(parsed))
-        }
-      }
-    } catch (err) {
-      console.warn('Failed to load dismissed lab kit alerts', err)
-    }
-  }, [storageKey])
-
-  useEffect(() => {
-    setOpen(prev => {
-      const next = new Set(prev)
-      let changed = false
-      dismissed.forEach(id => {
-        if (next.delete(id)) changed = true
-      })
-      return changed ? next : prev
-    })
-  }, [dismissed])
-
-  const persistDismissed = useCallback((next: Set<string>) => {
-    setDismissed(new Set(next))
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(storageKey, JSON.stringify(Array.from(next)))
-    }
-  }, [storageKey])
+  const supplyDeficitGroup = groupedData?.groups.supplyDeficit
+  const supplyDeficit = useMemo(
+    () => supplyDeficitGroup?.items ?? [],
+    [supplyDeficitGroup]
+  )
+  const activeSupplyDeficit = useMemo(
+    () => supplyDeficit.filter(item => item.deficit > 0),
+    [supplyDeficit]
+  )
+  const expiringSoonGroup = groupedData?.groups.expiringSoon
+  const expiringSoon = useMemo(
+    () => expiringSoonGroup?.items ?? [],
+    [expiringSoonGroup]
+  )
+  const pendingShipmentGroup = groupedData?.groups.pendingShipment
+  const pendingAging = useMemo(
+    () => pendingShipmentGroup?.items ?? [],
+    [pendingShipmentGroup]
+  )
+  const shippedGroup = groupedData?.groups.shippedWithoutDelivery
+  const shippedStuck = useMemo(
+    () => shippedGroup?.items ?? [],
+    [shippedGroup]
+  )
+  const lowBufferGroup = groupedData?.groups.lowBuffer
+  const lowBuffer = useMemo(
+    () => lowBufferGroup?.items ?? [],
+    [lowBufferGroup]
+  )
+  const expiredGroup = groupedData?.groups.expired
+  const expired = useMemo(
+    () => expiredGroup?.items ?? [],
+    [expiredGroup]
+  )
 
   const ensureOpen = useCallback((id: string, count: number) => {
-    if (count <= 0) {
+    if (count <= 0 || isDismissed(id)) {
       setOpen(prev => {
         if (!prev.has(id)) return prev
         const next = new Set(prev)
@@ -211,83 +117,76 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
       })
       return
     }
-    if (dismissed.has(id)) return
+
     setOpen(prev => {
       if (prev.has(id)) return prev
       const next = new Set(prev)
       next.add(id)
       return next
     })
-  }, [dismissed])
+  }, [isDismissed])
 
-  const now = useMemo(() => {
-    const d = new Date(); d.setHours(0,0,0,0); return d
-  }, [])
+  const supplyDeficitTotal = supplyDeficitGroup?.total ?? supplyDeficit.length
+  const supplyDeficitActiveCount = supplyDeficitGroup?.active ?? activeSupplyDeficit.length
+  const supplyDeficitCoveredCount = Math.max(0, supplyDeficitTotal - supplyDeficitActiveCount)
+  const expiringSoonCount = expiringSoonGroup?.total ?? expiringSoon.length
+  const pendingAgingCount = pendingShipmentGroup?.total ?? pendingAging.length
+  const shippedStuckCount = shippedGroup?.total ?? shippedStuck.length
+  const lowBufferCount = lowBufferGroup?.total ?? lowBuffer.length
+  const expiredCount = expiredGroup?.total ?? expired.length
 
-  const withinDays = (dateStr: string | null, days: number) => {
-    if (!dateStr) return false
-    const d = (parseDateUTC(dateStr) || new Date(dateStr)) as Date
-    const limit = new Date(now); limit.setDate(now.getDate() + days)
-    return d >= now && d <= limit
-  }
-
-  const ageInDays = (dateStr: string | null) => {
-    if (!dateStr) return 0
-    const d = new Date(dateStr)
-    const ms = now.getTime() - d.getTime()
-    return Math.floor(ms / (1000*60*60*24))
-  }
-
-  // Build categories
-  const expiringSoon = kits.filter(k => k.status === 'available' && withinDays(k.expiration_date as any, EXPIRING_DAYS))
-  const expired = kits.filter(k => k.status === 'expired')
-  const pendingAging = kits.filter(k => k.status === 'pending_shipment' && ageInDays((k as any).updated_at || (k as any).created_at) >= PENDING_AGING_DAYS)
-  const shippedStuck = kits.filter(k => k.status === 'shipped' && ageInDays((k as any).updated_at || (k as any).created_at) >= SHIPPED_AGING_DAYS)
-  const supplyDeficit = useMemo(
-    () => forecast.filter(f => (f.originalDeficit ?? f.deficit) > 0 || (f.pendingOrderQuantity ?? 0) > 0),
-    [forecast]
-  )
-  const activeSupplyDeficit = useMemo(
-    () => supplyDeficit.filter(item => item.deficit > 0),
-    [supplyDeficit]
-  )
-  const lowBufferAll = forecast.filter(f => f.deficit <= 0 && (f.kitsAvailable - f.kitsRequired) <= 2)
-  const lowBuffer = lowBufferAll
-  const lowBufferCovered = lowBufferAll.filter(item => (item.pendingOrderQuantity ?? 0) > 0)
-
-  const getKitTypeLabel = (kit: LabKit) => {
-    const enriched = kit as LabKit & {
-      kit_type_info?: { name?: string | null } | null
-      kit_type_label?: string | null
-    }
-    return enriched.kit_type_info?.name || enriched.kit_type_label || kit.kit_type || ''
-  }
-
-  const summary = useMemo(() => {
-    const activeCriticalCount = activeSupplyDeficit.length
-    return {
-      critical: dismissed.has('supplyDeficit') ? 0 : activeCriticalCount,
-      warning:
-        (dismissed.has('expiringSoon') ? 0 : expiringSoon.length) +
-        (dismissed.has('pendingAging') ? 0 : pendingAging.length) +
-        (dismissed.has('shippedStuck') ? 0 : shippedStuck.length) +
-        (dismissed.has('lowBuffer') ? 0 : lowBuffer.length),
-      info: dismissed.has('expired') ? 0 : expired.length
-    }
-  }, [dismissed, activeSupplyDeficit.length, expiringSoon.length, pendingAging.length, shippedStuck.length, lowBuffer.length, expired.length])
+  const summary = useMemo(() => ({
+    critical: isDismissed('supplyDeficit') ? 0 : supplyDeficitActiveCount,
+    warning:
+      (isDismissed('supplyDeficit') ? 0 : supplyDeficitCoveredCount) +
+      (isDismissed('expiringSoon') ? 0 : expiringSoonCount) +
+      (isDismissed('pendingAging') ? 0 : pendingAgingCount) +
+      (isDismissed('shippedStuck') ? 0 : shippedStuckCount) +
+      (isDismissed('lowBuffer') ? 0 : lowBufferCount),
+    info: isDismissed('expired') ? 0 : expiredCount
+  }), [
+    isDismissed,
+    supplyDeficitActiveCount,
+    supplyDeficitCoveredCount,
+    expiringSoonCount,
+    pendingAgingCount,
+    shippedStuckCount,
+    lowBufferCount,
+    expiredCount
+  ])
 
   const totalActiveAlerts = summary.critical + summary.warning + summary.info
 
   useEffect(() => {
-    onCountChange && onCountChange(totalActiveAlerts)
+    if (onCountChange) {
+      onCountChange(totalActiveAlerts)
+    }
   }, [totalActiveAlerts, onCountChange])
 
-  useEffect(() => { ensureOpen('supplyDeficit', activeSupplyDeficit.length) }, [ensureOpen, activeSupplyDeficit.length])
-  useEffect(() => { ensureOpen('expiringSoon', expiringSoon.length) }, [ensureOpen, expiringSoon.length])
-  useEffect(() => { ensureOpen('pendingAging', pendingAging.length) }, [ensureOpen, pendingAging.length])
-  useEffect(() => { ensureOpen('shippedStuck', shippedStuck.length) }, [ensureOpen, shippedStuck.length])
-  useEffect(() => { ensureOpen('lowBuffer', lowBuffer.length) }, [ensureOpen, lowBuffer.length])
-  useEffect(() => { ensureOpen('expired', expired.length) }, [ensureOpen, expired.length])
+  useEffect(() => {
+    if (dismissalsError) {
+      setPanelNotice({
+        type: 'error',
+        message: dismissalsError.message || 'Unable to load alert dismissals.'
+      })
+    }
+  }, [dismissalsError])
+
+  useEffect(() => {
+    if (groupedError) {
+      setPanelNotice({
+        type: 'error',
+        message: groupedError.message || 'Unable to load lab kit alerts.'
+      })
+    }
+  }, [groupedError])
+
+  useEffect(() => { ensureOpen('supplyDeficit', supplyDeficitTotal) }, [ensureOpen, supplyDeficitTotal])
+  useEffect(() => { ensureOpen('expiringSoon', expiringSoonCount) }, [ensureOpen, expiringSoonCount])
+  useEffect(() => { ensureOpen('pendingAging', pendingAgingCount) }, [ensureOpen, pendingAgingCount])
+  useEffect(() => { ensureOpen('shippedStuck', shippedStuckCount) }, [ensureOpen, shippedStuckCount])
+  useEffect(() => { ensureOpen('lowBuffer', lowBufferCount) }, [ensureOpen, lowBufferCount])
+  useEffect(() => { ensureOpen('expired', expiredCount) }, [ensureOpen, expiredCount])
 
   const toggle = (key: string) => {
     const n = new Set(open)
@@ -295,30 +194,45 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
     setOpen(n)
   }
 
-  const dismissSection = useCallback((id: string) => {
-    const next = new Set(dismissed)
-    next.add(id)
-    persistDismissed(next)
-  }, [dismissed, persistDismissed])
+  const dismissSection = useCallback(async (id: string, metadata?: Record<string, unknown>) => {
+    try {
+      await persistDismissal(groupHash(id), { metadata })
+      setPanelNotice(null)
+    } catch (error) {
+      setPanelNotice({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Failed to hide alert group.'
+      })
+    }
+  }, [persistDismissal, groupHash])
 
-  const restoreAll = useCallback(() => {
-    persistDismissed(new Set())
-    setOpen(prev => {
-      const next = new Set(prev)
-      if (activeSupplyDeficit.length > 0) next.add('supplyDeficit')
-      if (expiringSoon.length > 0) next.add('expiringSoon')
-      if (pendingAging.length > 0) next.add('pendingAging')
-      if (shippedStuck.length > 0) next.add('shippedStuck')
-      if (lowBuffer.length > 0) next.add('lowBuffer')
-      if (expired.length > 0) next.add('expired')
-      return next
-    })
-  }, [persistDismissed, activeSupplyDeficit.length, expiringSoon.length, pendingAging.length, shippedStuck.length, lowBuffer.length, expired.length])
+  const restoreAll = useCallback(async () => {
+    try {
+      await restoreDismissals()
+      await refreshGroupedAlerts()
+      setPanelNotice({ type: 'success', message: 'All alert groups restored.' })
+      setOpen(prev => {
+        const next = new Set(prev)
+        if (supplyDeficitTotal > 0) next.add('supplyDeficit')
+        if (expiringSoonCount > 0) next.add('expiringSoon')
+        if (pendingAgingCount > 0) next.add('pendingAging')
+        if (shippedStuckCount > 0) next.add('shippedStuck')
+        if (lowBufferCount > 0) next.add('lowBuffer')
+        if (expiredCount > 0) next.add('expired')
+        return next
+      })
+    } catch (error) {
+      setPanelNotice({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Failed to restore alert groups.'
+      })
+    }
+  }, [restoreDismissals, refreshGroupedAlerts, supplyDeficitTotal, expiringSoonCount, pendingAgingCount, shippedStuckCount, lowBufferCount, expiredCount])
 
   const handleOrderSuccess = useCallback(async (message?: string) => {
-    await load()
+    await refreshGroupedAlerts()
     setPanelNotice({ type: 'success', message: message || 'Order placed successfully.' })
-  }, [load])
+  }, [refreshGroupedAlerts])
 
   const closeOrderModal = useCallback(() => {
     setOrderTarget(null)
@@ -356,14 +270,14 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
         kit_type_name: kitTypeName
       })
 
-      await load()
+      await refreshGroupedAlerts()
       setPanelNotice({ type: 'success', message: 'Order marked as received.' })
     } catch (error) {
       setPanelNotice({ type: 'error', message: error instanceof Error ? error.message : 'Failed to update order status.' })
     } finally {
       setProcessingOrderId(null)
     }
-  }, [load, onOrderReceived])
+  }, [refreshGroupedAlerts, onOrderReceived, studyId])
 
   const Section = ({
     id,
@@ -385,7 +299,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
     actionLabel?: string
     onAction?: () => void
     dismissible?: boolean
-    onDismiss?: () => void
+    onDismiss?: () => Promise<void> | void
     forceShowChildren?: boolean
   }) => {
     const toneDot = tone === 'red'
@@ -421,7 +335,9 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
                 className="text-xs text-gray-300 hover:text-white"
                 onClick={(event) => {
                   event.stopPropagation()
-                  onDismiss?.()
+                  if (onDismiss) {
+                    onDismiss()
+                  }
                 }}
               >
                 Dismiss
@@ -461,7 +377,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
     )
   }
 
-  if (loading) {
+  if ((groupedLoading && studyId !== 'all') || dismissalsLoading) {
     return (
       <div className="bg-gray-800/50 rounded-lg border border-gray-700 p-6">
         <div className="animate-pulse">
@@ -509,9 +425,9 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
           <span className="text-sm text-gray-500">
             Total open alerts: <span className="text-gray-200 font-semibold">{totalActiveAlerts}</span>
           </span>
-          {dismissed.size > 0 && (
+          {dismissedHashes.size > 0 && (
             <button
-              onClick={restoreAll}
+              onClick={() => { void restoreAll() }}
               className="ml-auto text-xs text-blue-400 hover:text-blue-200"
             >
               Restore hidden
@@ -525,12 +441,12 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
         )}
       </div>
 
-      {!dismissed.has('supplyDeficit') && (
+      {!isDismissed('supplyDeficit') && (
         <Section
           id="supplyDeficit"
-          title="Critical supply issues (deficit)"
-          count={activeSupplyDeficit.length}
-          tone="red"
+          title={supplyDeficitGroup?.severity === 'critical' ? 'Critical supply issues (deficit)' : 'Supply issues covered by pending orders'}
+          count={supplyDeficitTotal}
+          tone={supplyDeficitGroup?.severity === 'critical' ? 'red' : 'yellow'}
           dismissible
           onDismiss={() => dismissSection('supplyDeficit')}
           actionLabel="Go to Inventory"
@@ -541,13 +457,21 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
             const outstanding = item.deficit
             const pendingQty = item.pendingOrderQuantity
             const original = item.originalDeficit
+            const isCritical = item.deficit > 0
             return (
-              <div key={item.key} className="rounded-md border border-red-500/20 bg-red-500/5 px-3 py-3 text-sm">
+              <div
+                key={item.key}
+                className={`rounded-md px-3 py-3 text-sm border ${
+                  isCritical
+                    ? 'border-red-500/20 bg-red-500/5'
+                    : 'border-yellow-400/30 bg-yellow-400/5'
+                }`}
+              >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="font-semibold text-white">{item.kitTypeName}</div>
                     <div className="text-xs text-gray-400">
-                      {original > 0 ? `Need ${original} kit${original === 1 ? '' : 's'} in horizon` : 'No forecasted demand'}.
+                      {original > 0 ? `Forecast needs ${original} kit${original === 1 ? '' : 's'} this window` : 'No forecasted demand'}.
                       {pendingQty > 0 && ` ${pendingQty} on order.`}
                       {outstanding > 0 ? ` ${outstanding} still outstanding.` : pendingQty > 0 ? ' Outstanding fully covered.' : ''}
                     </div>
@@ -582,13 +506,12 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
                               <span className="ml-2 text-gray-500">Pending</span>
                             )}
                             {order.status === 'received' && (
-                              <span className="ml-2 text-green-400">Received{order.receivedDate ? ` ${formatDateUTC(order.receivedDate)}` : ''}</span>
+                              <span className="ml-2 text-green-400">Received</span>
                             )}
                             {order.status === 'cancelled' && (
                               <span className="ml-2 text-gray-500">Cancelled</span>
                             )}
                           </div>
-                          {order.notes && <div className="text-[11px] text-gray-500">{order.notes}</div>}
                         </div>
                         {order.status === 'pending' && (
                           <button
@@ -618,7 +541,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
         </Section>
       )}
 
-      {!dismissed.has('expiringSoon') && (
+      {!isDismissed('expiringSoon') && (
         <Section
           id="expiringSoon"
           title={`Expiring within ${EXPIRING_DAYS} days`}
@@ -629,13 +552,13 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
           actionLabel="View in Inventory"
           onAction={() => onNavigate?.('inventory', { expiringOnly: true }) }
         >
-          {expiringSoon.slice(0, 10).map(k => (
-            <div key={k.id} className="flex items-center justify-between text-sm">
+          {expiringSoon.slice(0, 10).map(kit => (
+            <div key={kit.id} className="flex items-center justify-between text-sm">
               <div className="text-gray-200">
-                {k.accession_number}
-                <span className="text-gray-400"> {getKitTypeLabel(k)}</span>
+                {kit.accessionNumber ?? 'Unassigned'}
+                {kit.kitTypeName && <span className="text-gray-400"> {kit.kitTypeName}</span>}
               </div>
-              <div className="text-yellow-300">{k.expiration_date ? formatDateUTC(k.expiration_date) : '—'}</div>
+              <div className="text-yellow-300">{kit.expirationDate ? formatDateUTC(kit.expirationDate) : '—'}</div>
             </div>
           ))}
           {expiringSoon.length > 10 && (
@@ -644,7 +567,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
         </Section>
       )}
 
-      {!dismissed.has('pendingAging') && (
+      {!isDismissed('pendingAging') && (
         <Section
           id="pendingAging"
           title={`Pending shipment > ${PENDING_AGING_DAYS} days`}
@@ -655,10 +578,10 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
           actionLabel="Go to Inventory"
           onAction={() => onNavigate?.('inventory')}
         >
-          {pendingAging.slice(0, 10).map(k => (
-            <div key={k.id} className="flex items-center justify-between text-sm">
-              <div className="text-gray-200">{k.accession_number}</div>
-              <div className="text-gray-400">{ageInDays((k as any).updated_at || (k as any).created_at)} days</div>
+          {pendingAging.slice(0, 10).map(kit => (
+            <div key={kit.id} className="flex items-center justify-between text-sm">
+              <div className="text-gray-200">{kit.accessionNumber ?? 'Unassigned'}</div>
+              <div className="text-gray-400">{kit.daysInStatus ?? 0} days</div>
             </div>
           ))}
           {pendingAging.length > 10 && (
@@ -667,7 +590,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
         </Section>
       )}
 
-      {!dismissed.has('shippedStuck') && (
+      {!isDismissed('shippedStuck') && (
         <Section
           id="shippedStuck"
           title={`Shipped without delivery > ${SHIPPED_AGING_DAYS} days`}
@@ -678,10 +601,10 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
           actionLabel="Go to Inventory"
           onAction={() => onNavigate?.('inventory')}
         >
-          {shippedStuck.slice(0, 10).map(k => (
-            <div key={k.id} className="flex items-center justify-between text-sm">
-              <div className="text-gray-200">{k.accession_number}</div>
-              <div className="text-gray-400">{ageInDays((k as any).updated_at || (k as any).created_at)} days</div>
+          {shippedStuck.slice(0, 10).map(kit => (
+            <div key={kit.id} className="flex items-center justify-between text-sm">
+              <div className="text-gray-200">{kit.accessionNumber ?? 'Unassigned'}</div>
+              <div className="text-gray-400">{kit.daysInStatus ?? 0} days</div>
             </div>
           ))}
           {shippedStuck.length > 10 && (
@@ -690,7 +613,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
         </Section>
       )}
 
-      {!dismissed.has('lowBuffer') && (
+      {!isDismissed('lowBuffer') && (
         <Section
           id="lowBuffer"
           title="Low buffer (<= 2 extra kits)"
@@ -724,7 +647,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
         </Section>
       )}
 
-      {!dismissed.has('expired') && (
+      {!isDismissed('expired') && (
         <Section
           id="expired"
           title="Expired kits"
@@ -735,10 +658,10 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
           actionLabel="Go to Expired View"
           onAction={() => onNavigate?.('expired')}
         >
-          {expired.slice(0, 10).map(k => (
-            <div key={k.id} className="flex items-center justify-between text-sm">
-              <div className="text-gray-200">{k.accession_number}</div>
-              <div className="text-red-400">{k.expiration_date ? formatDateUTC(k.expiration_date) : '—'}</div>
+          {expired.slice(0, 10).map(kit => (
+            <div key={kit.id} className="flex items-center justify-between text-sm">
+              <div className="text-gray-200">{kit.accessionNumber ?? 'Unassigned'}</div>
+              <div className="text-red-400">{kit.expirationDate ? formatDateUTC(kit.expirationDate) : '—'}</div>
             </div>
           ))}
           {expired.length > 10 && (

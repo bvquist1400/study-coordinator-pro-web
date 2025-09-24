@@ -804,6 +804,35 @@ export interface Database {
           updated_at?: string
         }
       }
+      lab_kit_alert_dismissals: {
+        Row: {
+          id: string
+          user_id: string
+          study_id: string
+          alert_hash: string
+          dismissed_at: string
+          expires_at: string
+          metadata: Json
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          study_id: string
+          alert_hash: string
+          dismissed_at?: string
+          expires_at?: string
+          metadata?: Json
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          study_id?: string
+          alert_hash?: string
+          dismissed_at?: string
+          expires_at?: string
+          metadata?: Json
+        }
+      }
       lab_kit_orders: {
         Row: {
           id: string
@@ -983,6 +1012,10 @@ export type SubjectSectionUpdate = Database['public']['Tables']['subject_section
 export type LabKit = Database['public']['Tables']['lab_kits']['Row']
 export type LabKitInsert = Database['public']['Tables']['lab_kits']['Insert']
 export type LabKitUpdate = Database['public']['Tables']['lab_kits']['Update']
+
+export type LabKitAlertDismissal = Database['public']['Tables']['lab_kit_alert_dismissals']['Row']
+export type LabKitAlertDismissalInsert = Database['public']['Tables']['lab_kit_alert_dismissals']['Insert']
+export type LabKitAlertDismissalUpdate = Database['public']['Tables']['lab_kit_alert_dismissals']['Update']
 
 export type LabKitOrder = Database['public']['Tables']['lab_kit_orders']['Row']
 export type LabKitOrderInsert = Database['public']['Tables']['lab_kit_orders']['Insert']

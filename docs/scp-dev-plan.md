@@ -106,6 +106,24 @@ Multiple issues need resolution in the lab kit workflow:
   - Add summary view with expandable details
   - Implement alert dismissal with persistence
   ```
+- **Status**: In progress — severity taxonomy + alert grouping hook drafted; collapsible panel UX prototype ready for review.
+- **Implementation Plan**:
+  - Reuse `useForecastAlerts` to emit `{ severity, items[] }` buckets and cached counts for the summary pills.
+  - Ship `AlertGroupPanel` (client component) with keyboard-accessible toggle, virtualization for >50 alerts, and lazy-mounted detail rows.
+  - Stand up `/api/lab-kits/alerts/dismissals` backed by new `lab_kit_alert_dismissals` table (per user + alert hash) so dismissals persist across sessions.
+  - Audit websocket pushes to ensure grouped state replays without double inserts; fall back to polling if latency spikes.
+- **Acceptance Criteria**:
+  - Default view shows <=3 summary chips (Critical, Warning, Info) with badge counts and a single "Expand all" control.
+  - Dismissed alerts never reappear for the same user unless re-triggered server-side; manual refresh respects stored dismissals.
+  - Screen reader announces severity, count, and expanded/collapsed state; focus management stays within the panel when toggling groups.
+- **Risks & Mitigations**:
+  - Large alert payloads (>500 rows) could regress initial render → add server pagination + client-side skeleton fallback if response >750 ms.
+  - Persisted dismissals require GDPR audit → document retention (30-day TTL) and include admin tooling to purge on request.
+- **Implementation Breakdown**:
+  - **Backend**: Add `severity` enum to forecast alert serializer, implement grouped response contract (`/api/lab-kits/forecast-alerts`) returning summary counts + paginated detail payloads; create `lab_kit_alert_dismissals` table with RLS enforcing user ownership and TTL cleanup job; extend websocket broadcaster to emit `alerts.grouped` events.
+  - **Frontend**: Introduce `useForecastAlertGroups` hook backed by SWR with stale-while-revalidate, build `ForecastAlertSummary` (summary chips) and `AlertGroupPanel` (collapsible list) components, integrate into Lab Kit dashboard with responsive layout; wire dismiss buttons to optimistic local removal + POST to dismissals endpoint.
+  - **QA & Monitoring**: Add Jest tests for grouping reducer + dismissal hooks, Playwright smoke test covering expand/dismiss flows, Lighthouse/axe audit for the new panel, and ship Datadog dashboard charting alert counts + dismissals per day.
+  - **Rollout**: Behind `labKitsGroupedAlerts` feature flag; enable on staging, run coordinator feedback session, then gradually roll out to 25% → 100% of studies while monitoring API p95 and dismissal error rate <1%.
 
 #### D. **Adjustable Buffer** (Priority: LOW)
 - **Problem**: Need configurable buffer for inventory predictions
@@ -137,6 +155,26 @@ Multiple issues need resolution in the lab kit workflow:
   - Link forecast alert rows and orders tab to settings for quick buffer adjustments
   - Allow coordinators to capture dismissal reasons (already covered, vendor delay, etc.)
   ```
+- **Status**: Discovery complete, backend scaffolding underway — schema PR open, API contract validated against existing Lab Kits dashboard consumers.
+- **Backend To-Dos**:
+  - Finalize `lab_kit_settings` table (`study_id`, `kit_type_id`, `min_on_hand`, `buffer_days`, `lead_time_days`, `auto_order_enabled`, `notes`, timestamps) plus history table for audit.
+  - Extend forecast job to hydrate `recommended_orders` with `{ kitTypeId, reason, windowStart, windowEnd, latestOrderDate, confidence }` and write to `lab_kit_recommendations`.
+  - Implement PATCH semantics on `/api/lab-kit-settings` to support partial updates + optimistic concurrency (etag via `updated_at`).
+  - Schedule nightly Supabase cron to recompute recommendations; expose manual recompute endpoint guarded by admin role.
+- **Frontend To-Dos**:
+  - Build Settings page cards (Study Defaults, Kit Overrides, Recommendation History) using shared `DataList` patterns.
+  - Wire recommendation widget to new API, with "Accept" → prefilled order modal, "Dismiss" → capture reason + expire recommendation.
+  - Add inline education tooltips referencing buffer/lead-time logic; ensure mobile layout collapses cards into accordions.
+  - Instrument analytics (`lab_kits.settings.save`, `lab_kits.recommendation.accept`) and document dashboards needed in Looker.
+- **Validation & Rollout**:
+  - Seed staging with varied lead times + buffer scenarios; run forecast sims to compare recommended order dates vs historical orders.
+  - Draft playbook for Ops (how recommendations flow into vendor ordering) and add doc to `docs/ops-handbook.md` once feature ships.
+  - Pilot with two studies before GA; capture coordinator feedback on usefulness/accuracy and iterate thresholds accordingly.
+- **Implementation Breakdown**:
+  - **Database & Services**: Merge schema PR adding `lab_kit_settings`, `lab_kit_settings_history`, and `lab_kit_recommendations`; craft migrations + Supabase RLS policies; extend nightly forecast worker to upsert recommendations with lead-time logic and respect per-kit overrides; expose `/api/lab-kit-settings` (GET/PATCH) and `/api/lab-kit-recommendations` (GET/POST dismiss/accept) with input validation + audit logging.
+  - **Frontend**: Create Lab Kit Settings route section with cards for Study Defaults, Kit Overrides table (editable grid with inline validation), Recommendation History timeline, and Recommended Orders widget; integrate accept/dismiss flows with optimistic updates and error toasts; add contextual education tooltips and mobile accordion behaviour.
+  - **Testing**: Unit tests for recommendation engine thresholds, contract tests for new APIs, integration tests covering settings save + recommendation accept flows; manual QA script ensuring lead-time adjustments alter suggested order dates; performance test to confirm forecast worker completes within 5 min for 10k kits.
+  - **Rollout & Change Management**: Document Ops workflow updates, update coordinator training deck, run staged rollout (internal team → pilot studies → full org) with telemetry guardrails (e.g., alert if accepted recommendations <10% or API errors >2%).
 - **Notes**: Start rule-based; collect telemetry to inform future ML/auto-ordering. Vendor lead times become editable metadata on the new settings page so predictions can convert risk windows into concrete order-by dates.
 
 #### E. **Dedicated Kit Orders Workspace** (Priority: MEDIUM) ✅
