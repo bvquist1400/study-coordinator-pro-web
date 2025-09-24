@@ -62,7 +62,8 @@ export async function GET(request: NextRequest) {
       }))
     })
   } catch (err) {
-    logger.error('lab-kit-alert-dismissals:get:unexpected', err, { studyId, userId: user.id })
+    const errorDetails = err instanceof Error ? err : new Error('Unknown error')
+    logger.error('lab-kit-alert-dismissals:get:unexpected', errorDetails, { studyId, userId: user.id })
     return NextResponse.json({ error: 'Unexpected error loading dismissals' }, { status: 500 })
   }
 }
@@ -129,7 +130,8 @@ export async function POST(request: NextRequest) {
       }
     })
   } catch (err) {
-    logger.error('lab-kit-alert-dismissals:post:unexpected', err, { studyId, alertHash, userId: user.id })
+    const errorDetails = err instanceof Error ? err : new Error('Unknown error')
+    logger.error('lab-kit-alert-dismissals:post:unexpected', errorDetails, { studyId, alertHash, userId: user.id })
     return NextResponse.json({ error: 'Unexpected error saving dismissal' }, { status: 500 })
   }
 }
@@ -182,7 +184,8 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (err) {
-    logger.error('lab-kit-alert-dismissals:delete:unexpected', err, { studyId, hashes, userId: user.id })
+    const errorDetails = err instanceof Error ? err : new Error('Unknown error')
+    logger.error('lab-kit-alert-dismissals:delete:unexpected', errorDetails, { studyId, hashes, userId: user.id })
     return NextResponse.json({ error: 'Unexpected error clearing dismissals' }, { status: 500 })
   }
 }
