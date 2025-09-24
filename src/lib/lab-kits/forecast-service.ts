@@ -175,7 +175,7 @@ export async function loadInventoryForecast(
     .from('studies')
     .select('inventory_buffer_days, visit_window_buffer_days')
     .eq('id', studyId)
-    .single()
+    .single<{ inventory_buffer_days: number | null; visit_window_buffer_days: number | null }>()
 
   if (studySettingsError) {
     logger.error('inventory-forecast: failed to load study buffer settings', studySettingsError, { studyId })
