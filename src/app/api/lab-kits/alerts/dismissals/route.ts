@@ -39,17 +39,9 @@ export async function GET(request: NextRequest) {
 
   try {
     const supabase = createSupabaseAdmin()
-    type DismissalRow = {
-      id: string
-      alert_hash: string
-      dismissed_at: string
-      expires_at: string
-      metadata: Record<string, unknown> | null
-    }
-
     const { data, error: dbError } = await supabase
       .from('lab_kit_alert_dismissals')
-      .select<DismissalRow>('id, alert_hash, dismissed_at, expires_at, metadata')
+      .select('id, alert_hash, dismissed_at, expires_at, metadata')
       .eq('user_id', user.id)
       .eq('study_id', studyId)
       .gt('expires_at', new Date().toISOString())
@@ -61,12 +53,12 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
-      dismissals: (data ?? []).map((row) => ({
-        id: row.id,
-        alertHash: row.alert_hash,
-        dismissedAt: row.dismissed_at,
-        expiresAt: row.expires_at,
-        metadata: row.metadata ?? {}
+      dismissals: (data ?? []).map((row: any) => ({
+        id: row.id as string,
+        alertHash: row.alert_hash as string,
+        dismissedAt: row.dismissed_at as string,
+        expiresAt: row.expires_at as string,
+        metadata: (row.metadata as Record<string, unknown> | null) ?? {}
       }))
     })
   } catch (err) {
@@ -116,18 +108,10 @@ export async function POST(request: NextRequest) {
       metadata
     }
 
-    type DismissalRow = {
-      id: string
-      alert_hash: string
-      dismissed_at: string
-      expires_at: string
-      metadata: Record<string, unknown> | null
-    }
-
     const { data, error: upsertError } = await supabase
       .from('lab_kit_alert_dismissals')
       .upsert(insert, { onConflict: 'user_id,study_id,alert_hash' })
-      .select<DismissalRow>('id, alert_hash, dismissed_at, expires_at, metadata')
+      .select('id, alert_hash, dismissed_at, expires_at, metadata')
       .single()
 
     if (upsertError) {
@@ -137,11 +121,11 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       dismissal: {
-        id: data?.id,
-        alertHash: data?.alert_hash,
-        dismissedAt: data?.dismissed_at,
-        expiresAt: data?.expires_at,
-        metadata: data?.metadata ?? {}
+        id: data?.id as string,
+        alertHash: data?.alert_hash as string,
+        dismissedAt: data?.dismissed_at as string,
+        expiresAt: data?.expires_at as string,
+        metadata: (data?.metadata as Record<string, unknown> | null) ?? {}
       }
     })
   } catch (err) {
