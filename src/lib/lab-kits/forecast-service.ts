@@ -547,4 +547,4 @@ export async function loadInventoryForecast(
   }
 }
 
-export type { InventoryForecastItem as ForecastItem, ForecastRequirementBreakdown }
+export type { InventoryForecastItem as ForecastItem }
