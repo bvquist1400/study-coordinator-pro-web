@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
       study_id: studyId,
       alert_hash: alertHash,
       expires_at: computeExpiry(ttlDays),
-      metadata
+      metadata: metadata as LabKitAlertDismissalInsert['metadata']
     }
 
     const { data, error: upsertError } = await supabase
