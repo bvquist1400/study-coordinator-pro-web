@@ -102,6 +102,11 @@ Deployment
 
 - Next.js 15 App Router; deploy via Vercel or your platform of choice.
 - Ensure env vars set for runtime; configure Supabase URL/keys.
+- Supabase typing tips:
+  - Always give queries an explicit shape (e.g. `.select('col').single<{ col: string | null }>()`).
+  - Avoid `as any` on Supabase calls; if you must, cast the returned row right after the query.
+  - When building response objects, don’t spread the same field (`total`, etc.) twice—set it once so TypeScript keeps the inferred type.
+  - Following those patterns prevents the dreaded “result inferred as never” errors that block builds.
 
 Notes
 
