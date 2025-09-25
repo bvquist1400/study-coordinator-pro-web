@@ -7,6 +7,7 @@ import {
   fetchLabKitSettings,
   type LabKitSettingsPatch
 } from '@/lib/lab-kits/settings-service'
+import type { Json } from '@/types/database'
 
 function jsonError(message: string, status = 400, headers?: Record<string, string>) {
   return NextResponse.json({ error: message }, { status, headers })
@@ -48,6 +49,61 @@ export async function GET(request: NextRequest) {
   }
 }
 
+function isValidJsonValue(value: unknown): value is Json {
+  if (value === null) return true
+  const valueType = typeof value
+  if (valueType === 'string' || valueType === 'number' || valueType === 'boolean') {
+    return true
+  }
+  if (Array.isArray(value)) {
+    return value.every(isValidJsonValue)
+  }
+  if (valueType === 'object') {
+    return Object.values(value as Record<string, unknown>).every(isValidJsonValue)
+  }
+  return false
+}
+
+function coerceNumber(value: unknown, field: string): number | undefined {
+  if (value === undefined || value === null || value === '') return undefined
+  const numeric = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(numeric)) {
+    throw new LabKitSettingsError(`${field} must be a number.`)
+  }
+  return numeric
+}
+
+function coerceBoolean(value: unknown): boolean | undefined {
+  if (value === undefined || value === null || value === '') return undefined
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value !== 0
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    if (normalized === 'true' || normalized === '1') return true
+    if (normalized === 'false' || normalized === '0') return false
+  }
+  throw new LabKitSettingsError('autoOrderEnabled must be a boolean.')
+}
+
+function coerceNotes(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined
+  if (value === null) return null
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed.length > 0 ? trimmed : null
+  }
+  throw new LabKitSettingsError('notes must be a string or null.')
+}
+
+function pickFirst(source: Record<string, unknown>, keys: string[]): unknown {
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
+      return source[key]
+    }
+  }
+  return undefined
+}
+
 function validatePatchBody(body: unknown): LabKitSettingsPatch {
   if (!body || typeof body !== 'object') {
     throw new LabKitSettingsError('Request body must be an object.')
@@ -60,7 +116,21 @@ function validatePatchBody(body: unknown): LabKitSettingsPatch {
     if (!source.defaults || typeof source.defaults !== 'object') {
       throw new LabKitSettingsError('defaults must be an object if provided.')
     }
-    patch.defaults = source.defaults as LabKitSettingsPatch['defaults']
+    const defaults = source.defaults as Record<string, unknown>
+    const defaultsMetadataRaw = pickFirst(defaults, ['metadata'])
+    if (defaultsMetadataRaw !== undefined && !isValidJsonValue(defaultsMetadataRaw)) {
+      throw new LabKitSettingsError('defaults.metadata must be valid JSON.')
+    }
+    patch.defaults = {
+      minOnHand: coerceNumber(pickFirst(defaults, ['minOnHand', 'min_on_hand']), 'defaults.minOnHand'),
+      bufferDays: coerceNumber(pickFirst(defaults, ['bufferDays', 'buffer_days']), 'defaults.bufferDays'),
+      leadTimeDays: coerceNumber(pickFirst(defaults, ['leadTimeDays', 'lead_time_days']), 'defaults.leadTimeDays'),
+      autoOrderEnabled: coerceBoolean(pickFirst(defaults, ['autoOrderEnabled', 'auto_order_enabled'])),
+      notes: coerceNotes(pickFirst(defaults, ['notes'])),
+      metadata: defaultsMetadataRaw as Json | undefined,
+      inventoryBufferDays: coerceNumber(pickFirst(defaults, ['inventoryBufferDays', 'inventory_buffer_days']), 'defaults.inventoryBufferDays'),
+      inventoryBufferKits: coerceNumber(pickFirst(defaults, ['inventoryBufferKits', 'inventory_buffer_kits']), 'defaults.inventoryBufferKits')
+    }
   }
 
   if (source.overrides !== undefined) {
@@ -76,15 +146,19 @@ function validatePatchBody(body: unknown): LabKitSettingsPatch {
       if (!kitTypeId) {
         throw new LabKitSettingsError('override.kitTypeId is required.')
       }
+      const metadataRaw = pickFirst(override, ['metadata'])
+      if (metadataRaw !== undefined && !isValidJsonValue(metadataRaw)) {
+        throw new LabKitSettingsError('override.metadata must be valid JSON.')
+      }
       return {
         id: typeof override.id === 'string' ? override.id : undefined,
         kitTypeId,
-        minOnHand: override.minOnHand ?? override.min_on_hand,
-        bufferDays: override.bufferDays ?? override.buffer_days,
-        leadTimeDays: override.leadTimeDays ?? override.lead_time_days,
-        autoOrderEnabled: override.autoOrderEnabled ?? override.auto_order_enabled,
-        notes: override.notes === undefined ? undefined : (override.notes ?? null),
-        metadata: override.metadata as LabKitSettingsPatch['overrides'][number]['metadata']
+        minOnHand: coerceNumber(pickFirst(override, ['minOnHand', 'min_on_hand']), 'override.minOnHand'),
+        bufferDays: coerceNumber(pickFirst(override, ['bufferDays', 'buffer_days']), 'override.bufferDays'),
+        leadTimeDays: coerceNumber(pickFirst(override, ['leadTimeDays', 'lead_time_days']), 'override.leadTimeDays'),
+        autoOrderEnabled: coerceBoolean(pickFirst(override, ['autoOrderEnabled', 'auto_order_enabled'])),
+        notes: coerceNotes(pickFirst(override, ['notes'])),
+        metadata: metadataRaw as Json | undefined
       }
     })
   }
