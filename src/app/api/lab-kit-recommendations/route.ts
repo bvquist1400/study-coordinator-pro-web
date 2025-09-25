@@ -40,7 +40,8 @@ export async function GET(request: NextRequest) {
     if (error instanceof LabKitRecommendationError) {
       return jsonError(error.message, error.status)
     }
-    logger.error('lab-kit-recommendations:GET unexpected error', error)
+    const err = error instanceof Error ? error : new Error(String(error))
+    logger.error('lab-kit-recommendations:GET unexpected error', err)
     return jsonError('Internal server error', 500)
   }
 }
@@ -122,7 +123,8 @@ export async function POST(request: NextRequest) {
     if (error instanceof LabKitRecommendationError) {
       return jsonError(error.message, error.status)
     }
-    logger.error('lab-kit-recommendations:POST unexpected error', error)
+    const err = error instanceof Error ? error : new Error(String(error))
+    logger.error('lab-kit-recommendations:POST unexpected error', err)
     return jsonError('Internal server error', 500)
   }
 }
