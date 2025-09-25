@@ -49,7 +49,8 @@ export async function GET(request: NextRequest) {
       projectRef: ref || null,
     })
   } catch (error) {
-    logger.error('diagnostics-env: unexpected failure', error)
+    const err = error instanceof Error ? error : new Error(String(error))
+    logger.error('diagnostics-env: unexpected failure', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
