@@ -10,7 +10,10 @@ import { useGroupedLabKitAlerts, type SupplyDeficitAlert } from '@/hooks/useGrou
 interface LabKitAlertsPanelProps {
   studyId: string
   daysAhead?: number
-  onNavigate?: (dest: 'inventory' | 'expired', options?: { expiringOnly?: boolean }) => void
+  onNavigate?: (
+    dest: 'inventory' | 'expired' | 'shipments',
+    options?: { expiringOnly?: boolean; shipmentFilter?: 'pending-aging' | 'shipped-stuck' }
+  ) => void
   onCountChange?: (count: number) => void
   onOrderReceived?: (details: { study_id: string; kit_type_id: string | null; received_date: string | null; kit_type_name: string | null }) => void
 }
@@ -72,11 +75,16 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
     shippedAgingDays: SHIPPED_AGING_DAYS
   })
 
+  const MAX_INLINE_ITEMS = 5
+
   const supplyDeficitGroup = groupedData?.groups.supplyDeficit
   const supplyDeficit = useMemo(
     () => supplyDeficitGroup?.items ?? [],
     [supplyDeficitGroup]
   )
+  const visibleSupplyDeficit = supplyDeficit.slice(0, MAX_INLINE_ITEMS)
+  const supplyDeficitHasMore = supplyDeficitGroup?.hasMore ?? false
+  const supplyDeficitHiddenCount = Math.max((supplyDeficitGroup?.total ?? visibleSupplyDeficit.length) - visibleSupplyDeficit.length, 0)
   const activeSupplyDeficit = useMemo(
     () => supplyDeficit.filter(item => item.deficit > 0),
     [supplyDeficit]
@@ -101,11 +109,30 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
     () => lowBufferGroup?.items ?? [],
     [lowBufferGroup]
   )
+  const visibleLowBuffer = lowBuffer.slice(0, MAX_INLINE_ITEMS)
   const expiredGroup = groupedData?.groups.expired
   const expired = useMemo(
     () => expiredGroup?.items ?? [],
     [expiredGroup]
   )
+
+  const visibleExpiringSoon = expiringSoon.slice(0, MAX_INLINE_ITEMS)
+  const expiringHiddenCount = Math.max((expiringSoonGroup?.total ?? visibleExpiringSoon.length) - visibleExpiringSoon.length, 0)
+  const expiringHasMore = expiringSoonGroup?.hasMore ?? false
+
+  const visiblePendingAging = pendingAging.slice(0, MAX_INLINE_ITEMS)
+  const pendingAgingHiddenCount = Math.max((pendingShipmentGroup?.total ?? visiblePendingAging.length) - visiblePendingAging.length, 0)
+  const pendingAgingHasMore = pendingShipmentGroup?.hasMore ?? false
+
+  const visibleShippedStuck = shippedStuck.slice(0, MAX_INLINE_ITEMS)
+  const shippedStuckHiddenCount = Math.max((shippedGroup?.total ?? visibleShippedStuck.length) - visibleShippedStuck.length, 0)
+  const shippedStuckHasMore = shippedGroup?.hasMore ?? false
+
+  const visibleExpired = expired.slice(0, MAX_INLINE_ITEMS)
+  const expiredHiddenCount = Math.max((expiredGroup?.total ?? visibleExpired.length) - visibleExpired.length, 0)
+  const expiredHasMore = expiredGroup?.hasMore ?? false
+  const lowBufferHasMore = lowBufferGroup?.hasMore ?? false
+  const lowBufferHiddenCount = Math.max((lowBufferGroup?.total ?? visibleLowBuffer.length) - visibleLowBuffer.length, 0)
 
   const ensureOpen = useCallback((id: string, count: number) => {
     if (count <= 0 || isDismissed(id)) {
@@ -449,15 +476,24 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
           tone={supplyDeficitGroup?.severity === 'critical' ? 'red' : 'yellow'}
           dismissible
           onDismiss={() => dismissSection('supplyDeficit')}
-          actionLabel="Go to Inventory"
+          actionLabel={supplyDeficitHasMore || supplyDeficitHiddenCount > 0 ? 'View all in Inventory' : 'Go to Inventory'}
           onAction={() => onNavigate?.('inventory') }
           forceShowChildren={supplyDeficit.length > 0}
         >
-          {supplyDeficit.map(item => {
+          {visibleSupplyDeficit.map(item => {
             const outstanding = item.deficit
             const pendingQty = item.pendingOrderQuantity
             const original = item.originalDeficit
             const isCritical = item.deficit > 0
+            const badge = isCritical
+              ? {
+                  label: 'Critical',
+                  className: 'bg-red-500/15 border border-red-500/40 text-red-200'
+                }
+              : {
+                  label: 'Covered',
+                  className: 'bg-green-500/15 border border-green-500/40 text-green-200'
+                }
             return (
               <div
                 key={item.key}
@@ -469,7 +505,12 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <div className="font-semibold text-white">{item.kitTypeName}</div>
+                    <div className="flex items-center gap-2">
+                      <div className="font-semibold text-white">{item.kitTypeName}</div>
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${badge.className}`}>
+                        {badge.label}
+                      </span>
+                    </div>
                     <div className="text-xs text-gray-400">
                       {original > 0 ? `Forecast needs ${original} kit${original === 1 ? '' : 's'} this window` : 'No forecasted demand'}.
                       {pendingQty > 0 && ` ${pendingQty} on order.`}
@@ -538,6 +579,21 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
               All identified deficits are covered by pending orders. If deliveries slip, the alerts will reopen automatically.
             </div>
           )}
+          {supplyDeficitHiddenCount > 0 && (
+            <div className="text-xs text-gray-400 mt-2">{supplyDeficitHiddenCount} additional kit types not shown here.</div>
+          )}
+          {(supplyDeficitHasMore || supplyDeficitHiddenCount > 0) && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                onNavigate?.('inventory')
+              }}
+              className="text-xs text-blue-300 hover:text-blue-200 font-semibold"
+            >
+              View complete deficit list in Inventory →
+            </button>
+          )}
         </Section>
       )}
 
@@ -545,14 +601,14 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
         <Section
           id="expiringSoon"
           title={`Expiring within ${EXPIRING_DAYS} days`}
-          count={expiringSoon.length}
+          count={expiringSoonCount}
           tone="yellow"
           dismissible
           onDismiss={() => dismissSection('expiringSoon')}
-          actionLabel="View in Inventory"
+          actionLabel={expiringHasMore || expiringHiddenCount > 0 ? 'View all in Inventory' : 'View in Inventory'}
           onAction={() => onNavigate?.('inventory', { expiringOnly: true }) }
         >
-          {expiringSoon.slice(0, 10).map(kit => (
+          {visibleExpiringSoon.map(kit => (
             <div key={kit.id} className="flex items-center justify-between text-sm">
               <div className="text-gray-200">
                 {kit.accessionNumber ?? 'Unassigned'}
@@ -561,8 +617,20 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
               <div className="text-yellow-300">{kit.expirationDate ? formatDateUTC(kit.expirationDate) : '—'}</div>
             </div>
           ))}
-          {expiringSoon.length > 10 && (
-            <div className="text-xs text-gray-400">+{expiringSoon.length - 10} more…</div>
+          {expiringHiddenCount > 0 && (
+            <div className="text-xs text-gray-400">{expiringHiddenCount} more not shown here.</div>
+          )}
+          {(expiringHasMore || expiringHiddenCount > 0) && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                onNavigate?.('inventory', { expiringOnly: true })
+              }}
+              className="text-xs text-blue-300 hover:text-blue-200 font-semibold"
+            >
+              View all expiring kits in Inventory →
+            </button>
           )}
         </Section>
       )}
@@ -571,21 +639,33 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
         <Section
           id="pendingAging"
           title={`Pending shipment > ${PENDING_AGING_DAYS} days`}
-          count={pendingAging.length}
+          count={pendingAgingCount}
           tone="purple"
           dismissible
           onDismiss={() => dismissSection('pendingAging')}
-          actionLabel="Go to Inventory"
-          onAction={() => onNavigate?.('inventory')}
+          actionLabel={pendingAgingHasMore || pendingAgingHiddenCount > 0 ? 'View all shipments' : 'Go to Shipments'}
+          onAction={() => onNavigate?.('shipments', { shipmentFilter: 'pending-aging' })}
         >
-          {pendingAging.slice(0, 10).map(kit => (
+          {visiblePendingAging.map(kit => (
             <div key={kit.id} className="flex items-center justify-between text-sm">
               <div className="text-gray-200">{kit.accessionNumber ?? 'Unassigned'}</div>
               <div className="text-gray-400">{kit.daysInStatus ?? 0} days</div>
             </div>
           ))}
-          {pendingAging.length > 10 && (
-            <div className="text-xs text-gray-400">+{pendingAging.length - 10} more…</div>
+          {pendingAgingHiddenCount > 0 && (
+            <div className="text-xs text-gray-400">{pendingAgingHiddenCount} more not shown here.</div>
+          )}
+          {(pendingAgingHasMore || pendingAgingHiddenCount > 0) && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                onNavigate?.('shipments', { shipmentFilter: 'pending-aging' })
+              }}
+              className="text-xs text-blue-300 hover:text-blue-200 font-semibold"
+            >
+              View all delayed shipments →
+            </button>
           )}
         </Section>
       )}
@@ -594,21 +674,33 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
         <Section
           id="shippedStuck"
           title={`Shipped without delivery > ${SHIPPED_AGING_DAYS} days`}
-          count={shippedStuck.length}
+          count={shippedStuckCount}
           tone="blue"
           dismissible
           onDismiss={() => dismissSection('shippedStuck')}
-          actionLabel="Go to Inventory"
-          onAction={() => onNavigate?.('inventory')}
+          actionLabel={shippedStuckHasMore || shippedStuckHiddenCount > 0 ? 'View all shipments' : 'Go to Shipments'}
+          onAction={() => onNavigate?.('shipments', { shipmentFilter: 'shipped-stuck' })}
         >
-          {shippedStuck.slice(0, 10).map(kit => (
+          {visibleShippedStuck.map(kit => (
             <div key={kit.id} className="flex items-center justify-between text-sm">
               <div className="text-gray-200">{kit.accessionNumber ?? 'Unassigned'}</div>
               <div className="text-gray-400">{kit.daysInStatus ?? 0} days</div>
             </div>
           ))}
-          {shippedStuck.length > 10 && (
-            <div className="text-xs text-gray-400">+{shippedStuck.length - 10} more…</div>
+          {shippedStuckHiddenCount > 0 && (
+            <div className="text-xs text-gray-400">{shippedStuckHiddenCount} more not shown here.</div>
+          )}
+          {(shippedStuckHasMore || shippedStuckHiddenCount > 0) && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                onNavigate?.('shipments', { shipmentFilter: 'shipped-stuck' })
+              }}
+              className="text-xs text-blue-300 hover:text-blue-200 font-semibold"
+            >
+              View all stalled shipments →
+            </button>
           )}
         </Section>
       )}
@@ -617,14 +709,14 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
         <Section
           id="lowBuffer"
           title="Low buffer (<= 2 extra kits)"
-          count={lowBuffer.length}
+          count={lowBufferCount}
           tone="yellow"
           dismissible
           onDismiss={() => dismissSection('lowBuffer')}
-          actionLabel="Go to Inventory"
+          actionLabel={lowBufferHasMore || lowBufferHiddenCount > 0 ? 'View all in Inventory' : 'Go to Inventory'}
           onAction={() => onNavigate?.('inventory')}
         >
-          {lowBuffer.map(item => {
+          {visibleLowBuffer.map(item => {
             const hasCoverage = (item.pendingOrderQuantity ?? 0) > 0
             return (
               <div
@@ -644,6 +736,21 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
               </div>
             )
           })}
+          {lowBufferHiddenCount > 0 && (
+            <div className="text-xs text-gray-400">{lowBufferHiddenCount} more not shown here.</div>
+          )}
+          {(lowBufferHasMore || lowBufferHiddenCount > 0) && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                onNavigate?.('inventory')
+              }}
+              className="text-xs text-blue-300 hover:text-blue-200 font-semibold"
+            >
+              View all low-buffer kits in Inventory →
+            </button>
+          )}
         </Section>
       )}
 
@@ -651,21 +758,33 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
         <Section
           id="expired"
           title="Expired kits"
-          count={expired.length}
+          count={expiredCount}
           tone="gray"
           dismissible
           onDismiss={() => dismissSection('expired')}
-          actionLabel="Go to Expired View"
+          actionLabel={expiredHasMore || expiredHiddenCount > 0 ? 'View all expired kits' : 'Go to Expired View'}
           onAction={() => onNavigate?.('expired')}
         >
-          {expired.slice(0, 10).map(kit => (
+          {visibleExpired.map(kit => (
             <div key={kit.id} className="flex items-center justify-between text-sm">
               <div className="text-gray-200">{kit.accessionNumber ?? 'Unassigned'}</div>
               <div className="text-red-400">{kit.expirationDate ? formatDateUTC(kit.expirationDate) : '—'}</div>
             </div>
           ))}
-          {expired.length > 10 && (
-            <div className="text-xs text-gray-400">+{expired.length - 10} more…</div>
+          {expiredHiddenCount > 0 && (
+            <div className="text-xs text-gray-400">{expiredHiddenCount} more not shown here.</div>
+          )}
+          {(expiredHasMore || expiredHiddenCount > 0) && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                onNavigate?.('expired')
+              }}
+              className="text-xs text-blue-300 hover:text-blue-200 font-semibold"
+            >
+              View all expired kits →
+            </button>
           )}
         </Section>
       )}

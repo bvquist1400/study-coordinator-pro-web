@@ -12,7 +12,7 @@ const supabase = createClient(
 )
 
 async function checkDosingFrequency() {
-  console.log('🔍 Checking study dosing frequency...')
+  console.warn('🔍 Checking study dosing frequency...')
   
   const { data, error } = await supabase
     .from('studies')
@@ -22,9 +22,9 @@ async function checkDosingFrequency() {
   if (error) {
     console.error('❌ Error:', error)
   } else {
-    console.log('📊 Study details:')
-    console.log(`   Name: ${data[0]?.name}`)
-    console.log(`   Dosing frequency: ${data[0]?.dosing_frequency}`)
+    console.warn('📊 Study details:')
+    console.warn(`   Name: ${data[0]?.name}`)
+    console.warn(`   Dosing frequency: ${data[0]?.dosing_frequency}`)
     
     // Calculate dose per day
     const frequency = data[0]?.dosing_frequency || 'QD'
@@ -38,8 +38,8 @@ async function checkDosingFrequency() {
       default: dosePerDay = 1
     }
     
-    console.log(`   Dose per day: ${dosePerDay}`)
-    console.log(`   Expected for 7 days: ${7 * dosePerDay}`)
+    console.warn(`   Dose per day: ${dosePerDay}`)
+    console.warn(`   Expected for 7 days: ${7 * dosePerDay}`)
   }
 }
 

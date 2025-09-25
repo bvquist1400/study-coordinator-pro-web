@@ -12,7 +12,7 @@ const supabase = createClient(
 )
 
 async function fixBottle002() {
-  console.log('🔧 Fixing bottle 002 calculation...')
+  console.warn('🔧 Fixing bottle 002 calculation...')
   
   // Calculate the correct expected_taken
   const startDate = new Date('2025-09-01')
@@ -20,9 +20,9 @@ async function fixBottle002() {
   const timeDiff = endDate.getTime() - startDate.getTime()
   const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24)) + 1
   
-  console.log(`Start: ${startDate.toISOString().split('T')[0]}`)
-  console.log(`End: ${endDate.toISOString().split('T')[0]}`)
-  console.log(`Days calculation: ${daysDiff}`)
+  console.warn(`Start: ${startDate.toISOString().split('T')[0]}`)
+  console.warn(`End: ${endDate.toISOString().split('T')[0]}`)
+  console.warn(`Days calculation: ${daysDiff}`)
   
   // Update the record
   const { data, error } = await supabase
@@ -38,10 +38,10 @@ async function fixBottle002() {
   if (error) {
     console.error('❌ Error:', error)
   } else {
-    console.log('✅ Updated bottle 002:')
-    console.log(`   Expected: ${data[0].expected_taken}`)
-    console.log(`   Actual: ${data[0].actual_taken}`) 
-    console.log(`   Compliance: ${data[0].compliance_percentage}%`)
+    console.warn('✅ Updated bottle 002:')
+    console.warn(`   Expected: ${data[0].expected_taken}`)
+    console.warn(`   Actual: ${data[0].actual_taken}`) 
+    console.warn(`   Compliance: ${data[0].compliance_percentage}%`)
   }
 }
 

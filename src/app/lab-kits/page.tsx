@@ -12,6 +12,7 @@ import ShipmentsList from '@/components/lab-kits/ShipmentsList'
 import CreateShipmentModal from '@/components/lab-kits/CreateShipmentModal'
 import LabKitAlertsPanel from '@/components/lab-kits/LabKitAlertsPanel'
 import LabKitOrdersSection from '@/components/lab-kits/LabKitOrdersSection'
+import LabKitSettingsPanel from '@/components/lab-kits/LabKitSettingsPanel'
 import LabKitOrderModal from '@/components/lab-kits/LabKitOrderModal'
 import { useSite } from '@/components/site/SiteProvider'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -47,7 +48,7 @@ interface Study {
   study_title: string
 }
 
-type ViewMode = 'inventory' | 'expired' | 'shipments' | 'alerts' | 'orders'
+type ViewMode = 'inventory' | 'expired' | 'shipments' | 'alerts' | 'orders' | 'settings'
 
 function LabKitsPageContent() {
   const router = useRouter()
@@ -67,6 +68,7 @@ function LabKitsPageContent() {
   const [alertsCount, setAlertsCount] = useState(0)
   const [addPrefill, setAddPrefill] = useState<{ kitTypeId?: string | null; receivedDate?: string | null; notes?: string | null } | null>(null)
   const [inventoryFilter, setInventoryFilter] = useState<{ search: string; status: string; version: number }>({ search: '', status: 'available', version: 0 })
+  const [shipmentsFocus, setShipmentsFocus] = useState<'pending-aging' | 'shipped-stuck' | null>(null)
   const { currentSiteId } = useSite()
 
   const canManageStudy = Boolean(selectedStudyId && selectedStudyId !== 'all')
@@ -147,6 +149,7 @@ function LabKitsPageContent() {
       updateQueryParams({ studyId: nextStudy })
     }
     setInventoryFilter(prev => ({ search: accessionNumber || '', status: 'all', version: prev.version + 1 }))
+    setShipmentsFocus(null)
     setViewMode('inventory')
     handleRefresh()
   }, [selectedStudyId, updateQueryParams, handleRefresh])
@@ -264,7 +267,10 @@ function LabKitsPageContent() {
               <span className="text-xs uppercase text-gray-500 tracking-wide">View</span>
               <div className="flex bg-gray-700/30 rounded-lg p-1">
                 <button
-                  onClick={() => setViewMode('inventory')}
+                  onClick={() => {
+                    setShipmentsFocus(null)
+                    setViewMode('inventory')
+                  }}
                   className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
                     viewMode === 'inventory'
                       ? 'bg-blue-600 text-white'
@@ -274,7 +280,10 @@ function LabKitsPageContent() {
                   Inventory
                 </button>
                 <button
-                  onClick={() => setViewMode('expired')}
+                  onClick={() => {
+                    setShipmentsFocus(null)
+                    setViewMode('expired')
+                  }}
                   className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
                     viewMode === 'expired'
                       ? 'bg-red-600 text-white'
@@ -284,7 +293,10 @@ function LabKitsPageContent() {
                   Expired
                 </button>
                 <button
-                  onClick={() => setViewMode('shipments')}
+                  onClick={() => {
+                    setShipmentsFocus(null)
+                    setViewMode('shipments')
+                  }}
                   className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
                     viewMode === 'shipments'
                       ? 'bg-blue-600 text-white'
@@ -294,7 +306,10 @@ function LabKitsPageContent() {
                   Shipments
                 </button>
                 <button
-                  onClick={() => setViewMode('orders')}
+                  onClick={() => {
+                    setShipmentsFocus(null)
+                    setViewMode('orders')
+                  }}
                   className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
                     viewMode === 'orders'
                       ? 'bg-blue-600 text-white'
@@ -304,7 +319,25 @@ function LabKitsPageContent() {
                   Orders
                 </button>
                 <button
-                  onClick={() => setViewMode('alerts')}
+                  onClick={() => {
+                    if (!canManageStudy) return
+                    setShipmentsFocus(null)
+                    setViewMode('settings')
+                  }}
+                  disabled={!canManageStudy}
+                  className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                    viewMode === 'settings'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  } ${!canManageStudy ? 'opacity-40 cursor-not-allowed hover:text-gray-400' : ''}`}
+                >
+                  Settings
+                </button>
+                <button
+                  onClick={() => {
+                    setShipmentsFocus(null)
+                    setViewMode('alerts')
+                  }}
                   className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
                     viewMode === 'alerts'
                       ? 'bg-blue-600 text-white'
@@ -373,6 +406,8 @@ function LabKitsPageContent() {
                 refreshKey={refreshKey}
                 onRefresh={handleRefresh}
                 onLocateKit={handleLocateKit}
+                focus={shipmentsFocus}
+                onClearFocus={() => setShipmentsFocus(null)}
               />
             )}
 
@@ -386,15 +421,30 @@ function LabKitsPageContent() {
               />
             )}
 
+            {viewMode === 'settings' && (
+              <LabKitSettingsPanel
+                studyId={selectedStudyId}
+                onSettingsUpdated={() => {
+                  handleRefresh()
+                  handleOrdersRefresh()
+                }}
+              />
+            )}
+
             {viewMode === 'alerts' && (
               <LabKitAlertsPanel
                 studyId={selectedStudyId}
                 onNavigate={(dest, options) => {
                   if (dest === 'inventory') {
-                    if (options?.expiringOnly) setShowExpiringOnly(true)
+                    setShipmentsFocus(null)
+                    setShowExpiringOnly(Boolean(options?.expiringOnly))
                     setViewMode('inventory')
                   } else if (dest === 'expired') {
+                    setShipmentsFocus(null)
                     setViewMode('expired')
+                  } else if (dest === 'shipments') {
+                    setShipmentsFocus(options?.shipmentFilter ?? null)
+                    setViewMode('shipments')
                   }
                 }}
                 onCountChange={(n) => setAlertsCount(n)}

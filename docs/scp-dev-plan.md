@@ -87,16 +87,18 @@ Multiple issues need resolution in the lab kit workflow:
   ```sql
   CREATE TABLE visit_kit_requirements (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    study_id UUID REFERENCES studies(id),
-    visit_type_id UUID REFERENCES visit_types(id),
-    kit_type_id UUID REFERENCES kit_types(id),
-    quantity INTEGER DEFAULT 1,
-    is_optional BOOLEAN DEFAULT FALSE
+    study_id UUID NOT NULL REFERENCES studies(id) ON DELETE CASCADE,
+    visit_schedule_id UUID NOT NULL REFERENCES visit_schedules(id) ON DELETE CASCADE,
+    kit_type_id UUID NOT NULL REFERENCES study_kit_types(id) ON DELETE CASCADE,
+    quantity INTEGER NOT NULL DEFAULT 1,
+    is_optional BOOLEAN NOT NULL DEFAULT FALSE,
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
   ```
 - **Progress**: Added a dedicated `visit_kit_requirements` table, exposed CRUD APIs, surfaced requirements on visit schedule reads, and introduced a “Manage Kit Requirements” editor inside the Schedule of Events builder (with optimistic syncing to the new API). Inventory forecasting now rolls up kit demand per shared kit type, Add Lab Kit / bulk edit / bulk import use the shared catalog with SOE-driven recommendations, and coordinators can leave kits unassigned for multi-visit usage. **Next follow-up**: introduce adjustable safety buffers in forecasting and tighten the inventory alert UX (collapsible groups, dismissals).
 
-#### C. **Inventory Forecast UI** (Priority: LOW)
 - **Problem**: Alerts overwhelming on Lab Kit management page
 - **Actions**:
   ```typescript
@@ -106,24 +108,15 @@ Multiple issues need resolution in the lab kit workflow:
   - Add summary view with expandable details
   - Implement alert dismissal with persistence
   ```
-- **Status**: In progress — severity taxonomy + alert grouping hook drafted; collapsible panel UX prototype ready for review.
-- **Implementation Plan**:
-  - Reuse `useForecastAlerts` to emit `{ severity, items[] }` buckets and cached counts for the summary pills.
-  - Ship `AlertGroupPanel` (client component) with keyboard-accessible toggle, virtualization for >50 alerts, and lazy-mounted detail rows.
-  - Stand up `/api/lab-kits/alerts/dismissals` backed by new `lab_kit_alert_dismissals` table (per user + alert hash) so dismissals persist across sessions.
-  - Audit websocket pushes to ensure grouped state replays without double inserts; fall back to polling if latency spikes.
-- **Acceptance Criteria**:
-  - Default view shows <=3 summary chips (Critical, Warning, Info) with badge counts and a single "Expand all" control.
-  - Dismissed alerts never reappear for the same user unless re-triggered server-side; manual refresh respects stored dismissals.
-  - Screen reader announces severity, count, and expanded/collapsed state; focus management stays within the panel when toggling groups.
-- **Risks & Mitigations**:
-  - Large alert payloads (>500 rows) could regress initial render → add server pagination + client-side skeleton fallback if response >750 ms.
-  - Persisted dismissals require GDPR audit → document retention (30-day TTL) and include admin tooling to purge on request.
-- **Implementation Breakdown**:
-  - **Backend**: Add `severity` enum to forecast alert serializer, implement grouped response contract (`/api/lab-kits/forecast-alerts`) returning summary counts + paginated detail payloads; create `lab_kit_alert_dismissals` table with RLS enforcing user ownership and TTL cleanup job; extend websocket broadcaster to emit `alerts.grouped` events.
-  - **Frontend**: Introduce `useForecastAlertGroups` hook backed by SWR with stale-while-revalidate, build `ForecastAlertSummary` (summary chips) and `AlertGroupPanel` (collapsible list) components, integrate into Lab Kit dashboard with responsive layout; wire dismiss buttons to optimistic local removal + POST to dismissals endpoint.
-  - **QA & Monitoring**: Add Jest tests for grouping reducer + dismissal hooks, Playwright smoke test covering expand/dismiss flows, Lighthouse/axe audit for the new panel, and ship Datadog dashboard charting alert counts + dismissals per day.
-  - **Rollout**: Behind `labKitsGroupedAlerts` feature flag; enable on staging, run coordinator feedback session, then gradually roll out to 25% → 100% of studies while monitoring API p95 and dismissal error rate <1%.
+- **Status**: Completed — grouped alerts now ship from `/api/lab-kits/forecast-alerts` with persistent dismissals, severity summaries, and covered-versus-critical styling in the Lab Kits dashboard.
+- **Implementation Highlights**:
+  - **Backend**: Extracted shared `loadInventoryForecast` service, delivered `/api/lab-kits/forecast-alerts`, and added `/api/lab-kits/alerts/dismissals` plus the `lab_kit_alert_dismissals` table (RLS, TTL, typed access).
+  - **Frontend**: Replaced legacy alert polling with `useGroupedLabKitAlerts` / `useLabKitAlertDismissals`, refreshed the alerts panel (critical vs warning treatment, “fully covered” messaging, cross-device dismissals), and removed the `swr` dependency.
+  - **Build Hygiene**: Documented Supabase typing conventions in the README to avoid `never` inference regressions; tightened API typing to satisfy strict builds.
+- **Next Follow-up**:
+  - Expose “View all” deep links when groups truncate (`hasMore` flag).
+  - Add automated tests for grouping/dismissal flows.
+  - Clean up outstanding lint warnings (missing hook deps, unused vars) once bandwidth allows.
 
 #### D. **Adjustable Buffer** (Priority: LOW)
 - **Problem**: Need configurable buffer for inventory predictions
@@ -222,13 +215,7 @@ Multiple issues need resolution in the lab kit workflow:
 
 ### 5. **Accession Number Population** (Priority: MEDIUM)
 - **Problem**: Accession numbers not showing on shipment management
-- **Actions**:
-  ```typescript
-  // Fix data flow for accession numbers
-  - Verify database field exists and is populated
-  - Update query to include accession_number field
-  - Add to shipment list display columns
-  ```
+- **Status**: Completed — the shipments enrichment now pulls `accession_number` from lab kits, shipment rows, or linked subject visits so every entry renders the identifier. No UI change was required beyond the existing column.
 
 ### 6. **UPS API Integration** (Priority: MEDIUM)
 - **Problem**: UPS tracking not wired up
@@ -287,7 +274,7 @@ Multiple issues need resolution in the lab kit workflow:
 6. ⬜ Fix accession number display
 
 ### **Week 3: Lab Kit Enhancements**
-7. ⬜ Implement multi-kit per visit support
+7. ✅ Implement multi-kit per visit support
 8. ⬜ Consolidate inventory forecast UI
 9. ⬜ Add adjustable buffer configuration
 
@@ -305,13 +292,14 @@ Multiple issues need resolution in the lab kit workflow:
 -- 1. Visit Kit Requirements (Many-to-Many)
 CREATE TABLE visit_kit_requirements (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  study_id UUID REFERENCES studies(id),
-  visit_type_id UUID REFERENCES visit_types(id),
-  kit_type_id UUID REFERENCES kit_types(id),
-  quantity INTEGER DEFAULT 1,
-  is_optional BOOLEAN DEFAULT FALSE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+  study_id UUID NOT NULL REFERENCES studies(id) ON DELETE CASCADE,
+  visit_schedule_id UUID NOT NULL REFERENCES visit_schedules(id) ON DELETE CASCADE,
+  kit_type_id UUID NOT NULL REFERENCES study_kit_types(id) ON DELETE CASCADE,
+  quantity INTEGER NOT NULL DEFAULT 1,
+  is_optional BOOLEAN NOT NULL DEFAULT FALSE,
+  notes TEXT,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 2. Unscheduled Visits Support ✅ (applied)
@@ -322,7 +310,7 @@ ADD COLUMN unscheduled_reason TEXT;
 -- 3. Visit Reschedule Audit ✅ (applied)
 CREATE TABLE visit_schedule_history (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  visit_id UUID REFERENCES visits(id),
+  visit_id UUID REFERENCES subject_visits(id) ON DELETE CASCADE,
   old_date DATE,
   new_date DATE,
   reason TEXT,

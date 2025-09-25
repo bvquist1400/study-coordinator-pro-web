@@ -17,9 +17,10 @@ if (!supabaseUrl || !supabaseServiceKey) {
 }
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey)
+const info = (...args) => console.warn(...args)
 
 async function fixComplianceRecords() {
-  console.log('🚀 Starting compliance fixes...')
+  info('🚀 Starting compliance fixes...')
   
   try {
     // Get all compliance records that need fixing
@@ -33,19 +34,19 @@ async function fixComplianceRecords() {
       return
     }
     
-    console.log(`📊 Found ${complianceRecords.length} compliance records to check`)
+    info(`📊 Found ${complianceRecords.length} compliance records to check`)
     
     for (const record of complianceRecords) {
-      console.log(`\n🔧 Processing bottle ${record.ip_id}...`)
+      info(`\n🔧 Processing bottle ${record.ip_id}...`)
       
-      let updates = {}
+      const updates = {}
       let needsUpdate = false
       
       // Fix missing dispensing_date
       if (!record.dispensing_date && record.subject_visits?.ip_start_date) {
         updates.dispensing_date = record.subject_visits.ip_start_date
         needsUpdate = true
-        console.log(`  ✅ Setting dispensing_date to ${updates.dispensing_date}`)
+        info(`  ✅ Setting dispensing_date to ${updates.dispensing_date}`)
       }
       
       // Fix expected_taken calculation
@@ -59,14 +60,14 @@ async function fixComplianceRecords() {
         if (record.expected_taken !== expectedTaken) {
           updates.expected_taken = expectedTaken
           needsUpdate = true
-          console.log(`  ✅ Updating expected_taken from ${record.expected_taken} to ${expectedTaken}`)
+          info(`  ✅ Updating expected_taken from ${record.expected_taken} to ${expectedTaken}`)
         }
       } else if (!record.ip_last_dose_date && record.returned_count === 0) {
         // New bottle not returned yet - should have NULL expected_taken
         if (record.expected_taken !== null) {
           updates.expected_taken = null
           needsUpdate = true
-          console.log(`  ✅ Setting expected_taken to NULL (bottle not returned)`)
+          info(`  ✅ Setting expected_taken to NULL (bottle not returned)`)
         }
       }
       
@@ -83,15 +84,15 @@ async function fixComplianceRecords() {
         if (updateError) {
           console.error(`  ❌ Error updating record ${record.id}:`, updateError)
         } else {
-          console.log(`  ✅ Updated record successfully`)
+          info(`  ✅ Updated record successfully`)
         }
       } else {
-        console.log(`  ℹ️  No updates needed`)
+        info(`  ℹ️  No updates needed`)
       }
     }
     
     // Show final results
-    console.log('\n📊 Final compliance results:')
+    info('\n📊 Final compliance results:')
     const { data: finalData } = await supabase
       .from('drug_compliance')
       .select('*')
@@ -99,14 +100,14 @@ async function fixComplianceRecords() {
       .order('dispensing_date')
     
     finalData?.forEach((record, index) => {
-      console.log(`\n${index + 1}. Bottle ${record.ip_id}:`)
-      console.log(`   Dispensed: ${record.dispensed_count} | Returned: ${record.returned_count}`)
-      console.log(`   Expected: ${record.expected_taken} | Actual: ${record.actual_taken}`)
-      console.log(`   Compliance: ${record.compliance_percentage}%`)
-      console.log(`   Period: ${record.dispensing_date} → ${record.ip_last_dose_date || 'ongoing'}`)
+      info(`\n${index + 1}. Bottle ${record.ip_id}:`)
+      info(`   Dispensed: ${record.dispensed_count} | Returned: ${record.returned_count}`)
+      info(`   Expected: ${record.expected_taken} | Actual: ${record.actual_taken}`)
+      info(`   Compliance: ${record.compliance_percentage}%`)
+      info(`   Period: ${record.dispensing_date} → ${record.ip_last_dose_date || 'ongoing'}`)
     })
-    
-    console.log('\n✅ All fixes completed!')
+
+    info('\n✅ All fixes completed!')
     
   } catch (error) {
     console.error('❌ Error during fix process:', error)

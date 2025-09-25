@@ -5,7 +5,6 @@
 
 import { createClient } from '@supabase/supabase-js'
 import fs from 'fs'
-import path from 'path'
 
 // Load environment variables
 import dotenv from 'dotenv'
@@ -20,9 +19,10 @@ if (!supabaseUrl || !supabaseServiceKey) {
 }
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey)
+const info = (...args) => console.warn(...args)
 
 async function runSqlFile(filePath, description) {
-  console.log(`\n🔧 ${description}...`)
+  info(`\n🔧 ${description}...`)
   
   try {
     const sql = fs.readFileSync(filePath, 'utf8')
@@ -35,14 +35,14 @@ async function runSqlFile(filePath, description) {
     
     for (const statement of statements) {
       if (statement.trim()) {
-        console.log(`Executing: ${statement.substring(0, 50)}...`)
+        info(`Executing: ${statement.substring(0, 50)}...`)
         const { error } = await supabase.rpc('exec_sql', { sql_statement: statement })
         
         if (error) {
           console.error(`❌ Error executing statement:`, error)
           console.error(`Statement: ${statement}`)
         } else {
-          console.log(`✅ Success`)
+          info(`✅ Success`)
         }
       }
     }
@@ -53,7 +53,7 @@ async function runSqlFile(filePath, description) {
 }
 
 async function fixComplianceCalculations() {
-  console.log('🚀 Starting compliance calculation fixes...')
+  info('🚀 Starting compliance calculation fixes...')
   
   try {
     // Step 1: Update the SQL function
@@ -68,10 +68,10 @@ async function fixComplianceCalculations() {
       'Fixing existing compliance data'
     )
     
-    console.log('\n✅ All fixes completed successfully!')
+    info('\n✅ All fixes completed successfully!')
     
     // Step 3: Verify the fixes
-    console.log('\n📊 Verifying compliance data for subject T001...')
+    info('\n📊 Verifying compliance data for subject T001...')
     const { data: complianceData, error } = await supabase
       .from('drug_compliance')
       .select('*')
@@ -81,16 +81,16 @@ async function fixComplianceCalculations() {
     if (error) {
       console.error('❌ Error fetching compliance data:', error)
     } else {
-      console.log('\n📋 Updated compliance records:')
+      info('\n📋 Updated compliance records:')
       complianceData.forEach((record, index) => {
-        console.log(`\n${index + 1}. Bottle ${record.ip_id}:`)
-        console.log(`   Dispensed: ${record.dispensed_count}`)
-        console.log(`   Returned: ${record.returned_count}`)
-        console.log(`   Expected: ${record.expected_taken}`)
-        console.log(`   Actual: ${record.actual_taken}`)
-        console.log(`   Compliance: ${record.compliance_percentage}%`)
-        console.log(`   Start: ${record.dispensing_date}`)
-        console.log(`   End: ${record.ip_last_dose_date}`)
+        info(`\n${index + 1}. Bottle ${record.ip_id}:`)
+        info(`   Dispensed: ${record.dispensed_count}`)
+        info(`   Returned: ${record.returned_count}`)
+        info(`   Expected: ${record.expected_taken}`)
+        info(`   Actual: ${record.actual_taken}`)
+        info(`   Compliance: ${record.compliance_percentage}%`)
+        info(`   Start: ${record.dispensing_date}`)
+        info(`   End: ${record.ip_last_dose_date}`)
       })
     }
     
@@ -113,13 +113,13 @@ async function createExecSqlFunction() {
     $$ LANGUAGE plpgsql SECURITY DEFINER;
   `
   
-  console.log('🔧 Creating exec_sql helper function...')
+  info('🔧 Creating exec_sql helper function...')
   const { error } = await supabase.rpc('exec_sql', { sql_statement: createFunctionSql })
   
   if (error) {
-    console.log('Helper function may already exist or need manual creation')
+    info('Helper function may already exist or need manual creation')
   } else {
-    console.log('✅ Helper function created')
+    info('✅ Helper function created')
   }
 }
 

@@ -10,6 +10,8 @@ interface ShipmentsListProps {
   onRefresh: () => void
   onLocateKit?: (options: { studyId?: string | null; accessionNumber?: string | null }) => void
   groupByAwb?: boolean
+  focus?: 'pending-aging' | 'shipped-stuck' | null
+  onClearFocus?: () => void
 }
 
 type Shipment = {
@@ -62,7 +64,15 @@ interface AwbGroup {
   hasDelivered: boolean
 }
 
-export default function ShipmentsList({ studyId, refreshKey, onRefresh, onLocateKit, groupByAwb = false }: ShipmentsListProps) {
+export default function ShipmentsList({
+  studyId,
+  refreshKey,
+  onRefresh,
+  onLocateKit,
+  groupByAwb = false,
+  focus = null,
+  onClearFocus
+}: ShipmentsListProps) {
   const [loading, setLoading] = useState(true)
   const [shipments, setShipments] = useState<Shipment[]>([])
   const [updating, setUpdating] = useState<string | null>(null)
@@ -143,12 +153,23 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh, onLocate
     load() // Always load, whether studyId is provided or not
   }, [studyId, refreshKey])
 
+  const effectiveShipments = useMemo(() => {
+    if (!focus) return shipments
+    if (focus === 'pending-aging') {
+      return shipments.filter((shipment) => !shipment.shipped_date)
+    }
+    if (focus === 'shipped-stuck') {
+      return shipments.filter((shipment) => shipment.shipped_date && shipment.tracking_status !== 'delivered')
+    }
+    return shipments
+  }, [shipments, focus])
+
   const awbGroupList: AwbGroup[] = useMemo(() => {
     if (!groupByAwb) return []
 
     const map = new Map<string, AwbGroup>()
 
-    for (const shipment of shipments) {
+    for (const shipment of effectiveShipments) {
       const awb = shipment.airway_bill_number || null
       const key = awb ? `awb:${awb}` : `awb:none:${shipment.id}`
       let group = map.get(key)
@@ -207,7 +228,7 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh, onLocate
       const bDate = b.shippedDate || b.actualDelivery || b.estimatedDelivery || ''
       return bDate.localeCompare(aDate)
     })
-  }, [groupByAwb, shipments])
+  }, [groupByAwb, effectiveShipments])
 
   useEffect(() => {
     if (!groupByAwb) return
@@ -427,16 +448,46 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh, onLocate
     )
   }
 
+  const hasFilter = Boolean(focus)
+  const noFilteredShipments = effectiveShipments.length === 0
+  const canClearFilter = hasFilter && typeof onClearFocus === 'function'
+
   if (groupByAwb) {
     const pendingGroups = awbGroupList.filter(group => group.hasPending)
     const deliveredGroups = awbGroupList.filter(group => !group.hasPending)
+    const hasAnyGroups = pendingGroups.length > 0 || deliveredGroups.length > 0
 
     return (
       <div className="space-y-6">
-        {pendingGroups.length === 0 && deliveredGroups.length === 0 ? (
-          <div className="bg-gray-900/40 border border-gray-700 rounded-lg p-6 text-gray-400 text-center">
-            <p>No shipments found.</p>
-            <p className="text-sm mt-1">Ship a kit to see it listed here.</p>
+        {hasFilter && (
+          <div className="bg-blue-900/30 border border-blue-700 text-blue-100 text-xs rounded-md px-4 py-3 flex items-center justify-between gap-3">
+            <span>
+              Showing shipments flagged by alerts: {focus === 'pending-aging' ? 'pending dispatch' : 'stalled in transit'}.
+            </span>
+            {canClearFilter && (
+              <button
+                onClick={onClearFocus}
+                className="text-blue-200 hover:text-white font-semibold"
+              >
+                Clear filter
+              </button>
+            )}
+          </div>
+        )}
+        {!hasAnyGroups ? (
+          <div className="bg-gray-900/40 border border-gray-700 rounded-lg p-6 text-gray-300 text-center space-y-2">
+            <p>{hasFilter ? 'No shipments match this alert.' : 'No shipments found.'}</p>
+            <p className="text-sm text-gray-400">
+              {hasFilter ? 'Clear the filter to review all shipments.' : 'Ship a kit to see it listed here.'}
+            </p>
+            {canClearFilter && (
+              <button
+                onClick={onClearFocus}
+                className="text-xs text-blue-300 hover:text-blue-100"
+              >
+                Clear filter
+              </button>
+            )}
           </div>
         ) : (
           <>
@@ -467,10 +518,36 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh, onLocate
         </button>
       </div>
 
-      {shipments.length === 0 ? (
-        <div className="bg-gray-800/50 rounded-lg border border-gray-700 p-8 text-center text-gray-400">
-          <p>No shipments yet.</p>
-          <p className="text-sm mt-1">Use bulk import or internal flow to add shipments.</p>
+      {hasFilter && (
+        <div className="bg-blue-900/30 border border-blue-700 text-blue-100 text-xs rounded-md px-4 py-3 flex items-center justify-between gap-3">
+          <span>
+            Showing shipments flagged by alerts: {focus === 'pending-aging' ? 'pending dispatch' : 'stalled in transit'}.
+          </span>
+          {canClearFilter && (
+            <button
+              onClick={onClearFocus}
+              className="text-blue-200 hover:text-white font-semibold"
+            >
+              Clear filter
+            </button>
+          )}
+        </div>
+      )}
+
+      {noFilteredShipments ? (
+        <div className="bg-gray-800/50 rounded-lg border border-gray-700 p-8 text-center text-gray-300 space-y-2">
+          <p>{hasFilter ? 'No shipments match this alert.' : 'No shipments yet.'}</p>
+          <p className="text-sm text-gray-400">
+            {hasFilter ? 'Clear the filter to review all shipments.' : 'Use bulk import or internal flow to add shipments.'}
+          </p>
+          {canClearFilter && (
+            <button
+              onClick={onClearFocus}
+              className="text-xs text-blue-300 hover:text-blue-100"
+            >
+              Clear filter
+            </button>
+          )}
         </div>
       ) : (
         <div className="overflow-x-auto border border-gray-700 rounded-lg">
@@ -489,7 +566,7 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh, onLocate
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700">
-              {shipments.map(s => (
+              {effectiveShipments.map(s => (
                 <tr key={s.id} className="text-gray-100 align-top">
                   <td className="px-4 py-3 font-mono whitespace-nowrap">{s.airway_bill_number}</td>
                   {!studyId && (

@@ -8,6 +8,7 @@ export interface ShipmentSubjectInfo {
   visit_id: string | null
   visit_name: string | null
   visit_date: string | null
+  accession_number: string | null
 }
 
 export interface ShipmentKitInfo {
@@ -103,7 +104,8 @@ export async function fetchShipmentsForStudies(
 
       next.lab_kit_id = next.lab_kit_id ?? (row.lab_kit_id as string | null) ?? ((row.lab_kits as any)?.id ?? null)
       next.subject_visit_id = next.subject_visit_id ?? (row.subject_visit_id as string | null) ?? ((row.subject_visits as any)?.id ?? null)
-      next.accession_number = next.accession_number ?? (row.accession_number as string | null) ?? ((row.lab_kits as any)?.accession_number ?? null)
+      const visitAccession = (row.subject_visits as any)?.accession_number ?? null
+      next.accession_number = next.accession_number ?? (row.accession_number as string | null) ?? ((row.lab_kits as any)?.accession_number ?? null) ?? visitAccession
 
       if (!next.study_id) next.study_id = study.id
       if (!next.study_protocol) next.study_protocol = study.protocol ?? null
@@ -331,6 +333,7 @@ export async function fetchShipmentsForStudies(
           visit_id: (row as any).id as string,
           visit_name: (row as any).visit_name ?? null,
           visit_date: (row as any).visit_date ?? null,
+          accession_number: (row as any).accession_number ?? null,
           study_id: (row as any).study_id ?? null
         })
       }
@@ -358,6 +361,7 @@ export async function fetchShipmentsForStudies(
           visit_id: (row as any).id as string,
           visit_name: (row as any).visit_name ?? null,
           visit_date: (row as any).visit_date ?? null,
+          accession_number: acc,
           study_id: (row as any).study_id ?? null
         })
       }
@@ -376,6 +380,7 @@ export async function fetchShipmentsForStudies(
       const subjectFromAcc = !subjectFromId && shipment.accession_number ? subjectByAcc.get(shipment.accession_number) ?? null : null
       const subject = subjectFromId || subjectFromAcc || null
 
+      const resolvedAccession = shipment.accession_number ?? kit?.accession_number ?? subject?.accession_number ?? null
       const studyId = shipment.study_id || kit?.study_id || subject?.study_id || null
       const studyProtocol = shipment.study_protocol || kit?.study_protocol || null
       const studyTitle = shipment.study_title || kit?.study_title || null
@@ -387,7 +392,7 @@ export async function fetchShipmentsForStudies(
         study_title: studyTitle,
         lab_kit_id: shipment.lab_kit_id ?? (kit ? kit.id : null),
         subject_visit_id: shipment.subject_visit_id ?? (subject?.visit_id ?? null),
-        accession_number: shipment.accession_number,
+        accession_number: resolvedAccession,
         airway_bill_number: shipment.airway_bill_number,
         carrier: shipment.carrier,
         shipped_date: shipment.shipped_date,

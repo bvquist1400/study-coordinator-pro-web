@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
       }, { status: 409 })
     }
 
-    let kitTypeMeta = new Map<string, { name: string | null; study_id: string }>()
+    const kitTypeMeta = new Map<string, { name: string | null; study_id: string }>()
     if (kitTypeIds.size > 0) {
       const { data: kitTypeRows, error: kitTypeError } = await supabase
         .from('study_kit_types')

@@ -96,6 +96,7 @@ export interface Database {
           target_enrollment: number | null
           visit_window_days: number
           inventory_buffer_days: number
+          inventory_buffer_kits: number
           visit_window_buffer_days: number
           anchor_day: number
           dosing_frequency: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom'
@@ -122,6 +123,7 @@ export interface Database {
           target_enrollment?: number | null
           visit_window_days?: number
           inventory_buffer_days?: number
+          inventory_buffer_kits?: number
           visit_window_buffer_days?: number
           anchor_day?: number
           dosing_frequency?: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom'
@@ -148,6 +150,7 @@ export interface Database {
           target_enrollment?: number | null
           visit_window_days?: number
           inventory_buffer_days?: number
+          inventory_buffer_kits?: number
           visit_window_buffer_days?: number
           anchor_day?: number
           dosing_frequency?: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom'
@@ -877,6 +880,138 @@ export interface Database {
           received_date?: string | null
         }
       }
+      lab_kit_recommendations: {
+        Row: {
+          id: string
+          study_id: string
+          kit_type_id: string | null
+          status: 'new' | 'accepted' | 'dismissed' | 'expired'
+          recommended_quantity: number
+          reason: string
+          window_start: string | null
+          window_end: string | null
+          latest_order_date: string | null
+          confidence: number | null
+          metadata: Json
+          dismissed_reason: string | null
+          acted_by: string | null
+          acted_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          study_id: string
+          kit_type_id?: string | null
+          status?: 'new' | 'accepted' | 'dismissed' | 'expired'
+          recommended_quantity: number
+          reason: string
+          window_start?: string | null
+          window_end?: string | null
+          latest_order_date?: string | null
+          confidence?: number | null
+          metadata?: Json
+          dismissed_reason?: string | null
+          acted_by?: string | null
+          acted_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          study_id?: string
+          kit_type_id?: string | null
+          status?: 'new' | 'accepted' | 'dismissed' | 'expired'
+          recommended_quantity?: number
+          reason?: string
+          window_start?: string | null
+          window_end?: string | null
+          latest_order_date?: string | null
+          confidence?: number | null
+          metadata?: Json
+          dismissed_reason?: string | null
+          acted_by?: string | null
+          acted_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      lab_kit_settings: {
+        Row: {
+          id: string
+          study_id: string
+          kit_type_id: string | null
+          min_on_hand: number
+          buffer_days: number
+          lead_time_days: number
+          auto_order_enabled: boolean
+          notes: string | null
+          metadata: Json
+          updated_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          study_id: string
+          kit_type_id?: string | null
+          min_on_hand?: number
+          buffer_days?: number
+          lead_time_days?: number
+          auto_order_enabled?: boolean
+          notes?: string | null
+          metadata?: Json
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          study_id?: string
+          kit_type_id?: string | null
+          min_on_hand?: number
+          buffer_days?: number
+          lead_time_days?: number
+          auto_order_enabled?: boolean
+          notes?: string | null
+          metadata?: Json
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      lab_kit_settings_history: {
+        Row: {
+          id: string
+          settings_id: string | null
+          study_id: string
+          kit_type_id: string | null
+          action: 'create' | 'update' | 'delete'
+          changes: Json
+          changed_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          settings_id?: string | null
+          study_id: string
+          kit_type_id?: string | null
+          action: 'create' | 'update' | 'delete'
+          changes?: Json
+          changed_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          settings_id?: string | null
+          study_id?: string
+          kit_type_id?: string | null
+          action?: 'create' | 'update' | 'delete'
+          changes?: Json
+          changed_by?: string | null
+          created_at?: string
+        }
+      }
       lab_kit_shipments: {
         Row: {
           id: string
@@ -1020,6 +1155,18 @@ export type LabKitAlertDismissalUpdate = Database['public']['Tables']['lab_kit_a
 export type LabKitOrder = Database['public']['Tables']['lab_kit_orders']['Row']
 export type LabKitOrderInsert = Database['public']['Tables']['lab_kit_orders']['Insert']
 export type LabKitOrderUpdate = Database['public']['Tables']['lab_kit_orders']['Update']
+
+export type LabKitRecommendation = Database['public']['Tables']['lab_kit_recommendations']['Row']
+export type LabKitRecommendationInsert = Database['public']['Tables']['lab_kit_recommendations']['Insert']
+export type LabKitRecommendationUpdate = Database['public']['Tables']['lab_kit_recommendations']['Update']
+
+export type LabKitSetting = Database['public']['Tables']['lab_kit_settings']['Row']
+export type LabKitSettingInsert = Database['public']['Tables']['lab_kit_settings']['Insert']
+export type LabKitSettingUpdate = Database['public']['Tables']['lab_kit_settings']['Update']
+
+export type LabKitSettingHistory = Database['public']['Tables']['lab_kit_settings_history']['Row']
+export type LabKitSettingHistoryInsert = Database['public']['Tables']['lab_kit_settings_history']['Insert']
+export type LabKitSettingHistoryUpdate = Database['public']['Tables']['lab_kit_settings_history']['Update']
 
 export type LabKitShipment = Database['public']['Tables']['lab_kit_shipments']['Row']
 export type LabKitShipmentInsert = Database['public']['Tables']['lab_kit_shipments']['Insert']

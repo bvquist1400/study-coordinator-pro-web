@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser, createSupabaseAdmin } from '@/lib/api/auth'
+import logger from '@/lib/logger'
 
 // GET /api/diagnostics/env
 // Admin-only helper: returns presence of critical env vars and admin flag. Never returns secret values.
@@ -47,8 +48,8 @@ export async function GET(request: NextRequest) {
       serviceRoleSet,
       projectRef: ref || null,
     })
-  } catch (_error) {
+  } catch (error) {
+    logger.error('diagnostics-env: unexpected failure', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-
