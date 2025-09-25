@@ -42,7 +42,8 @@ export async function GET(request: NextRequest) {
     if (error instanceof LabKitSettingsError) {
       return jsonError(error.message, error.status)
     }
-    logger.error('lab-kit-settings:GET unexpected error', error)
+    const err = error instanceof Error ? error : new Error(String(error))
+    logger.error('lab-kit-settings:GET unexpected error', err)
     return jsonError('Internal server error', 500)
   }
 }
@@ -142,7 +143,8 @@ export async function PATCH(request: NextRequest) {
     if (error instanceof LabKitSettingsError) {
       return jsonError(error.message, error.status)
     }
-    logger.error('lab-kit-settings:PATCH unexpected error', error)
+    const err = error instanceof Error ? error : new Error(String(error))
+    logger.error('lab-kit-settings:PATCH unexpected error', err)
     return jsonError('Internal server error', 500)
   }
 }

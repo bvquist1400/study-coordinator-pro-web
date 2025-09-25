@@ -239,8 +239,9 @@ class Logger {
     this.logToService(entry)
   }
 
-  error(message: string, error?: Error, context?: Record<string, any>) {
-    const entry = this.createLogEntry('error', message, context, error)
+  error(message: string, error?: unknown, context?: Record<string, any>) {
+    const normalizedError = error instanceof Error ? error : (error !== undefined ? new Error(String(error)) : undefined)
+    const entry = this.createLogEntry('error', message, context, normalizedError)
     this.logToConsole(entry)
     this.logToService(entry)
   }
