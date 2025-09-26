@@ -248,8 +248,8 @@ export async function updateLabKitRecommendationStatus(
     }
   }
 
-  const { data: updatedRow, error: updateError } = await supabase
-    .from('lab_kit_recommendations')
+  const { data: updatedRow, error: updateError } = await (supabase
+    .from('lab_kit_recommendations') as any)
     .update(updatePayload)
     .eq('id', recommendationId)
     .eq('study_id', studyId)
