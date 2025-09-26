@@ -226,13 +226,13 @@ export async function updateLabKitRecommendationStatus(
   const mergedMetadata = mergeMetadata((existingRow.metadata as Json) ?? ({} as Json), payload.metadata)
 
   const updatePayload: LabKitRecommendationUpdate = payload.action === 'accept'
-    ? {
+    ? ({
         acted_by: userId,
         acted_at: new Date().toISOString(),
         metadata: mergedMetadata,
-        status: 'accepted',
+        status: 'accepted' as const,
         dismissed_reason: null
-      }
+      } satisfies LabKitRecommendationUpdate)
     : (() => {
         const reason = typeof payload.reason === 'string' && payload.reason.trim().length > 0 ? payload.reason.trim() : null
         if (!reason) {
@@ -244,12 +244,12 @@ export async function updateLabKitRecommendationStatus(
           metadata: mergedMetadata,
           status: 'dismissed' as const,
           dismissed_reason: reason
-        }
+        } satisfies LabKitRecommendationUpdate
       })()
 
   const { data: updatedRow, error: updateError } = await supabase
     .from('lab_kit_recommendations')
-    .update<LabKitRecommendationUpdate>(updatePayload)
+    .update(updatePayload satisfies LabKitRecommendationUpdate)
     .eq('id', recommendationId)
     .eq('study_id', studyId)
     .select('*')
