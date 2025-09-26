@@ -2,8 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   Database,
   Json,
-  LabKitRecommendation,
-  LabKitRecommendationUpdate
+  LabKitRecommendation
 } from '@/types/database'
 import logger from '@/lib/logger'
 
@@ -225,8 +224,11 @@ export async function updateLabKitRecommendationStatus(
 
   const mergedMetadata = mergeMetadata((existingRow.metadata as Json) ?? ({} as Json), payload.metadata)
 
-  let status: LabKitRecommendationUpdate['status']
-  let dismissedReason: LabKitRecommendationUpdate['dismissed_reason']
+  type RecommendationsTable = Database['public']['Tables']['lab_kit_recommendations']
+  type RecommendationUpdate = RecommendationsTable['Update']
+
+  let status: RecommendationUpdate['status']
+  let dismissedReason: RecommendationUpdate['dismissed_reason']
 
   if (payload.action === 'accept') {
     status = 'accepted'
@@ -240,7 +242,7 @@ export async function updateLabKitRecommendationStatus(
     dismissedReason = reason
   }
 
-  const updatePayload: LabKitRecommendationUpdate = {
+  const updatePayload: RecommendationUpdate = {
     acted_by: userId,
     acted_at: new Date().toISOString(),
     metadata: mergedMetadata,
@@ -249,7 +251,7 @@ export async function updateLabKitRecommendationStatus(
   }
 
   const { data: updatedRow, error: updateError } = await supabase
-    .from('lab_kit_recommendations')
+    .from<'lab_kit_recommendations', RecommendationsTable>('lab_kit_recommendations')
     .update(updatePayload)
     .eq('id', recommendationId)
     .eq('study_id', studyId)
