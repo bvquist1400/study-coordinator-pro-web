@@ -353,10 +353,10 @@ export async function applyLabKitSettingsPatch(
     }
 
     if (Object.keys(studyUpdate).length > 0) {
-      const { error: studyUpdateError } = await supabase
-        .from('studies')
-        .update(studyUpdate)
-        .eq('id', studyId)
+    const { error: studyUpdateError } = await supabase
+      .from('studies')
+      .update(studyUpdate as StudyUpdate)
+      .eq('id', studyId)
 
       if (studyUpdateError) {
         logger.error('lab-kit-settings: failed to update study defaults', { studyId, error: studyUpdateError })
