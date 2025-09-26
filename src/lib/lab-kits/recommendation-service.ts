@@ -250,18 +250,20 @@ export async function updateLabKitRecommendationStatus(
     dismissed_reason: dismissedReason
   }
 
-  const { data: updatedRow, error: updateError } = await (supabase
+  const { data: updatedRowRaw, error: updateError } = await (supabase
     .from('lab_kit_recommendations') as any)
     .update(updatePayload)
     .eq('id', recommendationId)
     .eq('study_id', studyId)
     .select('*')
-    .single<LabKitRecommendation>()
+    .single()
 
-  if (updateError || !updatedRow) {
+  if (updateError || !updatedRowRaw) {
     logger.error('lab-kit-recommendations: failed to update recommendation', { studyId, recommendationId, error: updateError })
     throw new LabKitRecommendationError('Unable to update recommendation status.', 500)
   }
+
+  const updatedRow = updatedRowRaw as LabKitRecommendation
 
   const profileMap = await loadProfiles(supabase, updatedRow.acted_by ? [updatedRow.acted_by] : [])
 
