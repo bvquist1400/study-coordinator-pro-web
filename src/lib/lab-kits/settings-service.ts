@@ -570,7 +570,9 @@ export async function applyLabKitSettingsPatch(
   }
 
   if (history.length > 0) {
-    const { error: historyError } = await supabase.from('lab_kit_settings_history').insert(history)
+    const { error: historyError } = await (supabase
+      .from('lab_kit_settings_history') as any)
+      .insert(history as LabKitSettingHistoryInsert[])
     if (historyError) {
       logger.warn('lab-kit-settings: failed to record history entries', { studyId, error: historyError })
     }
