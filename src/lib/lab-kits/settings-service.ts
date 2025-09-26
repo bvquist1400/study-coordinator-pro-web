@@ -366,8 +366,8 @@ export async function applyLabKitSettingsPatch(
     }
 
     if (defaultRow) {
-      const { data: updatedRows, error: updateError } = await supabase
-        .from('lab_kit_settings')
+      const { data: updatedRows, error: updateError } = await (supabase
+        .from('lab_kit_settings') as any)
         .update({
           ...sanitizedDefaults,
           updated_by: userId
@@ -407,8 +407,8 @@ export async function applyLabKitSettingsPatch(
         updated_by: userId
       }
 
-      const { data: insertedRows, error: insertError } = await supabase
-        .from('lab_kit_settings')
+      const { data: insertedRows, error: insertError } = await (supabase
+        .from('lab_kit_settings') as any)
         .insert(insertPayload)
         .select('*')
         .single<LabKitSetting>()
