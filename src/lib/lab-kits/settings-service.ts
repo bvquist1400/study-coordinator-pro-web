@@ -6,7 +6,8 @@ import type {
   LabKitSetting,
   LabKitSettingHistoryInsert,
   LabKitSettingInsert,
-  Study
+  Study,
+  StudyUpdate
 } from '@/types/database'
 import logger from '@/lib/logger'
 
