@@ -353,8 +353,8 @@ export async function applyLabKitSettingsPatch(
     }
 
     if (Object.keys(studyUpdate).length > 0) {
-    const { error: studyUpdateError } = await supabase
-      .from('studies')
+    const { error: studyUpdateError } = await (supabase
+      .from('studies') as any)
       .update(studyUpdate as StudyUpdate)
       .eq('id', studyId)
 
