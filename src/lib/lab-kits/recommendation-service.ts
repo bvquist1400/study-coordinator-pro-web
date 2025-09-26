@@ -223,23 +223,29 @@ export async function updateLabKitRecommendationStatus(
     throw new LabKitRecommendationError('Recommendation already accepted.', 409)
   }
 
-  const updatePayload: LabKitRecommendationUpdate = {
-    acted_by: userId,
-    acted_at: new Date().toISOString(),
-    metadata: mergeMetadata((existingRow.metadata as Json) ?? ({} as Json), payload.metadata)
-  }
+  const mergedMetadata = mergeMetadata((existingRow.metadata as Json) ?? ({} as Json), payload.metadata)
 
-  if (payload.action === 'accept') {
-    updatePayload.status = 'accepted'
-    updatePayload.dismissed_reason = null
-  } else {
-    const reason = typeof payload.reason === 'string' && payload.reason.trim().length > 0 ? payload.reason.trim() : null
-    if (!reason) {
-      throw new LabKitRecommendationError('Dismiss reason is required.', 400)
-    }
-    updatePayload.status = 'dismissed'
-    updatePayload.dismissed_reason = reason
-  }
+  const updatePayload: LabKitRecommendationUpdate = payload.action === 'accept'
+    ? {
+        acted_by: userId,
+        acted_at: new Date().toISOString(),
+        metadata: mergedMetadata,
+        status: 'accepted',
+        dismissed_reason: null
+      }
+    : (() => {
+        const reason = typeof payload.reason === 'string' && payload.reason.trim().length > 0 ? payload.reason.trim() : null
+        if (!reason) {
+          throw new LabKitRecommendationError('Dismiss reason is required.', 400)
+        }
+        return {
+          acted_by: userId,
+          acted_at: new Date().toISOString(),
+          metadata: mergedMetadata,
+          status: 'dismissed' as const,
+          dismissed_reason: reason
+        }
+      })()
 
   const { data: updatedRow, error: updateError } = await supabase
     .from('lab_kit_recommendations')
