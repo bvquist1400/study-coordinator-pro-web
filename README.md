@@ -106,6 +106,8 @@ Deployment
   - Always give queries an explicit shape (e.g. `.select('col').single<{ col: string | null }>()`).
   - Avoid `as any` on Supabase calls; if you must, cast the returned row right after the query.
   - When building response objects, don’t spread the same field (`total`, etc.) twice—set it once so TypeScript keeps the inferred type.
+  - Build Supabase mutation payloads immutably and hand them to `.update/.upsert` with a concrete type (`.update<TableUpdateType>(payload)` or a single `as TableUpdateType` cast). Mutating a payload after creation almost always collapses to `never` and kills the build.
+  - Always normalize caught values before logging or rethrowing (`const err = error instanceof Error ? error : new Error(String(error))`). Passing `unknown` straight into helpers (like `logger.error`) violates the contract and triggers the same build failures.
   - Following those patterns prevents the dreaded “result inferred as never” errors that block builds.
 
 Notes
