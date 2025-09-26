@@ -366,7 +366,7 @@ export async function applyLabKitSettingsPatch(
     }
 
     if (defaultRow) {
-      const { data: updatedRows, error: updateError } = await (supabase
+      const { data: updatedRowsRaw, error: updateError } = await (supabase
         .from('lab_kit_settings') as any)
         .update({
           ...sanitizedDefaults,
@@ -376,12 +376,14 @@ export async function applyLabKitSettingsPatch(
         .eq('study_id', studyId)
         .is('kit_type_id', null)
         .select('*')
-        .single<LabKitSetting>()
+        .single()
 
-      if (updateError || !updatedRows) {
+      if (updateError || !updatedRowsRaw) {
         logger.error('lab-kit-settings: failed to update default settings row', { studyId, error: updateError })
         throw new LabKitSettingsError('Unable to update default lab kit settings.', 500)
       }
+
+      const updatedRows = updatedRowsRaw as LabKitSetting
 
       history.push(
         buildHistoryEntry({
@@ -407,16 +409,18 @@ export async function applyLabKitSettingsPatch(
         updated_by: userId
       }
 
-      const { data: insertedRows, error: insertError } = await (supabase
+      const { data: insertedRowsRaw, error: insertError } = await (supabase
         .from('lab_kit_settings') as any)
         .insert(insertPayload)
         .select('*')
-        .single<LabKitSetting>()
+        .single()
 
-      if (insertError || !insertedRows) {
+      if (insertError || !insertedRowsRaw) {
         logger.error('lab-kit-settings: failed to create default settings row', { studyId, error: insertError })
         throw new LabKitSettingsError('Unable to create default lab kit settings.', 500)
       }
+
+      const insertedRows = insertedRowsRaw as LabKitSetting
 
       history.push(
         buildHistoryEntry({
@@ -463,18 +467,20 @@ export async function applyLabKitSettingsPatch(
         kit_type_id: kitTypeId
       }
 
-      const { data: updatedRows, error: updateError } = await supabase
-        .from('lab_kit_settings')
+      const { data: updatedRowsRaw, error: updateError } = await (supabase
+        .from('lab_kit_settings') as any)
         .update(payload)
         .eq('id', override.id)
         .eq('study_id', studyId)
         .select('*')
-        .single<LabKitSetting>()
+        .single()
 
-      if (updateError || !updatedRows) {
+      if (updateError || !updatedRowsRaw) {
         logger.error('lab-kit-settings: failed to update override', { studyId, overrideId: override.id, error: updateError })
         throw new LabKitSettingsError('Unable to update lab kit override.', 500)
       }
+
+      const updatedRows = updatedRowsRaw as LabKitSetting
 
       history.push(
         buildHistoryEntry({
@@ -501,16 +507,18 @@ export async function applyLabKitSettingsPatch(
         updated_by: userId
       }
 
-      const { data: insertedRows, error: insertError } = await supabase
-        .from('lab_kit_settings')
+      const { data: insertedRowsRaw, error: insertError } = await (supabase
+        .from('lab_kit_settings') as any)
         .insert(insertPayload)
         .select('*')
-        .single<LabKitSetting>()
+        .single()
 
-      if (insertError || !insertedRows) {
+      if (insertError || !insertedRowsRaw) {
         logger.error('lab-kit-settings: failed to create override', { studyId, kitTypeId, error: insertError })
         throw new LabKitSettingsError('Unable to create lab kit override.', 500)
       }
+
+      const insertedRows = insertedRowsRaw as LabKitSetting
 
       history.push(
         buildHistoryEntry({
