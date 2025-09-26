@@ -404,7 +404,8 @@ export async function fetchShipmentsForStudies(
           subject_number: subject.subject_number,
           visit_id: subject.visit_id,
           visit_name: subject.visit_name,
-          visit_date: subject.visit_date
+          visit_date: subject.visit_date,
+          accession_number: subject.accession_number ?? resolvedAccession ?? null
         } : null,
         kit: kit ? {
           id: kit.id,
