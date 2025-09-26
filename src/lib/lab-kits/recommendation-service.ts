@@ -225,32 +225,32 @@ export async function updateLabKitRecommendationStatus(
 
   const mergedMetadata = mergeMetadata((existingRow.metadata as Json) ?? ({} as Json), payload.metadata)
 
-  let updatePayload: LabKitRecommendationUpdate
+  let status: LabKitRecommendationUpdate['status']
+  let dismissedReason: LabKitRecommendationUpdate['dismissed_reason']
+
   if (payload.action === 'accept') {
-    updatePayload = {
-      acted_by: userId,
-      acted_at: new Date().toISOString(),
-      metadata: mergedMetadata,
-      status: 'accepted',
-      dismissed_reason: null
-    }
+    status = 'accepted'
+    dismissedReason = null
   } else {
     const reason = typeof payload.reason === 'string' && payload.reason.trim().length > 0 ? payload.reason.trim() : null
     if (!reason) {
       throw new LabKitRecommendationError('Dismiss reason is required.', 400)
     }
-    updatePayload = {
-      acted_by: userId,
-      acted_at: new Date().toISOString(),
-      metadata: mergedMetadata,
-      status: 'dismissed',
-      dismissed_reason: reason
-    }
+    status = 'dismissed'
+    dismissedReason = reason
+  }
+
+  const updatePayload: LabKitRecommendationUpdate = {
+    acted_by: userId,
+    acted_at: new Date().toISOString(),
+    metadata: mergedMetadata,
+    status,
+    dismissed_reason: dismissedReason
   }
 
   const { data: updatedRow, error: updateError } = await supabase
     .from('lab_kit_recommendations')
-    .update(updatePayload as LabKitRecommendationUpdate)
+    .update(updatePayload)
     .eq('id', recommendationId)
     .eq('study_id', studyId)
     .select('*')
