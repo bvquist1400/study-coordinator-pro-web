@@ -106,7 +106,8 @@ async function loadSettings(supabase: SupabaseAdminClient, studyId: string): Pro
     throw studyError
   }
 
-  const defaultsRow = (settingRows || []).find((row) => row.kit_type_id === null) as LabKitSetting | undefined
+  const rows = (settingRows as LabKitSetting[] | null | undefined) ?? []
+  const defaultsRow = rows.find((row) => row.kit_type_id === null) ?? null
   const defaults: OverrideSettings = {
     minOnHand: getNumber(defaultsRow?.min_on_hand, 0, { min: 0, max: 500 }),
     bufferDays: getNumber(defaultsRow?.buffer_days, 0, { min: 0, max: 180 }),
@@ -115,7 +116,7 @@ async function loadSettings(supabase: SupabaseAdminClient, studyId: string): Pro
   }
 
   const overrides = new Map<string, OverrideSettings>()
-  for (const row of (settingRows || []) as LabKitSetting[]) {
+  for (const row of rows) {
     if (!row.kit_type_id) continue
     overrides.set(row.kit_type_id, {
       minOnHand: getNumber(row.min_on_hand, defaults.minOnHand, { min: 0, max: 500 }),
