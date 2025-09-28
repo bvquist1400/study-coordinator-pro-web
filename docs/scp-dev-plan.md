@@ -148,17 +148,13 @@ Multiple issues need resolution in the lab kit workflow:
   - Link forecast alert rows and orders tab to settings for quick buffer adjustments
   - Allow coordinators to capture dismissal reasons (already covered, vendor delay, etc.)
   ```
-- **Status**: Discovery complete, backend scaffolding underway — schema PR open, API contract validated against existing Lab Kits dashboard consumers.
-- **Backend To-Dos**:
-  - Finalize `lab_kit_settings` table (`study_id`, `kit_type_id`, `min_on_hand`, `buffer_days`, `lead_time_days`, `auto_order_enabled`, `notes`, timestamps) plus history table for audit.
-  - Extend forecast job to hydrate `recommended_orders` with `{ kitTypeId, reason, windowStart, windowEnd, latestOrderDate, confidence }` and write to `lab_kit_recommendations`.
-  - Implement PATCH semantics on `/api/lab-kit-settings` to support partial updates + optimistic concurrency (etag via `updated_at`).
-  - Schedule nightly Supabase cron to recompute recommendations; expose manual recompute endpoint guarded by admin role.
-- **Frontend To-Dos**:
-  - Build Settings page cards (Study Defaults, Kit Overrides, Recommendation History) using shared `DataList` patterns.
-  - Wire recommendation widget to new API, with "Accept" → prefilled order modal, "Dismiss" → capture reason + expire recommendation.
-  - Add inline education tooltips referencing buffer/lead-time logic; ensure mobile layout collapses cards into accordions.
-  - Instrument analytics (`lab_kits.settings.save`, `lab_kits.recommendation.accept`) and document dashboards needed in Looker.
+- **Status**: API surface + panel wiring delivered — schema shipped via migration, `/api/lab-kit-settings` exposes GET/PATCH with optimistic concurrency, `/api/lab-kit-recommendations` now supports GET/POST (accept/dismiss), and the Lab Kits Alerts view surfaces a Recommended Orders widget tied to the order modal. Forecast worker + automation still outstanding.
+- **Backend Remaining**:
+  - Wire scheduled jobs (Vercel Cron or Supabase Edge) to hit `/api/cron/recompute-lab-kits` (which wraps `/api/lab-kit-recommendations/recompute-all` using `LAB_KIT_RECOMMENDATION_JOB_TOKEN`).
+  - Persist recommendation history/audit events once automated job is operational.
+- **Frontend Remaining**:
+  - Add recommendation history timeline view + expose dismissal reasons in Settings panel.
+  - Instrument analytics (`lab_kits.settings.save`, `lab_kits.recommendation.accept`) and describe Looker dashboards.
 - **Validation & Rollout**:
   - Seed staging with varied lead times + buffer scenarios; run forecast sims to compare recommended order dates vs historical orders.
   - Draft playbook for Ops (how recommendations flow into vendor ordering) and add doc to `docs/ops-handbook.md` once feature ships.

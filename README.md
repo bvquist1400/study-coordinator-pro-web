@@ -23,6 +23,8 @@ Environment
   - `LOG_TO_SERVICE`: on|off (default on in prod)
   - `LOG_SAMPLE_RATE`: 0..1 (default 1)
   - Optional: `LOG_MAX_PAYLOAD`, feature flags
+  - Optional: `LAB_KIT_RECOMMENDATION_JOB_TOKEN` (protects `/api/lab-kit-recommendations/recompute-all` when used by scheduled jobs)
+  - Optional: `CRON_BASE_URL` (override the base URL for internal cron calls; defaults to Vercel `VERCEL_URL` or `http://localhost:3000`)
 
 Install
 

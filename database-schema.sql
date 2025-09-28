@@ -32,6 +32,9 @@ CREATE TABLE studies (
     end_date DATE,
     target_enrollment INTEGER,
     visit_window_days INTEGER DEFAULT 7,
+    inventory_buffer_days INTEGER NOT NULL DEFAULT 14,
+    inventory_buffer_kits INTEGER NOT NULL DEFAULT 0,
+    visit_window_buffer_days INTEGER NOT NULL DEFAULT 0,
     dosing_frequency TEXT DEFAULT 'QD' CHECK (dosing_frequency IN ('QD', 'BID', 'TID', 'QID', 'weekly', 'custom')),
     compliance_threshold DECIMAL DEFAULT 80.0,
     notes TEXT,
@@ -240,6 +243,9 @@ ALTER TABLE subject_visits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE drug_compliance ENABLE ROW LEVEL SECURITY;
 ALTER TABLE monitor_actions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE protocol_deviations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE lab_kit_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE lab_kit_settings_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE lab_kit_recommendations ENABLE ROW LEVEL SECURITY;
 
 -- User can only access their own profile
 CREATE POLICY "Users can view own profile" ON user_profiles
@@ -290,6 +296,36 @@ CREATE POLICY "Users can manage own monitor actions" ON monitor_actions
 
 CREATE POLICY "Users can manage own protocol deviations" ON protocol_deviations
     FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can manage lab kit settings" ON lab_kit_settings
+    FOR ALL USING (
+        EXISTS (
+            SELECT 1
+            FROM studies st
+            WHERE st.id = lab_kit_settings.study_id
+              AND st.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can view lab kit settings history" ON lab_kit_settings_history
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1
+            FROM studies st
+            WHERE st.id = lab_kit_settings_history.study_id
+              AND st.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can manage lab kit recommendations" ON lab_kit_recommendations
+    FOR ALL USING (
+        EXISTS (
+            SELECT 1
+            FROM studies st
+            WHERE st.id = lab_kit_recommendations.study_id
+              AND st.user_id = auth.uid()
+        )
+    );
 
 -- Functions for automatic timestamp updates
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -369,5 +405,80 @@ SELECT
 FROM drug_compliance dc
 JOIN subjects sub ON dc.subject_id = sub.id
 JOIN studies s ON sub.study_id = s.id
-WHERE sub.status IN ('active', 'enrolled')
-ORDER BY dc.assessment_date DESC;
+    WHERE sub.status IN ('active', 'enrolled')
+    ORDER BY dc.assessment_date DESC;
+
+-- Lab kit settings and recommendations
+CREATE TABLE lab_kit_settings (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    study_id UUID REFERENCES studies(id) ON DELETE CASCADE NOT NULL,
+    kit_type_id UUID REFERENCES study_kit_types(id) ON DELETE SET NULL,
+    min_on_hand INTEGER NOT NULL DEFAULT 0 CHECK (min_on_hand >= 0),
+    buffer_days INTEGER NOT NULL DEFAULT 0 CHECK (buffer_days >= 0),
+    lead_time_days INTEGER NOT NULL DEFAULT 0 CHECK (lead_time_days >= 0),
+    auto_order_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    notes TEXT,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    updated_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    UNIQUE (study_id) WHERE kit_type_id IS NULL,
+    UNIQUE (study_id, kit_type_id) WHERE kit_type_id IS NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_lab_kit_settings_kit_type_id
+    ON lab_kit_settings (kit_type_id) WHERE kit_type_id IS NOT NULL;
+
+CREATE TRIGGER update_lab_kit_settings_updated_at
+    BEFORE UPDATE ON lab_kit_settings
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TABLE lab_kit_settings_history (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    settings_id UUID REFERENCES lab_kit_settings(id) ON DELETE SET NULL,
+    study_id UUID REFERENCES studies(id) ON DELETE CASCADE NOT NULL,
+    kit_type_id UUID REFERENCES study_kit_types(id) ON DELETE SET NULL,
+    action TEXT NOT NULL CHECK (action IN ('create', 'update', 'delete')),
+    changes JSONB NOT NULL DEFAULT '{}'::jsonb,
+    changed_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_lab_kit_settings_history_settings_id
+    ON lab_kit_settings_history (settings_id);
+
+CREATE INDEX IF NOT EXISTS idx_lab_kit_settings_history_study_id
+    ON lab_kit_settings_history (study_id);
+
+CREATE TABLE lab_kit_recommendations (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    study_id UUID REFERENCES studies(id) ON DELETE CASCADE NOT NULL,
+    kit_type_id UUID REFERENCES study_kit_types(id) ON DELETE SET NULL,
+    status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'accepted', 'dismissed', 'expired')),
+    recommended_quantity INTEGER NOT NULL CHECK (recommended_quantity > 0),
+    reason TEXT NOT NULL,
+    window_start DATE,
+    window_end DATE,
+    latest_order_date DATE,
+    confidence NUMERIC,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    dismissed_reason TEXT,
+    acted_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    acted_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1))
+);
+
+CREATE INDEX IF NOT EXISTS idx_lab_kit_recommendations_study_id
+    ON lab_kit_recommendations (study_id);
+
+CREATE INDEX IF NOT EXISTS idx_lab_kit_recommendations_kit_type_id
+    ON lab_kit_recommendations (kit_type_id) WHERE kit_type_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_lab_kit_recommendations_status
+    ON lab_kit_recommendations (status);
+
+CREATE TRIGGER update_lab_kit_recommendations_updated_at
+    BEFORE UPDATE ON lab_kit_recommendations
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

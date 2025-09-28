@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/recompute-lab-kits",
+      "schedule": "0 2 * * *"
+    }
+  ]
+}

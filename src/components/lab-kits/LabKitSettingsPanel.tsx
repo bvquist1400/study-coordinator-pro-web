@@ -158,6 +158,7 @@ export default function LabKitSettingsPanel({ studyId, onSettingsUpdated }: LabK
   const [kitTypes, setKitTypes] = useState<StudyKitType[]>([])
   const [refreshing, setRefreshing] = useState(false)
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const [recomputing, setRecomputing] = useState(false)
 
   const [defaultsForm, setDefaultsForm] = useState<DefaultsFormState>(() => ({
     minOnHand: '0',
@@ -288,6 +289,55 @@ export default function LabKitSettingsPanel({ studyId, onSettingsUpdated }: LabK
     onSettingsUpdated?.()
     return updatedSnapshot
   }, [snapshot, onSettingsUpdated])
+
+  const handleRecomputeRecommendations = useCallback(async () => {
+    if (!studyId || studyId === 'all') {
+      return
+    }
+
+    try {
+      setRecomputing(true)
+      setNotice(null)
+
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) {
+        throw new Error('Authentication required. Please sign in again.')
+      }
+
+      const response = await fetch('/api/lab-kit-recommendations/recompute', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ studyId })
+      })
+
+      const payload = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to recompute recommendations.')
+      }
+
+      const created = typeof payload?.created === 'number' ? payload.created : 0
+      const updated = typeof payload?.updated === 'number' ? payload.updated : 0
+      const expired = typeof payload?.expired === 'number' ? payload.expired : 0
+
+      setNotice({
+        type: 'success',
+        message: `Recommendations refreshed (${created} created, ${updated} updated, ${expired} expired).`
+      })
+      onSettingsUpdated?.()
+    } catch (error) {
+      setNotice({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Failed to recompute recommendations.'
+      })
+    } finally {
+      setRecomputing(false)
+    }
+  }, [studyId, onSettingsUpdated])
 
   const refreshKitTypes = useCallback(async () => {
     if (!studyId || studyId === 'all') {
@@ -734,15 +784,24 @@ export default function LabKitSettingsPanel({ studyId, onSettingsUpdated }: LabK
           <h2 className="text-2xl font-bold text-white">Lab Kit Settings</h2>
           <p className="text-sm text-gray-400">Tune predictive ordering buffers and automate lead-time planning.</p>
         </div>
-        <button
-          onClick={() => {
-            setRefreshing(true)
-            loadSettings()
-          }}
-          className="inline-flex items-center gap-2 rounded border border-gray-600 px-4 py-2 text-sm font-semibold text-gray-200 hover:border-gray-400"
-        >
-          {refreshing ? 'Refreshing…' : 'Refresh'}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleRecomputeRecommendations}
+            className="inline-flex items-center gap-2 rounded bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 disabled:opacity-40"
+            disabled={recomputing}
+          >
+            {recomputing ? 'Recomputing…' : 'Recompute Recommendations'}
+          </button>
+          <button
+            onClick={() => {
+              setRefreshing(true)
+              loadSettings()
+            }}
+            className="inline-flex items-center gap-2 rounded border border-gray-600 px-4 py-2 text-sm font-semibold text-gray-200 hover:border-gray-400"
+          >
+            {refreshing ? 'Refreshing…' : 'Refresh'}
+          </button>
+        </div>
       </div>
 
       {notice && (

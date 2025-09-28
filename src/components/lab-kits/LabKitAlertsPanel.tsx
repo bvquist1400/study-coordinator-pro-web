@@ -6,6 +6,7 @@ import { formatDateUTC } from '@/lib/date-utils'
 import LabKitOrderModal from './LabKitOrderModal'
 import { useLabKitAlertDismissals } from '@/hooks/useLabKitAlertDismissals'
 import { useGroupedLabKitAlerts, type SupplyDeficitAlert } from '@/hooks/useGroupedLabKitAlerts'
+import { useLabKitRecommendations, type LabKitRecommendationItem } from '@/hooks/useLabKitRecommendations'
 
 interface LabKitAlertsPanelProps {
   studyId: string
@@ -45,6 +46,9 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
   const [open, setOpen] = useState<Set<string>>(new Set())
   const [panelNotice, setPanelNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [orderTarget, setOrderTarget] = useState<SupplyDeficitAlert | null>(null)
+  const [recommendationOrder, setRecommendationOrder] = useState<LabKitRecommendationItem | null>(null)
+  const [pendingRecommendationId, setPendingRecommendationId] = useState<string | null>(null)
+  const [pendingDismissId, setPendingDismissId] = useState<string | null>(null)
   const [processingOrderId, setProcessingOrderId] = useState<string | null>(null)
 
   const EXPIRING_DAYS = 30
@@ -75,7 +79,24 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
     shippedAgingDays: SHIPPED_AGING_DAYS
   })
 
+  const recommendationStatuses = useMemo(() => ['new'] as Array<'new'>, [])
+
+  const {
+    data: recommendationsData,
+    isLoading: recommendationsLoading,
+    error: recommendationsError,
+    accept: acceptRecommendation,
+    dismiss: dismissRecommendation,
+    refresh: refreshRecommendations
+  } = useLabKitRecommendations({
+    studyId: studyId === 'all' ? null : studyId,
+    statuses: recommendationStatuses
+  })
+
   const MAX_INLINE_ITEMS = 5
+
+  const recommendationItems = recommendationsData?.recommendations ?? []
+  const recommendationCount = recommendationItems.length
 
   const supplyDeficitGroup = groupedData?.groups.supplyDeficit
   const supplyDeficit = useMemo(
@@ -214,6 +235,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
   useEffect(() => { ensureOpen('shippedStuck', shippedStuckCount) }, [ensureOpen, shippedStuckCount])
   useEffect(() => { ensureOpen('lowBuffer', lowBufferCount) }, [ensureOpen, lowBufferCount])
   useEffect(() => { ensureOpen('expired', expiredCount) }, [ensureOpen, expiredCount])
+  useEffect(() => { ensureOpen('recommendations', recommendationCount) }, [ensureOpen, recommendationCount])
 
   const toggle = (key: string) => {
     const n = new Set(open)
@@ -246,6 +268,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
         if (shippedStuckCount > 0) next.add('shippedStuck')
         if (lowBufferCount > 0) next.add('lowBuffer')
         if (expiredCount > 0) next.add('expired')
+        if (recommendationCount > 0) next.add('recommendations')
         return next
       })
     } catch (error) {
@@ -254,16 +277,110 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
         message: error instanceof Error ? error.message : 'Failed to restore alert groups.'
       })
     }
-  }, [restoreDismissals, refreshGroupedAlerts, supplyDeficitTotal, expiringSoonCount, pendingAgingCount, shippedStuckCount, lowBufferCount, expiredCount])
+  }, [
+    restoreDismissals,
+    refreshGroupedAlerts,
+    supplyDeficitTotal,
+    expiringSoonCount,
+    pendingAgingCount,
+    shippedStuckCount,
+    lowBufferCount,
+    expiredCount,
+    recommendationCount
+  ])
 
   const handleOrderSuccess = useCallback(async (message?: string) => {
     await refreshGroupedAlerts()
+    if (studyId !== 'all') {
+      await refreshRecommendations()
+    }
     setPanelNotice({ type: 'success', message: message || 'Order placed successfully.' })
-  }, [refreshGroupedAlerts])
+  }, [refreshGroupedAlerts, refreshRecommendations, studyId])
 
   const closeOrderModal = useCallback(() => {
     setOrderTarget(null)
   }, [])
+
+  const openRecommendationOrder = useCallback((item: LabKitRecommendationItem) => {
+    setPanelNotice(null)
+    setRecommendationOrder(item)
+  }, [])
+
+  const handleRecommendationAccept = useCallback(async (item: LabKitRecommendationItem) => {
+    try {
+      setPanelNotice(null)
+      setPendingRecommendationId(item.id)
+      await acceptRecommendation(item.id, {
+        acceptedAt: new Date().toISOString(),
+        source: 'alerts-panel'
+      })
+      setPanelNotice({
+        type: 'success',
+        message: `${item.kitTypeName ?? 'Kit'} recommendation accepted.`
+      })
+    } catch (error) {
+      setPanelNotice({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Failed to accept recommendation.'
+      })
+    } finally {
+      setPendingRecommendationId(null)
+    }
+  }, [acceptRecommendation])
+
+  const handleRecommendationDismiss = useCallback(async (item: LabKitRecommendationItem) => {
+    const reason = (typeof window !== 'undefined'
+      ? window.prompt('Provide a short reason for dismissing this recommendation:', item.dismissedReason ?? '')
+      : null) || ''
+    const trimmed = reason.trim()
+    if (!trimmed) {
+      return
+    }
+    try {
+      setPanelNotice(null)
+      setPendingDismissId(item.id)
+      await dismissRecommendation(item.id, trimmed, {
+        dismissedAt: new Date().toISOString(),
+        source: 'alerts-panel'
+      })
+      setPanelNotice({
+        type: 'success',
+        message: `${item.kitTypeName ?? 'Kit'} recommendation dismissed.`
+      })
+    } catch (error) {
+      setPanelNotice({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Failed to dismiss recommendation.'
+      })
+    } finally {
+      setPendingDismissId(null)
+    }
+  }, [dismissRecommendation])
+
+  const handleRecommendationOrderSuccess = useCallback(async (message?: string) => {
+    const current = recommendationOrder
+    setRecommendationOrder(null)
+    await handleOrderSuccess(message)
+    if (!current) return
+    try {
+      setPendingRecommendationId(current.id)
+      await acceptRecommendation(current.id, {
+        acceptedAt: new Date().toISOString(),
+        source: 'alerts-panel-order'
+      })
+      setPanelNotice({
+        type: 'success',
+        message: `${current.kitTypeName ?? 'Kit'} recommendation accepted and order placed.`
+      })
+    } catch (error) {
+      setPanelNotice({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Order placed, but failed to update recommendation status.'
+      })
+    } finally {
+      setPendingRecommendationId(null)
+    }
+  }, [recommendationOrder, handleOrderSuccess, acceptRecommendation])
 
   const markOrderReceived = useCallback(async (orderId: string, kitTypeId: string | null, kitTypeName: string | null) => {
     try {
@@ -422,11 +539,11 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
   return (
     <>
       {orderTarget && (
-        <LabKitOrderModal
-          studyId={studyId}
-          isOpen={!!orderTarget}
-          onClose={closeOrderModal}
-          onSuccess={handleOrderSuccess}
+      <LabKitOrderModal
+        studyId={studyId}
+        isOpen={!!orderTarget}
+        onClose={closeOrderModal}
+        onSuccess={handleOrderSuccess}
           defaultKitTypeId={orderTarget.kitTypeId || undefined}
           defaultKitTypeName={orderTarget.kitTypeName}
           defaultQuantity={Math.max(orderTarget.deficit, 1)}
@@ -437,6 +554,19 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
             outstanding: orderTarget.deficit,
             pending: orderTarget.pendingOrderQuantity ?? 0
           }}
+        />
+      )}
+      {recommendationOrder && studyId !== 'all' && (
+        <LabKitOrderModal
+          studyId={studyId}
+          isOpen={!!recommendationOrder}
+          onClose={() => setRecommendationOrder(null)}
+          onSuccess={handleRecommendationOrderSuccess}
+          defaultKitTypeId={recommendationOrder.kitTypeId || undefined}
+          defaultKitTypeName={recommendationOrder.kitTypeName || undefined}
+          defaultQuantity={recommendationOrder.recommendedQuantity}
+          defaultNotes={recommendationOrder.reason}
+          allowKitTypeChange={!recommendationOrder.kitTypeId}
         />
       )}
       <div className="bg-gray-800/50 rounded-lg border border-gray-700">
@@ -467,6 +597,99 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
           </div>
         )}
       </div>
+
+      {studyId !== 'all' && (
+        <Section
+          id="recommendations"
+          title="Recommended orders"
+          count={recommendationCount}
+          tone="purple"
+          actionLabel={recommendationCount > 0 ? 'Refresh' : undefined}
+          onAction={recommendationCount > 0 ? () => { void refreshRecommendations() } : undefined}
+          forceShowChildren={
+            recommendationsLoading || Boolean(recommendationsError) || recommendationCount > 0
+          }
+        >
+          {recommendationsLoading ? (
+            <div className="space-y-2">
+              {[...Array(2)].map((_, index) => (
+                <div key={index} className="h-14 rounded bg-gray-800/80 animate-pulse"></div>
+              ))}
+            </div>
+          ) : recommendationsError ? (
+            <div className="text-sm text-red-300">
+              {recommendationsError.message || 'Failed to load recommendations.'}
+            </div>
+          ) : recommendationCount === 0 ? (
+            <div className="text-sm text-gray-400">
+              No recommended orders right now. Forecast will surface new guidance when buffers drop below targets.
+            </div>
+          ) : (
+            recommendationItems.map((item) => {
+              const dueLabel = item.latestOrderDate
+                ? `Order by ${formatDateUTC(item.latestOrderDate)}`
+                : 'Order as soon as possible'
+              const windowLabel = item.windowStart || item.windowEnd
+                ? `Window ${item.windowStart ? formatDateUTC(item.windowStart) : '—'} → ${item.windowEnd ? formatDateUTC(item.windowEnd) : '—'}`
+                : null
+              const confidenceLabel =
+                typeof item.confidence === 'number'
+                  ? `${Math.round(item.confidence * 100)}% confidence`
+                  : null
+              const accepting = pendingRecommendationId === item.id
+              const dismissing = pendingDismissId === item.id
+
+              return (
+                <div
+                  key={item.id}
+                  className="rounded-md border border-purple-500/20 bg-purple-500/5 px-3 py-3 text-sm text-gray-200"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-white">{item.kitTypeName ?? 'Any kit type'}</span>
+                        <span className="text-xs text-purple-200 border border-purple-400/40 rounded-full px-2 py-0.5">Qty {item.recommendedQuantity}</span>
+                      </div>
+                      <div className="text-xs text-gray-300">{item.reason}</div>
+                      <div className="text-[11px] text-gray-400 space-x-2">
+                        <span>{dueLabel}</span>
+                        {windowLabel && <span>• {windowLabel}</span>}
+                        {confidenceLabel && <span>• {confidenceLabel}</span>}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openRecommendationOrder(item)}
+                        className="rounded border border-blue-400/60 px-2.5 py-1 text-xs font-semibold text-blue-200 hover:border-blue-300 hover:text-blue-100"
+                        disabled={accepting || dismissing}
+                      >
+                        Create order
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { void handleRecommendationAccept(item) }}
+                        className="rounded border border-green-500/40 px-2.5 py-1 text-xs font-semibold text-green-200 hover:border-green-300 hover:text-green-100 disabled:opacity-60"
+                        disabled={accepting}
+                      >
+                        {accepting ? 'Saving…' : 'Mark accepted'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { void handleRecommendationDismiss(item) }}
+                        className="rounded border border-red-500/40 px-2.5 py-1 text-xs font-semibold text-red-200 hover:border-red-300 hover:text-red-100 disabled:opacity-60"
+                        disabled={dismissing}
+                      >
+                        {dismissing ? 'Updating…' : 'Dismiss'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </Section>
+      )}
 
       {!isDismissed('supplyDeficit') && (
         <Section

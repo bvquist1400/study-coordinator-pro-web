@@ -78,6 +78,7 @@ export interface InventoryForecastResult {
     expiryCutoffISO: string
     expiryWindowDays: number
     inventoryBufferDays: number
+    inventoryBufferKits: number
     visitWindowBufferDays: number
     kitTypeNames: Record<string, string | null>
   }
@@ -173,9 +174,9 @@ export async function loadInventoryForecast(
 
   const { data: studySettings, error: studySettingsError } = await supabase
     .from('studies')
-    .select('inventory_buffer_days, visit_window_buffer_days')
+    .select('inventory_buffer_days, inventory_buffer_kits, visit_window_buffer_days')
     .eq('id', studyId)
-    .single<{ inventory_buffer_days: number | null; visit_window_buffer_days: number | null }>()
+    .single<{ inventory_buffer_days: number | null; inventory_buffer_kits: number | null; visit_window_buffer_days: number | null }>()
 
   if (studySettingsError) {
     logger.error('inventory-forecast: failed to load study buffer settings', studySettingsError, { studyId })
@@ -183,6 +184,7 @@ export async function loadInventoryForecast(
   }
 
   const inventoryBufferDays = Math.max(0, Math.min(120, (studySettings?.inventory_buffer_days ?? 0)))
+  const inventoryBufferKits = Math.max(0, Math.min(500, (studySettings?.inventory_buffer_kits ?? 0)))
   const visitWindowBufferDays = Math.max(0, Math.min(60, (studySettings?.visit_window_buffer_days ?? 0)))
   const effectiveDaysAhead = Math.min(days + visitWindowBufferDays, 180)
 
@@ -261,6 +263,7 @@ export async function loadInventoryForecast(
         expiryCutoffISO: expiryCutoff.toISOString().slice(0, 10),
         expiryWindowDays,
         inventoryBufferDays,
+        inventoryBufferKits,
         visitWindowBufferDays,
         kitTypeNames
       }
@@ -541,6 +544,7 @@ export async function loadInventoryForecast(
       expiryCutoffISO: expiryCutoff.toISOString().slice(0, 10),
       expiryWindowDays,
       inventoryBufferDays,
+      inventoryBufferKits,
       visitWindowBufferDays,
       kitTypeNames
     }
