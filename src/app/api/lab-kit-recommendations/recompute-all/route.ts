@@ -49,12 +49,18 @@ export async function POST(request: NextRequest) {
 
     const supabase = createSupabaseAdmin()
 
+    type StudyStub = {
+      id: string
+      status: string | null
+    }
+
     const { data: studies, error: studiesError } = await supabase
       .from('studies')
       .select('id, status')
       .in('status', statusFilter)
+      .returns<StudyStub[] | null>()
 
-    if (studiesError) {
+    if (studiesError || !studies) {
       logger.error('recompute-all: failed to load studies', studiesError, { statusFilter })
       return jsonError('Failed to load studies.', 500)
     }
@@ -74,7 +80,7 @@ export async function POST(request: NextRequest) {
     let totalUpdated = 0
     let totalExpired = 0
 
-    for (const study of studies ?? []) {
+    for (const study of studies) {
       if (!study?.id) continue
       processed += 1
       try {
