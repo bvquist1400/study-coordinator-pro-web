@@ -59,7 +59,9 @@ export async function POST(request: NextRequest) {
       return jsonError('Failed to load studies.', 500)
     }
 
-    const studies = (studyRows ?? []).filter((row): row is { id: string; status: string | null } => typeof row?.id === 'string')
+    const studies = (studyRows as Array<{ id: string | null; status: string | null }>).
+      filter((row) => typeof row.id === 'string')
+      .map((row) => ({ id: row.id as string, status: row.status ?? null }))
 
     const results: Array<{
       studyId: string
