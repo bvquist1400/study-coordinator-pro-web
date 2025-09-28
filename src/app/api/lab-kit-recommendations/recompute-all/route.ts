@@ -49,21 +49,17 @@ export async function POST(request: NextRequest) {
 
     const supabase = createSupabaseAdmin()
 
-    type StudyStub = {
-      id: string
-      status: string | null
-    }
-
-    const { data: studies, error: studiesError } = await supabase
+    const { data: studyRows, error: studiesError } = await supabase
       .from('studies')
       .select('id, status')
       .in('status', statusFilter)
-      .returns<StudyStub[] | null>()
 
-    if (studiesError || !studies) {
+    if (studiesError || !Array.isArray(studyRows)) {
       logger.error('recompute-all: failed to load studies', studiesError, { statusFilter })
       return jsonError('Failed to load studies.', 500)
     }
+
+    const studies = (studyRows ?? []).filter((row): row is { id: string; status: string | null } => typeof row?.id === 'string')
 
     const results: Array<{
       studyId: string
