@@ -312,6 +312,18 @@ export async function fetchShipmentsForStudies(
       }
     }
 
+    // Backfill shipment accession numbers from linked kits so downstream
+    // consumers (subject lookup, UI display) always have a value.
+    for (const shipment of shipments) {
+      if (!shipment.accession_number && shipment.lab_kit_id) {
+        const kit = kitMap.get(shipment.lab_kit_id)
+        if (kit?.accession_number) {
+          shipment.accession_number = kit.accession_number
+          accessions.add(kit.accession_number)
+        }
+      }
+    }
+
     // Load subject visit assignments.
     const subjectById = new Map<string, ShipmentSubjectInfo & { study_id: string | null }>()
     if (subjectVisitIds.size > 0) {
@@ -373,7 +385,8 @@ export async function fetchShipmentsForStudies(
           : null
 
       const subjectFromId = shipment.subject_visit_id ? subjectById.get(shipment.subject_visit_id) ?? null : null
-      const subjectFromAcc = !subjectFromId && shipment.accession_number ? subjectByAcc.get(shipment.accession_number) ?? null : null
+      const accessionNumber = shipment.accession_number ?? kit?.accession_number ?? null
+      const subjectFromAcc = !subjectFromId && accessionNumber ? subjectByAcc.get(accessionNumber) ?? null : null
       const subject = subjectFromId || subjectFromAcc || null
 
       const studyId = shipment.study_id || kit?.study_id || subject?.study_id || null
@@ -387,7 +400,7 @@ export async function fetchShipmentsForStudies(
         study_title: studyTitle,
         lab_kit_id: shipment.lab_kit_id ?? (kit ? kit.id : null),
         subject_visit_id: shipment.subject_visit_id ?? (subject?.visit_id ?? null),
-        accession_number: shipment.accession_number,
+        accession_number: accessionNumber,
         airway_bill_number: shipment.airway_bill_number,
         carrier: shipment.carrier,
         shipped_date: shipment.shipped_date,

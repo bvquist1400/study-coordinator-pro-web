@@ -2,6 +2,12 @@ Study Coordinator Pro — Web
 
 Opinionated Next.js app for study/site coordination with visits, IP accountability, and analytics. This README focuses on getting a contributor productive quickly.
 
+Recent Changes
+
+- **Lab Kit Management**: Enhanced inventory system with intelligent forecasting, shipment tracking, and alert management. Supports multi-kit studies with configurable buffers and deficit tracking.
+- **Lab Kit Ordering**: New order workflow with pending order tracking, automatic deficit coverage, and "Mark Received" → inventory entry flow.
+- **Shipment Status**: Added `delivered` status to lab kit shipments with corresponding migration and UI updates.
+
 Links
 
 - INSTRUCTIONS: `INSTRUCTIONS.md`
@@ -97,6 +103,7 @@ IP Compliance
 Lab Kits
 
 - Status set includes `delivered`. Use the idempotent migration in `migrations/20250911_add_delivered_status_lab_kits.sql` to align environments, and ensure `supabase_database_structure/lab_kits.sql` stays in sync.
+- Full-featured inventory management with forecasting, shipment tracking, and automated alerts. See `docs/lab-kit-management-review.md` for comprehensive system analysis and optimization recommendations.
 
 Deployment
 

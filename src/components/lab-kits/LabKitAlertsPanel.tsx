@@ -179,7 +179,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
         }
       }
     } catch (err) {
-      console.warn('Failed to load dismissed lab kit alerts', err)
+      console.error('Failed to load dismissed lab kit alerts', err)
     }
   }, [storageKey])
 
@@ -239,21 +239,27 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
   }
 
   // Build categories
-  const expiringSoon = kits.filter(k => k.status === 'available' && withinDays(k.expiration_date as any, EXPIRING_DAYS))
-  const expired = kits.filter(k => k.status === 'expired')
-  const pendingAging = kits.filter(k => k.status === 'pending_shipment' && ageInDays((k as any).updated_at || (k as any).created_at) >= PENDING_AGING_DAYS)
-  const shippedStuck = kits.filter(k => k.status === 'shipped' && ageInDays((k as any).updated_at || (k as any).created_at) >= SHIPPED_AGING_DAYS)
-  const supplyDeficit = useMemo(
-    () => forecast.filter(f => (f.originalDeficit ?? f.deficit) > 0 || (f.pendingOrderQuantity ?? 0) > 0),
+  const expiringSoon = kits.filter((kit: LabKit) => kit.status === 'available' && withinDays(kit.expiration_date as any, EXPIRING_DAYS))
+  const expired = kits.filter((kit: LabKit) => kit.status === 'expired')
+  const pendingAging = kits.filter((kit: LabKit) => kit.status === 'pending_shipment' && ageInDays((kit as any).updated_at || (kit as any).created_at) >= PENDING_AGING_DAYS)
+  const shippedStuck = kits.filter((kit: LabKit) => kit.status === 'shipped' && ageInDays((kit as any).updated_at || (kit as any).created_at) >= SHIPPED_AGING_DAYS)
+  const supplyDeficit = useMemo<ForecastItem[]>(
+    () => forecast.filter((item: ForecastItem) => (item.originalDeficit ?? item.deficit) > 0 || (item.pendingOrderQuantity ?? 0) > 0),
     [forecast]
   )
-  const activeSupplyDeficit = useMemo(
-    () => supplyDeficit.filter(item => item.deficit > 0),
+  const activeSupplyDeficit = useMemo<ForecastItem[]>(
+    () => supplyDeficit.filter((item: ForecastItem) => item.deficit > 0),
     [supplyDeficit]
   )
-  const lowBufferAll = forecast.filter(f => f.deficit <= 0 && (f.kitsAvailable - f.kitsRequired) <= 2)
+  const lowBufferAll = useMemo(
+    () => forecast.filter((item: ForecastItem) => item.deficit <= 0 && (item.kitsAvailable - item.kitsRequired) <= 2),
+    [forecast]
+  )
   const lowBuffer = lowBufferAll
-  const lowBufferCovered = lowBufferAll.filter(item => (item.pendingOrderQuantity ?? 0) > 0)
+  const lowBufferCovered = useMemo(
+    () => lowBufferAll.filter((item: ForecastItem) => (item.pendingOrderQuantity ?? 0) > 0),
+    [lowBufferAll]
+  )
 
   const getKitTypeLabel = (kit: LabKit) => {
     const enriched = kit as LabKit & {
@@ -487,7 +493,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
           defaultKitTypeId={orderTarget.kitTypeId || undefined}
           defaultKitTypeName={orderTarget.kitTypeName}
           defaultQuantity={Math.max(orderTarget.deficit, 1)}
-          defaultVendor={orderTarget.pendingOrders.find(order => order.vendor)?.vendor ?? undefined}
+          defaultVendor={orderTarget.pendingOrders.find((order: ForecastPendingOrder) => Boolean(order.vendor))?.vendor ?? undefined}
           allowKitTypeChange={false}
           deficitSummary={{
             original: orderTarget.originalDeficit ?? orderTarget.deficit,
@@ -629,13 +635,13 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
           actionLabel="View in Inventory"
           onAction={() => onNavigate?.('inventory', { expiringOnly: true }) }
         >
-          {expiringSoon.slice(0, 10).map(k => (
-            <div key={k.id} className="flex items-center justify-between text-sm">
+          {expiringSoon.slice(0, 10).map((kit: LabKit) => (
+            <div key={kit.id} className="flex items-center justify-between text-sm">
               <div className="text-gray-200">
-                {k.accession_number}
-                <span className="text-gray-400"> {getKitTypeLabel(k)}</span>
+                {kit.accession_number}
+                <span className="text-gray-400"> {getKitTypeLabel(kit)}</span>
               </div>
-              <div className="text-yellow-300">{k.expiration_date ? formatDateUTC(k.expiration_date) : '—'}</div>
+              <div className="text-yellow-300">{kit.expiration_date ? formatDateUTC(kit.expiration_date) : '—'}</div>
             </div>
           ))}
           {expiringSoon.length > 10 && (
@@ -655,10 +661,10 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
           actionLabel="Go to Inventory"
           onAction={() => onNavigate?.('inventory')}
         >
-          {pendingAging.slice(0, 10).map(k => (
-            <div key={k.id} className="flex items-center justify-between text-sm">
-              <div className="text-gray-200">{k.accession_number}</div>
-              <div className="text-gray-400">{ageInDays((k as any).updated_at || (k as any).created_at)} days</div>
+          {pendingAging.slice(0, 10).map((kit: LabKit) => (
+            <div key={kit.id} className="flex items-center justify-between text-sm">
+              <div className="text-gray-200">{kit.accession_number}</div>
+              <div className="text-gray-400">{ageInDays((kit as any).updated_at || (kit as any).created_at)} days</div>
             </div>
           ))}
           {pendingAging.length > 10 && (
@@ -678,10 +684,10 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
           actionLabel="Go to Inventory"
           onAction={() => onNavigate?.('inventory')}
         >
-          {shippedStuck.slice(0, 10).map(k => (
-            <div key={k.id} className="flex items-center justify-between text-sm">
-              <div className="text-gray-200">{k.accession_number}</div>
-              <div className="text-gray-400">{ageInDays((k as any).updated_at || (k as any).created_at)} days</div>
+          {shippedStuck.slice(0, 10).map((kit: LabKit) => (
+            <div key={kit.id} className="flex items-center justify-between text-sm">
+              <div className="text-gray-200">{kit.accession_number}</div>
+              <div className="text-gray-400">{ageInDays((kit as any).updated_at || (kit as any).created_at)} days</div>
             </div>
           ))}
           {shippedStuck.length > 10 && (
@@ -701,7 +707,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
           actionLabel="Go to Inventory"
           onAction={() => onNavigate?.('inventory')}
         >
-          {lowBuffer.map(item => {
+          {lowBuffer.map((item: ForecastItem) => {
             const hasCoverage = (item.pendingOrderQuantity ?? 0) > 0
             return (
               <div
@@ -735,10 +741,10 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
           actionLabel="Go to Expired View"
           onAction={() => onNavigate?.('expired')}
         >
-          {expired.slice(0, 10).map(k => (
-            <div key={k.id} className="flex items-center justify-between text-sm">
-              <div className="text-gray-200">{k.accession_number}</div>
-              <div className="text-red-400">{k.expiration_date ? formatDateUTC(k.expiration_date) : '—'}</div>
+          {expired.slice(0, 10).map((kit: LabKit) => (
+            <div key={kit.id} className="flex items-center justify-between text-sm">
+              <div className="text-gray-200">{kit.accession_number}</div>
+              <div className="text-red-400">{kit.expiration_date ? formatDateUTC(kit.expiration_date) : '—'}</div>
             </div>
           ))}
           {expired.length > 10 && (

@@ -1,10 +1,14 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo, Fragment } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import EditSubjectForm from './EditSubjectForm'
 import SubjectVisitTimelineTable from './SubjectVisitTimelineTable'
 import { formatDateUTC, formatDateTimeUTC, parseDateUTC } from '@/lib/date-utils'
+import { ComplianceProgressBar } from '@/components/compliance/ComplianceWidget'
+import { DEFAULT_THRESHOLDS, getComplianceLabel } from '@/lib/compliance-calculator'
+import type { ComplianceResult } from '@/lib/compliance-calculator'
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
 
 interface Subject {
   id: string
@@ -118,6 +122,51 @@ const _visitStatusLabels = {
   cancelled: 'Cancelled'
 }
 
+const percentageToStatus = (
+  percentage: number | null | undefined,
+  thresholds = DEFAULT_THRESHOLDS
+): ComplianceResult['status'] => {
+  const value = typeof percentage === 'number' ? percentage : 0
+  if (value >= thresholds.excellent) return 'excellent'
+  if (value >= thresholds.good) return 'good'
+  if (value >= thresholds.acceptable) return 'acceptable'
+  return 'poor'
+}
+
+const getReturnBadge = (diffDays: number) => {
+  if (diffDays < 0) {
+    return {
+      className: 'bg-red-900/50 text-red-300 border border-red-600/50',
+      label: `Overdue by ${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? '' : 's'}`
+    }
+  }
+  if (diffDays === 0) {
+    return {
+      className: 'bg-yellow-900/50 text-yellow-300 border border-yellow-600/50',
+      label: 'Due today'
+    }
+  }
+  if (diffDays <= 7) {
+    return {
+      className: 'bg-yellow-900/50 text-yellow-300 border border-yellow-600/50',
+      label: `Due in ${diffDays} day${diffDays === 1 ? '' : 's'}`
+    }
+  }
+  return {
+    className: 'bg-gray-800 text-gray-300 border border-gray-700',
+    label: `Due in ${diffDays} day${diffDays === 1 ? '' : 's'}`
+  }
+}
+
+const sanitizeCsvField = (value: string | number | null | undefined): string => {
+  if (value === null || value === undefined) return ''
+  const stringValue = `${value}`
+  if (/[",\n]/.test(stringValue)) {
+    return `"${stringValue.replace(/"/g, '""')}"`
+  }
+  return stringValue
+}
+
 export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose, onSubjectUpdated }: SubjectDetailModalProps) {
   const [subject, setSubject] = useState<Subject | null>(null)
   const [metrics, setMetrics] = useState<SubjectMetrics | null>(null)
@@ -126,6 +175,156 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
   const [activeTab, setActiveTab] = useState<'timeline' | 'drug-compliance' | 'notes'>('timeline')
   const [showEditForm, setShowEditForm] = useState(false)
   const [perVisitCycles, setPerVisitCycles] = useState<Array<{ visit_id: string; visit_date: string; visit_name: string | null; items: any[]; avg_compliance: number | null }>>([])
+
+  const overallCompliance = useMemo(() => {
+    const visitPercentages: number[] = []
+    for (const cycle of perVisitCycles) {
+      if (Array.isArray(cycle.items)) {
+        cycle.items.forEach((item: any) => {
+          if (typeof item?.compliance_percentage === 'number') {
+            visitPercentages.push(Number(item.compliance_percentage))
+          }
+        })
+      }
+    }
+
+    if (visitPercentages.length > 0) {
+      const avg = visitPercentages.reduce((sum, value) => sum + value, 0) / visitPercentages.length
+      return Math.round(avg)
+    }
+
+    if (metrics?.drug_compliance?.percentage != null) {
+      return Math.round(metrics.drug_compliance.percentage)
+    }
+
+    return null
+  }, [perVisitCycles, metrics?.drug_compliance?.percentage])
+
+  const overallStatus = useMemo(() => (
+    overallCompliance != null ? percentageToStatus(overallCompliance) : null
+  ), [overallCompliance])
+
+  const sortedPerVisit = useMemo<Array<{ visit_id: string; visit_date: string; visit_name: string | null; items: any[]; avg_compliance: number | null }>>(
+    () => [...perVisitCycles].sort((a, b) => new Date(a.visit_date).getTime() - new Date(b.visit_date).getTime()),
+    [perVisitCycles]
+  )
+
+  const complianceTrendData = useMemo(() =>
+    sortedPerVisit
+      .filter(visit => typeof visit.avg_compliance === 'number')
+      .map(visit => ({
+        visitId: visit.visit_id,
+        visitDate: visit.visit_date,
+        label: visit.visit_name || formatDateUTC(visit.visit_date),
+        compliance: Math.round(visit.avg_compliance ?? 0)
+      })),
+    [sortedPerVisit]
+  )
+
+  const complianceTrendMax = useMemo(() => {
+    if (complianceTrendData.length === 0) return 100
+    const maxValue = Math.max(...complianceTrendData.map(point => point.compliance))
+    const rounded = Math.ceil(Math.max(100, maxValue) / 10) * 10
+    return rounded
+  }, [complianceTrendData])
+
+  const nextVisitInfo = useMemo(() => {
+    const today = new Date()
+
+    if (metrics?.next_visit_date) {
+      const parsed = parseDateUTC(metrics.next_visit_date) || new Date(metrics.next_visit_date)
+      const diffDays = Math.round((parsed.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+      return {
+        formatted: formatDateUTC(metrics.next_visit_date),
+        diffDays,
+        label: metrics.next_visit_name || 'Next scheduled visit',
+        source: 'visit' as const
+      }
+    }
+
+    if (metrics?.expected_return_date) {
+      const parsed = parseDateUTC(metrics.expected_return_date) || new Date(metrics.expected_return_date)
+      const diffDays = Math.round((parsed.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+      return {
+        formatted: formatDateUTC(metrics.expected_return_date),
+        diffDays,
+        label: 'Expected IP return',
+        source: 'return' as const
+      }
+    }
+
+    return null
+  }, [metrics?.next_visit_date, metrics?.next_visit_name, metrics?.expected_return_date])
+
+  const activeBottle = metrics?.active_drug_bottle
+  const lastDispensing = metrics?.last_drug_dispensing
+  const activeBottleStartDate = lastDispensing?.ip_start_date ?? activeBottle?.start_date ?? null
+  const activeBottleDispensedDate = lastDispensing?.visit_date ?? null
+  const overallOverCompliance = overallCompliance != null && overallCompliance > 100
+
+  const handleExportCompliance = useCallback(() => {
+    if (!sortedPerVisit.length) return
+
+    const lines: string[] = [
+      [
+        'Visit',
+        'Visit Date',
+        'Drug',
+        'Dispensed',
+        'Returned',
+        'Last Dose Date',
+        'Compliance (%)'
+      ].map(cell => sanitizeCsvField(cell)).join(',')
+    ]
+
+    for (const visit of sortedPerVisit) {
+      const visitLabel = visit.visit_name || '-'
+      const visitDate = visit.visit_date ? formatDateUTC(visit.visit_date) : ''
+      for (const item of visit.items || []) {
+        const cycleItem = item as any
+        const complianceValue = typeof item?.compliance_percentage === 'number'
+          ? Math.round(item.compliance_percentage)
+          : ''
+
+        const row = [
+          visitLabel,
+          visitDate,
+          cycleItem?.drug_name ?? cycleItem?.study_drug ?? '',
+          cycleItem?.tablets_dispensed != null ? `${cycleItem.tablets_dispensed}` : '',
+          cycleItem?.tablets_returned != null ? `${cycleItem.tablets_returned}` : '',
+          cycleItem?.last_dose_date ? formatDateUTC(cycleItem.last_dose_date) : '',
+          complianceValue === '' ? '' : `${complianceValue}`
+        ]
+
+        lines.push(row.map(cell => sanitizeCsvField(cell)).join(','))
+      }
+    }
+
+    const csvContent = lines.join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    const safeSubject = subject?.subject_number ? subject.subject_number.replace(/[^a-z0-9_-]/gi, '_') : subjectId
+    link.href = url
+    link.setAttribute('download', `subject-${safeSubject}-compliance.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    setTimeout(() => URL.revokeObjectURL(url), 5000)
+  }, [sortedPerVisit, subject?.subject_number, subjectId])
+
+  const renderTrendTooltip = useCallback(({ active, payload }: any) => {
+    if (!active || !payload || payload.length === 0) return null
+    const data = payload[0].payload as { label: string; compliance: number; visitDate: string }
+    return (
+      <div className="rounded-md border border-gray-700 bg-gray-900/90 px-3 py-2 text-xs text-gray-100 shadow-lg">
+        <div className="font-medium text-white">{data.label}</div>
+        <div className="text-gray-300">{formatDateUTC(data.visitDate)}</div>
+        <div className="mt-1 text-blue-300">{data.compliance}% compliant</div>
+      </div>
+    )
+  }, [])
 
   const handleDeleteSubject = useCallback(async () => {
     if (!subject) return
@@ -441,164 +640,7 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
                   
                   {metrics ? (
                     <>
-                      {/* Current Drug Status Overview */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {/* Current Compliance */}
-                        {(metrics.drug_compliance || (metrics.ip_dispensing_history && metrics.ip_dispensing_history.length > 0)) && (() => {
-                          // Calculate overall compliance as average of all recorded compliance percentages
-                          let overallCompliance: number | null = null;
-                          
-                          if (metrics.ip_dispensing_history && metrics.ip_dispensing_history.length > 0) {
-                            const validComplianceValues = metrics.ip_dispensing_history
-                              .filter((row: any) => row.compliance_percentage != null)
-                              .map((row: any) => row.compliance_percentage);
-                            
-                            if (validComplianceValues.length > 0) {
-                              overallCompliance = Math.round(
-                                validComplianceValues.reduce((sum: number, val: number) => sum + val, 0) / validComplianceValues.length
-                              );
-                            }
-                          }
-                          
-                          // Fallback to single compliance if no history available
-                          if (overallCompliance === null && metrics.drug_compliance?.percentage) {
-                            overallCompliance = metrics.drug_compliance.percentage;
-                          }
-
-                          return (
-                            <div className="bg-gray-800/30 rounded-lg p-6">
-                              <h4 className="text-white font-medium mb-4 flex items-center">
-                                <svg className="w-5 h-5 mr-2 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                Current Compliance
-                              </h4>
-                              <div className="space-y-3">
-                                <div className="text-3xl font-bold text-white">
-                                  {overallCompliance ? `${overallCompliance}%` : 'N/A'}
-                                </div>
-                                <div className="text-sm text-gray-400">
-                                  {metrics.ip_dispensing_history && metrics.ip_dispensing_history.length > 1
-                                    ? `Average of ${metrics.ip_dispensing_history.filter((row: any) => row.compliance_percentage != null).length} compliance assessments`
-                                    : metrics.drug_compliance
-                                    ? `${metrics.drug_compliance.dispensed_count - metrics.drug_compliance.returned_count} taken / ${metrics.drug_compliance.expected_taken || 'N/A'} expected`
-                                    : 'No compliance data available'
-                                  }
-                                </div>
-                                {overallCompliance && (
-                                  <div className="w-full bg-gray-700 rounded-full h-2">
-                                    <div
-                                      className={`h-2 rounded-full transition-all duration-500 ${
-                                        overallCompliance >= 90 ? 'bg-green-500' :
-                                        overallCompliance >= 75 ? 'bg-yellow-500' :
-                                        overallCompliance >= 50 ? 'bg-orange-500' : 'bg-red-500'
-                                      }`}
-                                      style={{ width: `${Math.min(100, Math.max(0, overallCompliance))}%` }}
-                                    />
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })()}
-
-                        {/* Active Drug Bottle */}
-                        {metrics.active_drug_bottle && (
-                          <div className="bg-gray-800/30 rounded-lg p-6">
-                            <h4 className="text-white font-medium mb-4 flex items-center">
-                              <svg className="w-5 h-5 mr-2 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                              </svg>
-                              Active Bottle
-                            </h4>
-                            <div className="space-y-2">
-                              <div className="flex justify-between">
-                                <span className="text-gray-400">Bottle ID:</span>
-                                <span className="text-white font-mono">{metrics.active_drug_bottle.ip_id}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-400">Dispensed:</span>
-                                <span className="text-white">{metrics.active_drug_bottle.dispensed_count} tablets</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-400">Start Date:</span>
-                                <span className="text-white">{formatDateUTC(metrics.active_drug_bottle.start_date)}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-400">Days Active:</span>
-                                <span className="text-white">{metrics.active_drug_bottle.days_since_dispensing} days</span>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Last Dispensing */}
-                        {metrics.last_drug_dispensing && (
-                          <div className="bg-gray-800/30 rounded-lg p-6">
-                            <h4 className="text-white font-medium mb-4 flex items-center">
-                              <svg className="w-5 h-5 mr-2 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                              Last Dispensing
-                            </h4>
-                            <div className="space-y-2">
-                              <div className="flex justify-between">
-                                <span className="text-gray-400">Visit Date:</span>
-                                <span className="text-white">{formatDateUTC(metrics.last_drug_dispensing.visit_date)}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-400">Bottle ID:</span>
-                                <span className="text-white font-mono">{metrics.last_drug_dispensing.ip_id}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-400">Quantity:</span>
-                                <span className="text-white">{metrics.last_drug_dispensing.ip_dispensed} tablets</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-400">Started:</span>
-                                <span className="text-white">{formatDateUTC(metrics.last_drug_dispensing.ip_start_date)}</span>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Expected Return */}
-                        {metrics.expected_return_date && (
-                          <div className="bg-gray-800/30 rounded-lg p-6">
-                            <h4 className="text-white font-medium mb-4 flex items-center">
-                              <svg className="w-5 h-5 mr-2 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                              </svg>
-                              Expected Return
-                            </h4>
-                            <div className="space-y-2">
-                              <div className="text-xl font-bold text-white">
-                                {formatDateUTC(metrics.expected_return_date)}
-                              </div>
-                              <div className="text-sm text-gray-400">
-                                {(() => {
-                                  const today = new Date()
-                                  const returnDate = new Date(metrics.expected_return_date)
-                                  const diffDays = Math.ceil((returnDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-                                  
-                                  if (diffDays < 0) {
-                                    return <span className="text-red-400">Overdue by {Math.abs(diffDays)} days</span>
-                                  } else if (diffDays === 0) {
-                                    return <span className="text-yellow-400">Due today</span>
-                                  } else if (diffDays <= 7) {
-                                    return <span className="text-yellow-400">Due in {diffDays} days</span>
-                                  } else {
-                                    return <span className="text-gray-400">Due in {diffDays} days</span>
-                                  }
-                                })()}
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Compliance Status Message */}
-                      {!metrics.drug_compliance && !metrics.active_drug_bottle && !metrics.last_drug_dispensing && (
+                      {!metrics.drug_compliance && !activeBottle && !lastDispensing && (
                         <div className="bg-gray-800/20 border border-gray-700 rounded-lg p-6">
                           <div className="flex items-center">
                             <svg className="w-6 h-6 text-gray-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -614,85 +656,159 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
                         </div>
                       )}
 
-                      {/* Old IP Dispensing History table removed. Show summary cards only when available. */}
-                      <div className="bg-gray-800/30 rounded-lg p-6 space-y-4">
-                        <h4 className="text-white font-medium mb-2 flex items-center">
-                          <svg className="w-5 h-5 mr-2 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                          </svg>
-                          IP Compliance
-                        </h4>
+                      <div className="bg-gray-800/30 rounded-lg p-6 space-y-6">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-2 text-white font-medium">
+                            <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                            </svg>
+                            <span>IP Compliance</span>
+                          </div>
+                          {metrics?.drug_compliance?.assessment_date && (
+                            <span className="text-xs text-gray-400">
+                              Assessed {formatDateUTC(metrics.drug_compliance.assessment_date)}
+                            </span>
+                          )}
+                        </div>
 
-                        {metrics?.drug_compliance && (
-                          <div className="flex items-start space-x-4 p-4 bg-gray-800/40 rounded-lg">
-                            <div className="flex-shrink-0 w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
-                              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4" />
-                              </svg>
+                        <div className="grid gap-4 md:grid-cols-3">
+                          <div className="rounded-lg border border-gray-700 bg-gray-900/40 p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-semibold text-gray-300">Overall Compliance</span>
+                              <span className="text-sm font-semibold text-white">
+                                {overallCompliance != null ? `${overallCompliance}%` : 'No data'}
+                              </span>
                             </div>
-                            <div className="flex-grow">
-                              <div className="flex items-center justify-between">
-                                <h5 className="text-white font-medium">Compliance Assessment</h5>
-                                <span className="text-gray-400 text-sm">Latest</span>
-                              </div>
-                              <p className="text-gray-400 text-sm mt-1">
-                                {metrics.drug_compliance.dispensed_count - metrics.drug_compliance.returned_count} tablets taken out of {metrics.drug_compliance.expected_taken || 'N/A'} expected
+                            {overallCompliance != null ? (
+                              <ComplianceProgressBar
+                                percentage={overallCompliance}
+                                status={overallStatus ?? 'poor'}
+                              />
+                            ) : (
+                              <p className="text-sm text-gray-500">No compliance entries recorded.</p>
+                            )}
+                            {metrics?.drug_compliance?.percentage != null && (
+                              <p className="text-xs text-gray-400">
+                                Latest cycle: {metrics.drug_compliance.percentage}% · {getComplianceLabel(percentageToStatus(metrics.drug_compliance.percentage))}
                               </p>
-                              <div className="mt-2 flex items-center space-x-2">
-                                <div className="flex-shrink-0">
-                                  <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                                    metrics.drug_compliance.percentage && metrics.drug_compliance.percentage >= 90
-                                      ? 'bg-green-900/50 text-green-300 border border-green-600/50'
-                                      : metrics.drug_compliance.percentage && metrics.drug_compliance.percentage >= 75
-                                      ? 'bg-yellow-900/50 text-yellow-300 border border-yellow-600/50'
-                                      : 'bg-red-900/50 text-red-300 border border-red-600/50'
-                                  }`}>
-                                    {metrics.drug_compliance.percentage ? `${metrics.drug_compliance.percentage}%` : 'N/A'}
-                                  </span>
+                            )}
+                            {metrics?.drug_compliance?.percentage != null && metrics.drug_compliance.percentage > 100 && (
+                              <p className="text-xs text-red-300">
+                                Cycle over 100% — confirm pill counts with the coordinator.
+                              </p>
+                            )}
+                            {overallOverCompliance && (
+                              <p className="text-xs text-red-300">
+                                Over 100% recorded — confirm dosing and tablet returns with the site.
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="rounded-lg border border-gray-700 bg-gray-900/40 p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-semibold text-gray-300">Active Bottle</span>
+                              {activeBottle?.ip_id && (
+                                <span className="font-mono text-xs text-gray-400">{activeBottle.ip_id}</span>
+                              )}
+                            </div>
+                            {activeBottle ? (
+                              <div className="space-y-2 text-sm text-gray-300">
+                                <div className="flex justify-between">
+                                  <span className="text-gray-400">Dispensed</span>
+                                  <span className="text-white">{activeBottle.dispensed_count ?? 0}</span>
+                                </div>
+                                {activeBottleDispensedDate && (
+                                  <div className="flex justify-between">
+                                    <span className="text-gray-400">Dispensed on</span>
+                                    <span className="text-white">{formatDateUTC(activeBottleDispensedDate)}</span>
+                                  </div>
+                                )}
+                                <div className="flex justify-between">
+                                  <span className="text-gray-400">First dose</span>
+                                  <span className="text-white">{activeBottleStartDate ? formatDateUTC(activeBottleStartDate) : '—'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-400">Days active</span>
+                                  <span className="text-white">{activeBottle.days_since_dispensing ?? 0}</span>
                                 </div>
                               </div>
-                            </div>
+                            ) : (
+                              <p className="text-sm text-gray-500">No active bottle recorded.</p>
+                            )}
+                            {lastDispensing && (
+                              <div className="border-t border-gray-700 pt-2 text-xs text-gray-400">
+                                Last dispensed {formatDateUTC(lastDispensing.visit_date)} · Bottle {lastDispensing.ip_id}
+                              </div>
+                            )}
                           </div>
-                        )}
 
-                        {metrics?.expected_return_date && (
-                          <div className="flex items-start space-x-4 p-4 bg-gray-800/40 rounded-lg border-l-4 border-yellow-500">
-                            <div className="flex-shrink-0 w-10 h-10 bg-yellow-600 rounded-full flex items-center justify-center">
-                              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3" />
-                              </svg>
+                          <div className="rounded-lg border border-gray-700 bg-gray-900/40 p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-semibold text-gray-300">
+                                {nextVisitInfo?.source === 'return' ? 'Expected IP Return' : 'Next Scheduled Visit'}
+                              </span>
+                              {nextVisitInfo && (
+                                <span className="text-xs text-gray-400">{nextVisitInfo.formatted}</span>
+                              )}
                             </div>
-                            <div className="flex-grow">
-                              <div className="flex items-center justify-between">
-                                <h5 className="text-white font-medium">Expected Return</h5>
-                                <span className="text-gray-400 text-sm">{formatDateUTC(metrics.expected_return_date)}</span>
-                              </div>
-                              <p className="text-gray-400 text-sm mt-1">
-                                Return visit due for tablet count and compliance assessment
-                              </p>
-                              <div className="mt-2">
+                            {nextVisitInfo ? (
+                              <Fragment>
+                                <p className="text-sm text-gray-400">
+                                  {nextVisitInfo.source === 'visit'
+                                    ? `Upcoming visit: ${nextVisitInfo.label}`
+                                    : 'Expected IP return for accountability'}
+                                </p>
                                 {(() => {
-                                  const today = new Date()
-                                  const returnDate = new Date(metrics.expected_return_date)
-                                  const diffDays = Math.ceil((returnDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-                                  if (diffDays < 0) {
-                                    return <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-900/50 text-red-300 border border-red-600/50">Overdue by {Math.abs(diffDays)} days</span>
-                                  } else if (diffDays === 0) {
-                                    return <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-900/50 text-yellow-300 border border-yellow-600/50">Due today</span>
-                                  } else if (diffDays <= 7) {
-                                    return <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-900/50 text-yellow-300 border border-yellow-600/50">Due in {diffDays} days</span>
-                                  }
-                                  return <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-700 text-gray-300">Due in {diffDays} days</span>
+                                  const badge = getReturnBadge(nextVisitInfo.diffDays)
+                                  return (
+                                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${badge.className}`}>
+                                      {badge.label}
+                                    </span>
+                                  )
                                 })()}
-                              </div>
+                              </Fragment>
+                            ) : (
+                              <p className="text-sm text-gray-500">No upcoming visit scheduled.</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {complianceTrendData.length > 0 && (
+                          <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                              <h5 className="text-white font-medium">Compliance Trend</h5>
+                              <span className="text-xs text-gray-400">
+                                Last {complianceTrendData.length} visit{complianceTrendData.length === 1 ? '' : 's'}
+                              </span>
+                            </div>
+                            <div className="h-56">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <LineChart data={complianceTrendData} margin={{ top: 10, right: 16, bottom: 0, left: 0 }}>
+                                  <CartesianGrid strokeDasharray="4 4" stroke="#1f2937" />
+                                  <XAxis dataKey="label" stroke="#9ca3af" fontSize={12} />
+                                  <YAxis domain={[0, complianceTrendMax]} stroke="#9ca3af" fontSize={12} />
+                                  <Tooltip content={renderTrendTooltip} />
+                                  <Line type="monotone" dataKey="compliance" stroke="#60a5fa" strokeWidth={2} dot={{ r: 3 }} />
+                                </LineChart>
+                              </ResponsiveContainer>
                             </div>
                           </div>
                         )}
                       </div>
-                      {/* Per-Visit Compliance Table */}
+
                       <div className="bg-gray-800/30 rounded-lg p-6">
-                        <h4 className="text-white font-medium mb-4">Per-Visit Drug Compliance</h4>
-                        {(perVisitCycles || []).length === 0 ? (
+                        <div className="mb-4 flex items-center justify-between">
+                          <h4 className="text-white font-medium">Per-Visit Drug Compliance</h4>
+                          {sortedPerVisit.length > 0 && (
+                            <button
+                              onClick={handleExportCompliance}
+                              className="inline-flex items-center rounded-md border border-gray-600 px-3 py-1 text-xs font-medium text-gray-200 transition-colors hover:bg-gray-700"
+                            >
+                              Export CSV
+                            </button>
+                          )}
+                        </div>
+                        {sortedPerVisit.length === 0 ? (
                           <div className="text-sm text-gray-400">No per-visit compliance entries.</div>
                         ) : (
                           <div className="overflow-x-auto">
@@ -700,27 +816,73 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
                               <thead className="text-xs uppercase text-gray-400">
                                 <tr>
                                   <th className="px-3 py-2">Visit</th>
-                                  <th className="px-3 py-2">First Dose Date</th>
-                                  <th className="px-3 py-2">Drug Dispensed</th>
-                                  <th className="px-3 py-2">Drug Returned</th>
-                                  <th className="px-3 py-2">Date Returned</th>
+                                  <th className="px-3 py-2">Visit Date</th>
+                                  <th className="px-3 py-2">Drug</th>
+                                  <th className="px-3 py-2">Dispensed</th>
+                                  <th className="px-3 py-2">Returned</th>
+                                  <th className="px-3 py-2">Last Dose Date</th>
                                   <th className="px-3 py-2">Compliance</th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {perVisitCycles.map(v => (
-                                  v.items.map((it: any, idx: number) => (
-                                    <tr key={`${v.visit_id}-${idx}`} className="border-t border-gray-700/60">
-                                      <td className="px-3 py-2">{v.visit_name || '-'}</td>
-                                      <td className="px-3 py-2">{it.first_dose_date ? formatDateUTC(it.first_dose_date) : '-'}</td>
-                                      <td className="px-3 py-2">{it.tablets_dispensed ?? '-'}</td>
-                                      <td className="px-3 py-2">{it.tablets_returned ?? 0}</td>
-                                      <td className="px-3 py-2">{it.last_dose_date ? formatDateUTC(it.last_dose_date) : '-'}</td>
-                                      <td className="px-3 py-2">{it.compliance_percentage != null ? `${Math.round(it.compliance_percentage)}%` : '-'}</td>
-                                    </tr>
-                                  ))
+                                {sortedPerVisit.map(visit => (
+                                  <Fragment key={visit.visit_id}>
+                                    {(visit.items || []).map((item: any, index: number) => {
+                                      const itemCompliance = typeof item?.compliance_percentage === 'number'
+                                        ? Math.round(item.compliance_percentage)
+                                        : null
+                                      const itemStatus = itemCompliance != null ? percentageToStatus(itemCompliance) : null
+                                      return (
+                                        <tr key={`${visit.visit_id}-${index}`} className="border-t border-gray-700/60">
+                                          <td className="px-3 py-2 text-gray-200">{visit.visit_name || '-'}</td>
+                                          <td className="px-3 py-2">{visit.visit_date ? formatDateUTC(visit.visit_date) : '-'}</td>
+                                          <td className="px-3 py-2">{item?.drug_name ?? item?.study_drug ?? '-'}</td>
+                                          <td className="px-3 py-2">{item?.tablets_dispensed ?? '-'}</td>
+                                          <td className="px-3 py-2">{item?.tablets_returned ?? '-'}</td>
+                                          <td className="px-3 py-2">{item?.last_dose_date ? formatDateUTC(item.last_dose_date) : '-'}</td>
+                                          <td className="px-3 py-2 align-top">
+                                            {itemCompliance != null && itemStatus ? (
+                                              <div className="space-y-1">
+                                                <ComplianceProgressBar
+                                                  percentage={itemCompliance}
+                                                  status={itemStatus}
+                                                  height="sm"
+                                                  showPercentage={false}
+                                                />
+                                                <div className="flex justify-between text-xs text-gray-400">
+                                                  <span>{itemCompliance}%</span>
+                                                  <span>{getComplianceLabel(itemStatus)}</span>
+                                                </div>
+                                                {itemCompliance > 100 && (
+                                                  <div className="text-[11px] text-red-300">
+                                                    Above 100% — investigate dosing and returns.
+                                                  </div>
+                                                )}
+                                              </div>
+                                            ) : (
+                                              <span className="text-gray-500">—</span>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      )
+                                    })}
+                                    {typeof visit.avg_compliance === 'number' && (
+                                      <tr className="border-t border-gray-700/60 bg-gray-900/40">
+                                        <td className="px-3 py-2 text-xs font-semibold text-gray-400" colSpan={6}>
+                                          Visit average
+                                        </td>
+                                        <td className="px-3 py-2">
+                                          <ComplianceProgressBar
+                                            percentage={Math.round(visit.avg_compliance)}
+                                            status={percentageToStatus(visit.avg_compliance)}
+                                            height="sm"
+                                            showPercentage
+                                          />
+                                        </td>
+                                      </tr>
+                                    )}
+                                  </Fragment>
                                 ))}
-                                {/* Per-visit average rows removed per request */}
                               </tbody>
                             </table>
                           </div>

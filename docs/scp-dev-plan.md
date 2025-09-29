@@ -118,26 +118,32 @@ Multiple issues need resolution in the lab kit workflow:
   ```
 - **Status**: Completed — study settings now manage inventory and visit buffer days; forecasts extend the lookahead and pad kit demand using the configurable buffer targets.
 
-#### F. **Predictive Lab Kit Recommendations & Settings** (Priority: MEDIUM)
-- **Problem**: Coordinators lack a single place to tune inventory behaviour or review proactive reorder guidance.
-- **Actions (in flight)**:
+#### F. **Predictive Lab Kit Recommendations & Settings** (Priority: MEDIUM) ✅
+- **Problem**: Coordinators lacked a single place to tune inventory behaviour or review proactive reorder guidance.
+- **Completed Work**:
   ```typescript
-  // Centralised Lab Kit Settings
-  - Add `inventory_buffer_kits` to studies + per-kit overrides table (min kits, buffer days, auto-order flag, vendor lead time)
-  - Expose GET/PUT /api/lab-kit-settings returning study defaults + per-kit overrides with validation
-  - Build Lab Kits → Settings page with study defaults card, per-kit grid, bulk edit, and guidance copy
+  // Settings & Schema
+  - Added `inventory_buffer_kits` to studies and synced migration/structure files.
+  - Exposed GET/PATCH `/api/lab-kit-settings` with optimistic concurrency + history logging.
+  - Extended Lab Kit Settings UI with defaults/overrides form, buffer controls, and a manual "Recompute Recommendations" action.
 
-  // Recommendation Engine
-  - Extend inventory forecast to emit recommendedOrders[] with reasoning (buffer breach, upcoming surge, expiry risk)
-  - Include vendor lead-time heuristics (user-supplied or estimated) to project latest safe order date
-  - Persist recommendation decisions (new/dismissed/ordered) for audit + feedback loops
+  // Recommendation Engine & APIs
+  - Implemented `recomputeLabKitRecommendations` service that merges forecast + settings, upserts recommendations, and expires stale rows.
+  - Added `/api/lab-kit-recommendations` (GET/PATCH), `/recompute` (per-study), and `/recompute-all` (bulk) endpoints with token auth.
 
   // UX Integrations
-  - Add "Recommended Orders" widget on Lab Kits dashboard with CTA to open prefilled order modal
-  - Link forecast alert rows and orders tab to settings for quick buffer adjustments
-  - Allow coordinators to capture dismissal reasons (already covered, vendor delay, etc.)
+  - Surfaced "Recommended Orders" section in LabKitAlertsPanel with accept/dismiss/order flows.
+  - Hooked alerts into the new settings recompute button to refresh guidance instantly.
+  - Documented the end-to-end flow and required env vars in README.
+
+  // Automation
+  - Added Supabase Edge function `recompute-lab-kits` and Vercel cron endpoint `/api/cron/recompute-lab-kits` for scheduled refreshes.
+  - Registered cron schedule via `vercel.json` (02:00 UTC) using `LAB_KIT_RECOMMENDATION_JOB_TOKEN`.
   ```
-- **Notes**: Start rule-based; collect telemetry to inform future ML/auto-ordering. Vendor lead times become editable metadata on the new settings page so predictions can convert risk windows into concrete order-by dates.
+- **Next Steps**:
+  - Persist recommendation/audit history for dashboard review.
+  - Instrument analytics (`lab_kits.recommendation.accept`, `dismiss`) and surface telemetry in Ops dashboards.
+  - Collect coordinator feedback on the rule-based engine and evaluate thresholds or ML follow-ups.
 
 #### E. **Dedicated Kit Orders Workspace** (Priority: MEDIUM) ✅
 - **Problem**: Ordering was reactive and scattered across alerts.
@@ -182,14 +188,15 @@ Multiple issues need resolution in the lab kit workflow:
 
 ## 📦 PHASE 3: Shipment & Tracking (Week 3-4)
 
-### 5. **Accession Number Population** (Priority: MEDIUM)
+### 5. **Accession Number Population** (Priority: MEDIUM) ✅
 - **Problem**: Accession numbers not showing on shipment management
-- **Actions**:
+- **Status**: Confirmed complete — database column present, shipments API backfills accessions from linked kits, and UI renders the values in both grouped and table views.
+- **Actions (validated)**:
   ```typescript
   // Fix data flow for accession numbers
-  - Verify database field exists and is populated
-  - Update query to include accession_number field
-  - Add to shipment list display columns
+  - Verify database field exists and is populated ✅
+  - Update query to include accession_number field ✅
+  - Add to shipment list display columns ✅
   ```
 
 ### 6. **UPS API Integration** (Priority: MEDIUM)

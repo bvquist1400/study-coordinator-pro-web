@@ -339,85 +339,88 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh, onLocate
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800">
-                  {group.shipments.map(shipment => (
-                    <tr key={shipment.id} className="text-gray-100 align-top">
-                      <td className="py-2 pr-3 font-mono text-xs">
-                        {shipment.accession_number || '—'}
-                      </td>
-                      <td className="py-2 pr-3 text-xs">
-                        {shipment.subject_assignment ? (
+                  {group.shipments.map(shipment => {
+                    const accession = shipment.accession_number || shipment.kit?.accession_number || null
+                    return (
+                      <tr key={shipment.id} className="text-gray-100 align-top">
+                        <td className="py-2 pr-3 font-mono text-xs">
+                          {accession || '—'}
+                        </td>
+                        <td className="py-2 pr-3 text-xs">
+                          {shipment.subject_assignment ? (
+                            <div className="space-y-1">
+                              <div className="font-medium text-sm text-white">
+                                {shipment.subject_assignment.subject_number || shipment.subject_assignment.subject_id || 'Subject'}
+                              </div>
+                              <div className="text-[11px] text-gray-400">
+                                {shipment.subject_assignment.visit_name || 'Visit'}
+                                {shipment.subject_assignment.visit_date ? ` • ${formatDateUSShort(shipment.subject_assignment.visit_date)}` : ''}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-500">Unassigned</span>
+                          )}
+                        </td>
+                        <td className="py-2 pr-3 text-xs">
+                          {shipment.subject_assignment?.visit_name || '—'}
+                        </td>
+                        <td className="py-2 pr-3 text-xs">
+                          {shipment.kit ? (
+                            <div className="space-y-1">
+                              <div className="font-medium text-sm text-white">{shipment.kit.kit_type || 'Kit'}</div>
+                              <div className="text-[11px] text-gray-400">
+                                {(shipment.kit.status || 'pending').replace(/_/g, ' ')}
+                              </div>
+                            </div>
+                          ) : '—'}
+                        </td>
+                        <td className="py-2 pr-3 text-xs">
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-[11px] font-medium ${
+                            shipment.tracking_status === 'delivered'
+                              ? 'bg-green-900/30 border border-green-700 text-green-200'
+                              : 'bg-blue-900/30 border border-blue-700 text-blue-200'
+                          }`}>
+                            {(shipment.tracking_status || 'pending').replace(/_/g, ' ')}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-3 text-xs text-gray-400">
                           <div className="space-y-1">
-                            <div className="font-medium text-sm text-white">
-                              {shipment.subject_assignment.subject_number || shipment.subject_assignment.subject_id || 'Subject'}
-                            </div>
-                            <div className="text-[11px] text-gray-400">
-                              {shipment.subject_assignment.visit_name || 'Visit'}
-                              {shipment.subject_assignment.visit_date ? ` • ${formatDateUSShort(shipment.subject_assignment.visit_date)}` : ''}
-                            </div>
+                            {shipment.shipped_date && <div>Shipped {formatDateUSShort(shipment.shipped_date)}</div>}
+                            {shipment.estimated_delivery && shipment.tracking_status !== 'delivered' && (
+                              <div>ETA {formatDateUSShort(shipment.estimated_delivery)}</div>
+                            )}
+                            {shipment.actual_delivery && (
+                              <div>Delivered {formatDateUSShort(shipment.actual_delivery)}</div>
+                            )}
                           </div>
-                        ) : (
-                          <span className="text-xs text-gray-500">Unassigned</span>
-                        )}
-                      </td>
-                      <td className="py-2 pr-3 text-xs">
-                        {shipment.subject_assignment?.visit_name || '—'}
-                      </td>
-                      <td className="py-2 pr-3 text-xs">
-                        {shipment.kit ? (
-                          <div className="space-y-1">
-                            <div className="font-medium text-sm text-white">{shipment.kit.kit_type || 'Kit'}</div>
-                            <div className="text-[11px] text-gray-400">
-                              {(shipment.kit.status || 'pending').replace(/_/g, ' ')}
-                            </div>
+                        </td>
+                        <td className="py-2 text-xs">
+                          <div className="flex flex-col gap-2">
+                            {onLocateKit && (
+                              <button
+                                onClick={() => onLocateKit({ studyId: shipment.study_id, accessionNumber: accession })}
+                                className="px-2 py-1 border border-gray-600 text-gray-100 rounded hover:bg-gray-700"
+                              >
+                                Locate Kit
+                              </button>
+                            )}
+                            {shipment.tracking_status === 'shipped' && (
+                              <button
+                                onClick={() => handleMarkDelivered(shipment.id)}
+                                disabled={updating === shipment.id}
+                                className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {updating === shipment.id ? 'Marking…' : 'Mark Delivered'}
+                              </button>
+                            )}
+                            {shipment.tracking_status === 'delivered' && (
+                              <span className="text-green-400 text-[11px]">✓ Delivered</span>
+                            )}
                           </div>
-                        ) : '—'}
-                      </td>
-                      <td className="py-2 pr-3 text-xs">
-                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-[11px] font-medium ${
-                          shipment.tracking_status === 'delivered'
-                            ? 'bg-green-900/30 border border-green-700 text-green-200'
-                            : 'bg-blue-900/30 border border-blue-700 text-blue-200'
-                        }`}>
-                          {(shipment.tracking_status || 'pending').replace(/_/g, ' ')}
-                        </span>
-                      </td>
-                      <td className="py-2 pr-3 text-xs text-gray-400">
-                        <div className="space-y-1">
-                          {shipment.shipped_date && <div>Shipped {formatDateUSShort(shipment.shipped_date)}</div>}
-                          {shipment.estimated_delivery && shipment.tracking_status !== 'delivered' && (
-                            <div>ETA {formatDateUSShort(shipment.estimated_delivery)}</div>
-                          )}
-                          {shipment.actual_delivery && (
-                            <div>Delivered {formatDateUSShort(shipment.actual_delivery)}</div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-2 text-xs">
-                        <div className="flex flex-col gap-2">
-                          {onLocateKit && (
-                            <button
-                              onClick={() => onLocateKit({ studyId: shipment.study_id, accessionNumber: shipment.accession_number })}
-                              className="px-2 py-1 border border-gray-600 text-gray-100 rounded hover:bg-gray-700"
-                            >
-                              Locate Kit
-                            </button>
-                          )}
-                          {shipment.tracking_status === 'shipped' && (
-                            <button
-                              onClick={() => handleMarkDelivered(shipment.id)}
-                              disabled={updating === shipment.id}
-                              className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              {updating === shipment.id ? 'Marking…' : 'Mark Delivered'}
-                            </button>
-                          )}
-                          {shipment.tracking_status === 'delivered' && (
-                            <span className="text-green-400 text-[11px]">✓ Delivered</span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -489,114 +492,117 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh, onLocate
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700">
-              {shipments.map(s => (
-                <tr key={s.id} className="text-gray-100 align-top">
-                  <td className="px-4 py-3 font-mono whitespace-nowrap">{s.airway_bill_number}</td>
-                  {!studyId && (
-                    <td className="px-4 py-3">
-                      <div className="text-sm">
-                        <div className="font-medium text-white">{s.study_protocol || 'Unknown'}</div>
-                        <div className="text-gray-400 text-xs truncate max-w-xs" title={s.study_title || undefined}>
-                          {s.study_title || 'Unknown Study'}
+              {shipments.map(s => {
+                const accession = s.accession_number || s.kit?.accession_number || null
+                return (
+                  <tr key={s.id} className="text-gray-100 align-top">
+                    <td className="px-4 py-3 font-mono whitespace-nowrap">{s.airway_bill_number}</td>
+                    {!studyId && (
+                      <td className="px-4 py-3">
+                        <div className="text-sm">
+                          <div className="font-medium text-white">{s.study_protocol || 'Unknown'}</div>
+                          <div className="text-gray-400 text-xs truncate max-w-xs" title={s.study_title || undefined}>
+                            {s.study_title || 'Unknown Study'}
+                          </div>
                         </div>
+                      </td>
+                    )}
+                    <td className="px-4 py-3 font-mono text-sm whitespace-nowrap">{accession || '-'}</td>
+                    <td className="px-4 py-3">
+                      {s.subject_assignment ? (
+                        <div className="text-sm text-gray-200">
+                          <div className="font-medium text-white">
+                            {s.subject_assignment.subject_number || s.subject_assignment.subject_id || 'Subject'}
+                          </div>
+                          <div className="text-xs text-gray-400">
+                            {s.subject_assignment.visit_name || 'Visit'}
+                            {s.subject_assignment.visit_date ? ` • ${formatDateUSShort(s.subject_assignment.visit_date)}` : ''}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-500">Unassigned</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {s.kit ? (
+                        <div className="text-sm text-gray-200 space-y-1">
+                          <div className="font-medium text-white">{s.kit.kit_type || 'Kit'}</div>
+                          <div className="text-xs text-gray-400 uppercase tracking-wide">
+                            {(s.kit.status || 'pending').replace(/_/g, ' ')}
+                          </div>
+                          {s.kit.visit_schedule?.visit_name && (
+                            <div className="text-xs text-gray-500">
+                              {s.kit.visit_schedule.visit_name}
+                              {s.kit.visit_schedule.visit_number !== null ? ` (${s.kit.visit_schedule.visit_number})` : ''}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-500">Unlinked</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <div className="text-sm text-gray-200">{(s.carrier || '—').toUpperCase()}</div>
+                      {s.actual_delivery && (
+                        <div className="text-xs text-gray-400">Delivered {formatDateUSShort(s.actual_delivery)}</div>
+                      )}
+                      {!s.actual_delivery && s.estimated_delivery && (
+                        <div className="text-xs text-gray-400">ETA {formatDateUSShort(s.estimated_delivery)}</div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {s.shipped_date ? formatDateUSShort(s.shipped_date) : '-'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium uppercase tracking-wide ${
+                        s.tracking_status === 'shipped' ? 'bg-blue-900/20 border border-blue-700 text-blue-300' :
+                        s.tracking_status === 'delivered' ? 'bg-green-900/20 border border-green-700 text-green-300' :
+                        'bg-gray-900/20 border border-gray-700 text-gray-300'
+                      }`}>
+                        {(s.tracking_status || 'pending').replace(/_/g, ' ')}
+                      </span>
+                      <div className="text-xs text-gray-400 mt-1">
+                        {s.actual_delivery
+                          ? `Delivered ${formatDateUSShort(s.actual_delivery)}`
+                          : s.estimated_delivery
+                            ? `Awaiting • ETA ${formatDateUSShort(s.estimated_delivery)}`
+                            : 'Awaiting delivery'}
                       </div>
                     </td>
-                  )}
-                  <td className="px-4 py-3 font-mono text-sm whitespace-nowrap">{s.accession_number || '-'}</td>
-                  <td className="px-4 py-3">
-                    {s.subject_assignment ? (
-                      <div className="text-sm text-gray-200">
-                        <div className="font-medium text-white">
-                          {s.subject_assignment.subject_number || s.subject_assignment.subject_id || 'Subject'}
-                        </div>
-                        <div className="text-xs text-gray-400">
-                          {s.subject_assignment.visit_name || 'Visit'}
-                          {s.subject_assignment.visit_date ? ` • ${formatDateUSShort(s.subject_assignment.visit_date)}` : ''}
-                        </div>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-gray-500">Unassigned</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    {s.kit ? (
-                      <div className="text-sm text-gray-200 space-y-1">
-                        <div className="font-medium text-white">{s.kit.kit_type || 'Kit'}</div>
-                        <div className="text-xs text-gray-400 uppercase tracking-wide">
-                          {(s.kit.status || 'pending').replace(/_/g, ' ')}
-                        </div>
-                        {s.kit.visit_schedule?.visit_name && (
-                          <div className="text-xs text-gray-500">
-                            {s.kit.visit_schedule.visit_name}
-                            {s.kit.visit_schedule.visit_number !== null ? ` (${s.kit.visit_schedule.visit_number})` : ''}
-                          </div>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col gap-2">
+                        {onLocateKit && (
+                          <button
+                            onClick={() => onLocateKit({ studyId: s.study_id, accessionNumber: accession })}
+                            className="px-3 py-1 border border-gray-600 text-gray-100 text-xs rounded transition-colors hover:bg-gray-700"
+                          >
+                            Locate Kit
+                          </button>
+                        )}
+                        {s.tracking_status === 'shipped' && (
+                          <button
+                            onClick={() => handleMarkDelivered(s.id)}
+                            disabled={updating === s.id}
+                            className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs rounded font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {updating === s.id ? (
+                              <span className="flex items-center space-x-1">
+                                <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></div>
+                                <span>Marking...</span>
+                              </span>
+                            ) : (
+                              'Mark Delivered'
+                            )}
+                          </button>
+                        )}
+                        {s.tracking_status === 'delivered' && (
+                          <span className="text-green-400 text-xs">✓ Delivered</span>
                         )}
                       </div>
-                    ) : (
-                      <span className="text-xs text-gray-500">Unlinked</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <div className="text-sm text-gray-200">{(s.carrier || '—').toUpperCase()}</div>
-                    {s.actual_delivery && (
-                      <div className="text-xs text-gray-400">Delivered {formatDateUSShort(s.actual_delivery)}</div>
-                    )}
-                    {!s.actual_delivery && s.estimated_delivery && (
-                      <div className="text-xs text-gray-400">ETA {formatDateUSShort(s.estimated_delivery)}</div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    {s.shipped_date ? formatDateUSShort(s.shipped_date) : '-'}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium uppercase tracking-wide ${
-                      s.tracking_status === 'shipped' ? 'bg-blue-900/20 border border-blue-700 text-blue-300' :
-                      s.tracking_status === 'delivered' ? 'bg-green-900/20 border border-green-700 text-green-300' :
-                      'bg-gray-900/20 border border-gray-700 text-gray-300'
-                    }`}>
-                      {(s.tracking_status || 'pending').replace(/_/g, ' ')}
-                    </span>
-                    <div className="text-xs text-gray-400 mt-1">
-                      {s.actual_delivery
-                        ? `Delivered ${formatDateUSShort(s.actual_delivery)}`
-                        : s.estimated_delivery
-                          ? `Awaiting • ETA ${formatDateUSShort(s.estimated_delivery)}`
-                          : 'Awaiting delivery'}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col gap-2">
-                      {onLocateKit && (
-                        <button
-                          onClick={() => onLocateKit({ studyId: s.study_id, accessionNumber: s.accession_number })}
-                          className="px-3 py-1 border border-gray-600 text-gray-100 text-xs rounded transition-colors hover:bg-gray-700"
-                        >
-                          Locate Kit
-                        </button>
-                      )}
-                      {s.tracking_status === 'shipped' && (
-                        <button
-                          onClick={() => handleMarkDelivered(s.id)}
-                          disabled={updating === s.id}
-                          className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs rounded font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {updating === s.id ? (
-                            <span className="flex items-center space-x-1">
-                              <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></div>
-                              <span>Marking...</span>
-                            </span>
-                          ) : (
-                            'Mark Delivered'
-                          )}
-                        </button>
-                      )}
-                      {s.tracking_status === 'delivered' && (
-                        <span className="text-green-400 text-xs">✓ Delivered</span>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
