@@ -1,9 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { supabase } from '@/lib/supabase/client'
 import { LabKit, StudyKitType } from '@/types/database'
 import { formatDateUTC, parseDateUTC } from '@/lib/date-utils'
+import EmptyState from './EmptyState'
+import { EMPTY_STATE_TYPES, ACTION_TYPES } from '@/lib/lab-kits/empty-states'
 
 interface LabKitInventoryProps {
   studyId: string
@@ -11,6 +14,10 @@ interface LabKitInventoryProps {
   onRefresh: () => void
   showExpiringOnly?: boolean
   prefillFilters?: { search: string; status: string; version: number }
+  onOpenAddKit?: () => void
+  onOpenBulkImport?: () => void
+  onOpenQuickStart?: () => void
+  onResetExpiringFilter?: () => void
 }
 
 interface LabKitWithVisit extends LabKit {
@@ -45,7 +52,43 @@ interface LabKitWithVisit extends LabKit {
   } | null
 }
 
-export default function LabKitInventory({ studyId, refreshKey, onRefresh, showExpiringOnly, prefillFilters }: LabKitInventoryProps) {
+function useInventoryRenderMetrics(viewMode: 'grouped' | 'list', rowCount: number) {
+  const startRef = useRef<number>(0)
+  const lastSampleRef = useRef<{ viewMode: 'grouped' | 'list'; rowCount: number; duration: number } | null>(null)
+
+  useLayoutEffect(() => {
+    if (typeof performance === 'undefined') return
+    startRef.current = performance.now()
+  })
+
+  useEffect(() => {
+    if (typeof performance === 'undefined') return
+    if (process.env.NODE_ENV === 'production') return
+
+    const duration = performance.now() - startRef.current
+    const rounded = Math.round(duration)
+    const previous = lastSampleRef.current
+
+    const changed =
+      !previous ||
+      previous.viewMode !== viewMode ||
+      previous.rowCount !== rowCount ||
+      Math.abs(previous.duration - rounded) >= 5
+
+    if (changed) {
+      // Quick console sample for dev profiling without adding state churn
+      // eslint-disable-next-line no-console
+      console.info('[LabKitInventory] render', {
+        viewMode,
+        rows: rowCount,
+        ms: rounded
+      })
+      lastSampleRef.current = { viewMode, rowCount, duration: rounded }
+    }
+  }, [viewMode, rowCount])
+}
+
+export default function LabKitInventory({ studyId, refreshKey, onRefresh, showExpiringOnly, prefillFilters, onOpenAddKit, onOpenBulkImport, onOpenQuickStart, onResetExpiringFilter }: LabKitInventoryProps) {
   const [labKits, setLabKits] = useState<LabKitWithVisit[]>([])
   const [loading, setLoading] = useState(true)
   // Default to showing Available kits
@@ -155,6 +198,9 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
     return matchesStatus && matchesSearch && matchesExpiring
   })
 
+  const activeViewMode: 'grouped' | 'list' = groupByVisit ? 'grouped' : 'list'
+  useInventoryRenderMetrics(activeViewMode, filteredLabKits.length)
+
   // Group kits by visit assignment
   const groupedLabKits = groupByVisit ? 
     filteredLabKits.reduce((groups, kit) => {
@@ -178,6 +224,156 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
   }, [labKits, filteredLabKits.length])
 
   const showLogisticsColumns = statusFilter === 'shipped' || statusFilter === 'delivered'
+
+  const listScrollParentRef = useRef<HTMLDivElement | null>(null)
+  const baseColumnCount = 8
+  const totalColumns = baseColumnCount + (showLogisticsColumns ? 2 : 0) + (studyId === 'all' ? 1 : 0)
+  const shouldVirtualize = !groupByVisit && filteredLabKits.length > 80
+  const rowVirtualizer = useVirtualizer({
+    count: shouldVirtualize ? filteredLabKits.length : 0,
+    getScrollElement: () => listScrollParentRef.current,
+    estimateSize: () => 72,
+    overscan: 12
+  })
+  const virtualRows = shouldVirtualize ? rowVirtualizer.getVirtualItems() : []
+  const paddingTop = shouldVirtualize && virtualRows.length > 0 ? virtualRows[0].start : 0
+  const paddingBottom = shouldVirtualize && virtualRows.length > 0
+    ? rowVirtualizer.getTotalSize() - virtualRows[virtualRows.length - 1].end
+    : 0
+
+  const renderListRow = (kit: LabKitWithVisit) => (
+    <tr
+      key={kit.id}
+      className={`hover:bg-gray-700/30 transition-colors ${
+        selectedKits.has(kit.id) ? 'bg-blue-600/10' : ''
+      }`}
+      data-kit-id={kit.id}
+    >
+      <td className="px-6 py-4 whitespace-nowrap">
+        <input
+          type="checkbox"
+          checked={selectedKits.has(kit.id)}
+          onChange={() => handleSelectKit(kit.id)}
+          className="w-4 h-4 text-blue-600 border-gray-600 rounded focus:ring-blue-500 bg-gray-700"
+        />
+      </td>
+      {studyId === 'all' && (
+        <td className="px-6 py-4 whitespace-nowrap">
+          <div className="text-sm text-gray-300">
+            <div className="font-medium text-white">{kit.studies?.protocol_number || '—'}</div>
+            <div
+              className="text-xs text-gray-400 truncate max-w-40"
+              title={kit.studies?.study_title || undefined}
+            >
+              {kit.studies?.study_title || ''}
+            </div>
+          </div>
+        </td>
+      )}
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="text-sm font-medium text-white">
+          {kit.accession_number}
+        </div>
+      </td>
+      <td className="px-6 py-4">
+        <div className="text-sm text-gray-300">
+          {getKitTypeLabel(kit)}
+        </div>
+      </td>
+      <td className="px-6 py-4">
+        <div className="text-sm text-gray-300">
+          {kit.visit_schedules ?
+            `${kit.visit_schedules.visit_name} (${kit.visit_schedules.visit_number})`
+            : 'Unassigned'
+          }
+        </div>
+      </td>
+      {showLogisticsColumns && (
+        <td className="px-6 py-4">
+          {kit.subject_assignment ? (
+            <div className="text-sm text-gray-200">
+              <div className="font-medium text-white">
+                {kit.subject_assignment.subject_number || kit.subject_assignment.subject_id || 'Subject'}
+              </div>
+              <div className="text-xs text-gray-400">
+                {kit.subject_assignment.visit_name || 'Visit'}
+                {kit.subject_assignment.visit_date ? ` • ${formatDateUTC(kit.subject_assignment.visit_date)}` : ''}
+              </div>
+            </div>
+          ) : (
+            <span className="text-xs text-gray-500">Unassigned</span>
+          )}
+        </td>
+      )}
+      {showLogisticsColumns && (
+        <td className="px-6 py-4">
+          {kit.latest_shipment ? (
+            <div className="text-xs text-gray-300 space-y-1">
+              <div className="font-medium text-white uppercase tracking-wide">
+                {(kit.latest_shipment.tracking_status || 'pending').replace(/_/g, ' ')}
+              </div>
+              <div className="text-gray-400">
+                AWB {kit.latest_shipment.airway_bill_number || '—'}
+              </div>
+              <div className="text-gray-500">
+                {kit.latest_shipment.shipped_date ? `Ship ${formatDateUTC(kit.latest_shipment.shipped_date)}` : 'Ship date unknown'}
+                {kit.latest_shipment.estimated_delivery ? ` · ETA ${formatDateUTC(kit.latest_shipment.estimated_delivery)}` : ''}
+              </div>
+            </div>
+          ) : (
+            <span className="text-xs text-gray-500">No shipment</span>
+          )}
+        </td>
+      )}
+      <td className="px-6 py-4 whitespace-nowrap">
+        <span className={getStatusBadge(kit.status)}>
+          {kit.status.charAt(0).toUpperCase() + kit.status.slice(1)}
+        </span>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="text-sm text-gray-300">
+          {kit.expiration_date ? (
+            <span className={isExpiringSoon(kit.expiration_date) ? 'text-yellow-300' : ''}>
+              {formatDate(kit.expiration_date)}
+            </span>
+          ) : '-'}
+        </div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="text-sm text-gray-300">
+          {formatDate(kit.received_date)}
+        </div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+        <div className="flex space-x-2">
+          <button
+            onClick={() => handleViewDetails(kit)}
+            className="text-blue-400 hover:text-blue-300 transition-colors"
+            title="View details"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+          </button>
+          <button
+            onClick={() => handleDelete(kit)}
+            disabled={deleting === kit.id}
+            className="text-red-400 hover:text-red-300 transition-colors disabled:opacity-50 p-1 rounded"
+            title="Delete lab kit permanently"
+          >
+            {deleting === kit.id ? (
+              <div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin"></div>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            )}
+          </button>
+        </div>
+      </td>
+    </tr>
+  )
 
   const handleStatusChange = async (kitId: string, newStatus: LabKit['status']) => {
     try {
@@ -278,18 +474,46 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
       
       if (!token) return
 
-      // Delete each selected kit
-      for (const kitId of selectedKits) {
-        await fetch(`/api/lab-kits/${kitId}`, {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        })
+      const kitIds = Array.from(selectedKits)
+      const response = await fetch('/api/lab-kits/batch-delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ kitIds })
+      })
+
+      if (!response.ok) {
+        const errText = await response.text().catch(() => '')
+        throw new Error(errText || 'Failed to delete lab kits')
       }
+
+      const result = await response.json()
+      const deletedCount = Array.isArray(result?.deleted) ? result.deleted.length : 0
+      const deniedCount = Array.isArray(result?.denied) ? result.denied.length : 0
+      const lockedCount = Array.isArray(result?.locked) ? result.locked.length : 0
+      const missingCount = Array.isArray(result?.missing) ? result.missing.length : 0
 
       setSelectedKits(new Set())
       onRefresh()
+
+      const messages = []
+      if (deletedCount > 0) {
+        messages.push(`Deleted ${deletedCount} lab kit${deletedCount === 1 ? '' : 's'}.`)
+      }
+      const issueNotes = []
+      if (lockedCount > 0) issueNotes.push(`${lockedCount} locked`)
+      if (deniedCount > 0) issueNotes.push(`${deniedCount} denied`)
+      if (missingCount > 0) issueNotes.push(`${missingCount} missing`)
+
+      if (issueNotes.length > 0) {
+        messages.push(`Skipped: ${issueNotes.join(', ')}.`)
+      }
+
+      if (messages.length > 0) {
+        alert(messages.join('\n'))
+      }
     } catch (error) {
       console.error('Error bulk deleting kits:', error)
       alert('Failed to delete some lab kits')
@@ -313,20 +537,48 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
       
       if (!token) return
 
-      // Archive each selected kit
-      for (const kitId of selectedKits) {
-        await fetch(`/api/lab-kits/${kitId}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({ status: 'archived' })
-        })
+      const kitIds = Array.from(selectedKits)
+      const response = await fetch('/api/lab-kits/batch-archive', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ kitIds })
+      })
+
+      if (!response.ok) {
+        const errText = await response.text().catch(() => '')
+        throw new Error(errText || 'Failed to archive lab kits')
       }
+
+      const result = await response.json()
+      const archivedCount = Array.isArray(result?.archived) ? result.archived.length : 0
+      const deniedCount = Array.isArray(result?.denied) ? result.denied.length : 0
+      const immutableCount = Array.isArray(result?.immutable) ? result.immutable.length : 0
+      const alreadyCount = Array.isArray(result?.alreadyArchived) ? result.alreadyArchived.length : 0
+      const missingCount = Array.isArray(result?.missing) ? result.missing.length : 0
 
       setSelectedKits(new Set())
       onRefresh()
+
+      const messages = []
+      if (archivedCount > 0) {
+        messages.push(`Archived ${archivedCount} lab kit${archivedCount === 1 ? '' : 's'}.`)
+      }
+      const issueNotes = []
+      if (alreadyCount > 0) issueNotes.push(`${alreadyCount} already archived`)
+      if (immutableCount > 0) issueNotes.push(`${immutableCount} immutable`)
+      if (deniedCount > 0) issueNotes.push(`${deniedCount} denied`)
+      if (missingCount > 0) issueNotes.push(`${missingCount} missing`)
+
+      if (issueNotes.length > 0) {
+        messages.push(`Skipped: ${issueNotes.join(', ')}.`)
+      }
+
+      if (messages.length > 0) {
+        alert(messages.join('\n'))
+      }
     } catch (error) {
       console.error('Error bulk archiving kits:', error)
       alert('Failed to archive some lab kits')
@@ -715,200 +967,104 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
             ))}
           </div>
         ) : (
-          // Regular View
+          // Regular View with optional virtualization
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-700/50">
-                <tr>
-                  <th className="px-6 py-3 w-12">
-                    <input
-                      type="checkbox"
-                      checked={selectedKits.size === filteredLabKits.length && filteredLabKits.length > 0}
-                      onChange={handleSelectAll}
-                      className="w-4 h-4 text-blue-600 border-gray-600 rounded focus:ring-blue-500 bg-gray-700"
-                    />
-                  </th>
-                  {studyId === 'all' && (
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Study</th>
-                  )}
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Accession #
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Kit Type
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Visit
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Subject
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Shipment Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Expiration
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Received
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-700">
-                {filteredLabKits.map((kit) => (
-                  <tr 
-                    key={kit.id} 
-                    className={`hover:bg-gray-700/30 transition-colors ${
-                      selectedKits.has(kit.id) ? 'bg-blue-600/10' : ''
-                    }`}
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap">
+            <div
+              ref={listScrollParentRef}
+              className={shouldVirtualize ? 'max-h-[70vh] overflow-y-auto' : 'overflow-y-visible'}
+            >
+              <table className="w-full">
+                <thead className="bg-gray-700/50">
+                  <tr>
+                    <th className="px-6 py-3 w-12">
                       <input
                         type="checkbox"
-                        checked={selectedKits.has(kit.id)}
-                        onChange={() => handleSelectKit(kit.id)}
+                        checked={selectedKits.size === filteredLabKits.length && filteredLabKits.length > 0}
+                        onChange={handleSelectAll}
                         className="w-4 h-4 text-blue-600 border-gray-600 rounded focus:ring-blue-500 bg-gray-700"
                       />
-                    </td>
+                    </th>
                     {studyId === 'all' && (
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-300">
-                          <div className="font-medium text-white">{kit.studies?.protocol_number || '—'}</div>
-                          <div className="text-xs text-gray-400 truncate max-w-40" title={kit.studies?.study_title || undefined}>{kit.studies?.study_title || ''}</div>
-                        </div>
-                      </td>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Study</th>
                     )}
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-white">
-                        {kit.accession_number}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-gray-300">
-                        {getKitTypeLabel(kit)}
-                      </div>
-                    </td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm text-gray-300">
-                      {kit.visit_schedules ? 
-                        `${kit.visit_schedules.visit_name} (${kit.visit_schedules.visit_number})` 
-                        : 'Unassigned'
-                      }
-                    </div>
-                  </td>
-                  {showLogisticsColumns && (
-                    <td className="px-6 py-4">
-                      {kit.subject_assignment ? (
-                        <div className="text-sm text-gray-200">
-                          <div className="font-medium text-white">
-                            {kit.subject_assignment.subject_number || kit.subject_assignment.subject_id || 'Subject'}
-                          </div>
-                          <div className="text-xs text-gray-400">
-                            {kit.subject_assignment.visit_name || 'Visit'}
-                            {kit.subject_assignment.visit_date ? ` • ${formatDateUTC(kit.subject_assignment.visit_date)}` : ''}
-                          </div>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-500">Unassigned</span>
-                      )}
-                    </td>
-                  )}
-                  {showLogisticsColumns && (
-                    <td className="px-6 py-4">
-                      {kit.latest_shipment ? (
-                        <div className="text-xs text-gray-300 space-y-1">
-                          <div className="font-medium text-white uppercase tracking-wide">
-                            {(kit.latest_shipment.tracking_status || 'pending').replace(/_/g, ' ')}
-                          </div>
-                          <div className="text-gray-400">
-                            AWB {kit.latest_shipment.airway_bill_number || '—'}
-                          </div>
-                          <div className="text-gray-500">
-                            {kit.latest_shipment.shipped_date ? `Ship ${formatDateUTC(kit.latest_shipment.shipped_date)}` : 'Ship date unknown'}
-                            {kit.latest_shipment.estimated_delivery ? ` · ETA ${formatDateUTC(kit.latest_shipment.estimated_delivery)}` : ''}
-                          </div>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-500">No shipment</span>
-                      )}
-                    </td>
-                  )}
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={getStatusBadge(kit.status)}>
-                        {kit.status.charAt(0).toUpperCase() + kit.status.slice(1)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-300">
-                        {kit.expiration_date ? (
-                          <span className={isExpiringSoon(kit.expiration_date) ? 'text-yellow-300' : ''}>
-                            {formatDate(kit.expiration_date)}
-                          </span>
-                        ) : '-'}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-300">
-                        {formatDate(kit.received_date)}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => handleViewDetails(kit)}
-                          className="text-blue-400 hover:text-blue-300 transition-colors"
-                          title="View details"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                          </svg>
-                        </button>
-                        <button
-                          onClick={() => handleDelete(kit)}
-                          disabled={deleting === kit.id}
-                          className="text-red-400 hover:text-red-300 transition-colors disabled:opacity-50 p-1 rounded"
-                          title="Delete lab kit permanently"
-                        >
-                          {deleting === kit.id ? (
-                            <div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin"></div>
-                          ) : (
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          )}
-                        </button>
-                      </div>
-                    </td>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                      Accession #
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                      Kit Type
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                      Visit
+                    </th>
+                    {showLogisticsColumns && (
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                        Subject
+                      </th>
+                    )}
+                    {showLogisticsColumns && (
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                        Shipment Status
+                      </th>
+                    )}
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                      Expiration
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                      Received
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                      Actions
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-700">
+                  {shouldVirtualize ? (
+                    <>
+                      {paddingTop > 0 && (
+                        <tr key="virtual-padding-top" style={{ height: `${paddingTop}px` }}>
+                          <td colSpan={totalColumns} />
+                        </tr>
+                      )}
+                      {virtualRows.map(virtualRow => {
+                        const kit = filteredLabKits[virtualRow.index]
+                        return kit ? renderListRow(kit) : null
+                      })}
+                      {paddingBottom > 0 && (
+                        <tr key="virtual-padding-bottom" style={{ height: `${paddingBottom}px` }}>
+                          <td colSpan={totalColumns} />
+                        </tr>
+                      )}
+                    </>
+                  ) : (
+                    filteredLabKits.map(renderListRow)
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         )
       ) : (
-        <div className="p-12 text-center">
-          <div className="text-gray-400">
-            <svg className="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            <p className="text-lg mb-2">
-              {searchTerm || statusFilter !== 'all' ? 'No lab kits match your filters' : 'No lab kits found'}
-            </p>
-            <p className="text-sm">
-              {searchTerm || statusFilter !== 'all' 
-                ? 'Try adjusting your search criteria'
-                : 'Add lab kits to start managing inventory'
-              }
-            </p>
-          </div>
-        </div>
+        <EmptyStateHandler
+          labKits={labKits}
+          filteredLabKits={filteredLabKits}
+          searchTerm={searchTerm}
+          statusFilter={statusFilter}
+          showExpiringOnly={showExpiringOnly}
+          studyId={studyId}
+          onClearFilters={() => {
+            setSearchTerm('')
+            setStatusFilter('available')
+            onResetExpiringFilter?.()
+          }}
+          onOpenAddKit={onOpenAddKit}
+          onOpenBulkImport={onOpenBulkImport}
+          onOpenQuickStart={onOpenQuickStart}
+          onResetExpiringFilter={onResetExpiringFilter}
+          onRefresh={onRefresh}
+        />
       )}
 
       {/* View Details Modal */}
@@ -1499,6 +1655,114 @@ function BulkEditModal({ selectedKits, onClose, onSave }: BulkEditModalProps) {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+// Empty State Handler Component
+interface EmptyStateHandlerProps {
+  labKits: LabKitWithVisit[]
+  filteredLabKits: LabKitWithVisit[]
+  searchTerm: string
+  statusFilter: string
+  showExpiringOnly?: boolean
+  studyId: string
+  onClearFilters: () => void
+  onOpenAddKit?: () => void
+  onOpenBulkImport?: () => void
+  onOpenQuickStart?: () => void
+  onResetExpiringFilter?: () => void
+  onRefresh?: () => void
+}
+
+function EmptyStateHandler({
+  labKits,
+  filteredLabKits,
+  searchTerm,
+  statusFilter,
+  showExpiringOnly,
+  studyId,
+  onClearFilters,
+  onOpenAddKit,
+  onOpenBulkImport,
+  onOpenQuickStart,
+  onResetExpiringFilter,
+  onRefresh
+}: EmptyStateHandlerProps) {
+  // Determine which empty state to show
+  const getEmptyStateType = () => {
+    // If there are no kits at all in the study
+    if (labKits.length === 0) {
+      return EMPTY_STATE_TYPES.FIRST_TIME
+    }
+
+    // If showing expiring only filter and no results
+    if (showExpiringOnly && filteredLabKits.length === 0) {
+      return EMPTY_STATE_TYPES.NO_EXPIRING
+    }
+
+    // If there are filters/search active but no results
+    if (filteredLabKits.length === 0 && (searchTerm || statusFilter !== 'all')) {
+      return EMPTY_STATE_TYPES.FILTERED
+    }
+
+    // Default to filtered if we got here
+    return EMPTY_STATE_TYPES.FILTERED
+  }
+
+  const emptyStateType = getEmptyStateType()
+
+  // Build active filters list
+  const activeFilters = []
+  if (searchTerm) {
+    activeFilters.push({ label: 'Search', value: searchTerm })
+  }
+  if (statusFilter !== 'all') {
+    activeFilters.push({ label: 'Status', value: statusFilter })
+  }
+  if (showExpiringOnly) {
+    activeFilters.push({ label: 'Filter', value: 'Expiring Soon' })
+  }
+
+  const handleAction = (actionType: string) => {
+    switch (actionType) {
+      case ACTION_TYPES.OPEN_ADD_KIT:
+        onOpenAddKit?.()
+        break
+      case ACTION_TYPES.OPEN_QUICKSTART:
+        if (onOpenQuickStart) {
+          onOpenQuickStart()
+        } else {
+          window.open('/docs/lab-kit-coordinator-quickstart.md', '_blank')
+        }
+        break
+      case ACTION_TYPES.OPEN_BULK_IMPORT:
+        onOpenBulkImport?.()
+        break
+      case ACTION_TYPES.CLEAR_FILTERS:
+      case ACTION_TYPES.RESET_FILTERS:
+        onClearFilters()
+        break
+      case ACTION_TYPES.RESET_EXPIRING_FILTER:
+        onResetExpiringFilter?.()
+        break
+      case ACTION_TYPES.REFRESH_FORECAST:
+        onRefresh?.()
+        break
+      default:
+        break
+    }
+  }
+
+  return (
+    <div className="p-12">
+      <EmptyState
+        type={emptyStateType}
+        context={{
+          activeFilters: activeFilters.length > 0 ? activeFilters : undefined
+        }}
+        onAction={handleAction}
+      />
     </div>
   )
 }

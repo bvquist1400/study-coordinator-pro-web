@@ -54,9 +54,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 })
     }
 
-    const { study_id, name, description = null } = payload
+    const { study_id, name, description = null, buffer_days = null, buffer_count = null } = payload
     if (!study_id || !name) {
       return NextResponse.json({ error: 'study_id and name are required' }, { status: 400 })
+    }
+
+    const parsedBufferDays = buffer_days === null || buffer_days === undefined || buffer_days === ''
+      ? null
+      : Number(buffer_days)
+    const parsedBufferCount = buffer_count === null || buffer_count === undefined || buffer_count === ''
+      ? null
+      : Number(buffer_count)
+
+    if (parsedBufferDays !== null && (!Number.isFinite(parsedBufferDays) || parsedBufferDays < 0 || parsedBufferDays > 120)) {
+      return NextResponse.json({ error: 'buffer_days must be between 0 and 120' }, { status: 400 })
+    }
+
+    if (parsedBufferCount !== null && (!Number.isInteger(parsedBufferCount) || parsedBufferCount < 0 || parsedBufferCount > 999)) {
+      return NextResponse.json({ error: 'buffer_count must be between 0 and 999' }, { status: 400 })
     }
 
     const membership = await verifyStudyMembership(study_id, user.id)
@@ -68,7 +83,9 @@ export async function POST(request: NextRequest) {
     const insert: StudyKitTypeInsert = {
       study_id,
       name,
-      description: description || null
+      description: description || null,
+      buffer_days: parsedBufferDays,
+      buffer_count: parsedBufferCount
     }
 
     const { data, error } = await (supabase as any)
@@ -83,7 +100,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'A kit type with that name already exists for this study' }, { status: 409 })
       }
       logger.error('Failed to create study kit type', error as any, { study_id })
-      return NextResponse.json({ error: 'Failed to create kit type' }, { status: 500 })
+      return NextResponse.json({ error: 'Failed to create kit type', detail: (error as any)?.message ?? null }, { status: 500 })
     }
 
     return NextResponse.json({ kitType: data }, { status: 201 })
@@ -106,7 +123,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'id and study_id are required' }, { status: 400 })
     }
 
-    const { id, study_id, name, description, is_active } = payload
+    const { id, study_id, name, description, is_active, buffer_days = undefined, buffer_count = undefined } = payload
 
     const membership = await verifyStudyMembership(study_id, user.id)
     if (!membership.success) {
@@ -114,10 +131,30 @@ export async function PUT(request: NextRequest) {
     }
 
     const supabase = createSupabaseAdmin()
-    const update: StudyKitTypeUpdate = {
-      name,
-      description: description ?? null,
-      is_active
+    const update: StudyKitTypeUpdate = {}
+
+    if (typeof name === 'string') update.name = name
+    if (description !== undefined) update.description = description ?? null
+    if (typeof is_active === 'boolean') update.is_active = is_active
+
+    if (buffer_days !== undefined) {
+      const parsed = buffer_days === null || buffer_days === '' ? null : Number(buffer_days)
+      if (parsed !== null && (!Number.isFinite(parsed) || parsed < 0 || parsed > 120)) {
+        return NextResponse.json({ error: 'buffer_days must be between 0 and 120' }, { status: 400 })
+      }
+      update.buffer_days = parsed
+    }
+
+    if (buffer_count !== undefined) {
+      const parsed = buffer_count === null || buffer_count === '' ? null : Number(buffer_count)
+      if (parsed !== null && (!Number.isInteger(parsed) || parsed < 0 || parsed > 999)) {
+        return NextResponse.json({ error: 'buffer_count must be between 0 and 999' }, { status: 400 })
+      }
+      update.buffer_count = parsed
+    }
+
+    if (Object.keys(update).length === 0) {
+      return NextResponse.json({ error: 'No valid fields provided for update' }, { status: 400 })
     }
 
     const { data, error } = await (supabase as any)
@@ -134,7 +171,7 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ error: 'A kit type with that name already exists for this study' }, { status: 409 })
       }
       logger.error('Failed to update study kit type', error as any, { id, study_id })
-      return NextResponse.json({ error: 'Failed to update kit type' }, { status: 500 })
+      return NextResponse.json({ error: 'Failed to update kit type', detail: (error as any)?.message ?? null }, { status: 500 })
     }
 
     return NextResponse.json({ kitType: data })

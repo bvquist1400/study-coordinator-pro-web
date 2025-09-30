@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { formatDateUSShort } from '@/lib/date-utils'
+import EmptyState from './EmptyState'
+import { EMPTY_STATE_TYPES, ACTION_TYPES } from '@/lib/lab-kits/empty-states'
 
 interface ShipmentsListProps {
   studyId: string | null // null means show all studies
@@ -10,6 +12,8 @@ interface ShipmentsListProps {
   onRefresh: () => void
   onLocateKit?: (options: { studyId?: string | null; accessionNumber?: string | null }) => void
   groupByAwb?: boolean
+  onCreateShipment?: () => void
+  onOpenShipmentsGuide?: () => void
 }
 
 type Shipment = {
@@ -62,7 +66,7 @@ interface AwbGroup {
   hasDelivered: boolean
 }
 
-export default function ShipmentsList({ studyId, refreshKey, onRefresh, onLocateKit, groupByAwb = false }: ShipmentsListProps) {
+export default function ShipmentsList({ studyId, refreshKey, onRefresh, onLocateKit, groupByAwb = false, onCreateShipment, onOpenShipmentsGuide }: ShipmentsListProps) {
   const [loading, setLoading] = useState(true)
   const [shipments, setShipments] = useState<Shipment[]>([])
   const [updating, setUpdating] = useState<string | null>(null)
@@ -471,9 +475,26 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh, onLocate
       </div>
 
       {shipments.length === 0 ? (
-        <div className="bg-gray-800/50 rounded-lg border border-gray-700 p-8 text-center text-gray-400">
-          <p>No shipments yet.</p>
-          <p className="text-sm mt-1">Use bulk import or internal flow to add shipments.</p>
+        <div className="bg-gray-800/50 rounded-lg border border-gray-700 p-6">
+          <EmptyState
+            type={EMPTY_STATE_TYPES.NO_SHIPMENTS}
+            onAction={(actionType) => {
+              switch (actionType) {
+                case ACTION_TYPES.OPEN_CREATE_SHIPMENT:
+                  onCreateShipment?.()
+                  break
+                case ACTION_TYPES.OPEN_SHIPMENTS_GUIDE:
+                  if (onOpenShipmentsGuide) {
+                    onOpenShipmentsGuide()
+                  } else {
+                    window.open('/docs/lab-kit-shipments-guide.md', '_blank')
+                  }
+                  break
+                default:
+                  break
+              }
+            }}
+          />
         </div>
       ) : (
         <div className="overflow-x-auto border border-gray-700 rounded-lg">

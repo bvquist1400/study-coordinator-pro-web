@@ -28,6 +28,9 @@ type ForecastItem = {
   originalDeficit: number
   pendingOrderQuantity: number
   pendingOrders: ForecastPendingOrder[]
+  requiredWithBuffer: number
+  bufferKitsNeeded: number
+  bufferMeta: ForecastBufferMeta
 }
 
 type ForecastPendingOrder = {
@@ -41,6 +44,14 @@ type ForecastPendingOrder = {
   createdAt: string
   createdBy: string | null
   receivedDate: string | null
+}
+
+type ForecastBufferMeta = {
+  source: 'kit-specific' | 'study-default' | 'none'
+  appliedDays: number | null
+  minCount: number | null
+  targetKits: number
+  dailyBurnRate: number
 }
 
 type AlertTone = 'red' | 'yellow' | 'blue' | 'purple' | 'gray'
@@ -149,12 +160,26 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
           const originalDeficit = typeof raw?.originalDeficit === 'number'
             ? raw.originalDeficit
             : Math.max(0, raw?.deficit ?? 0)
+          const bufferMetaRaw = raw?.bufferMeta || {}
+          const bufferMeta: ForecastBufferMeta = {
+            source:
+              bufferMetaRaw.source === 'kit-specific' || bufferMetaRaw.source === 'study-default' || bufferMetaRaw.source === 'none'
+                ? bufferMetaRaw.source
+                : 'none',
+            appliedDays: typeof bufferMetaRaw.appliedDays === 'number' ? bufferMetaRaw.appliedDays : null,
+            minCount: typeof bufferMetaRaw.minCount === 'number' ? bufferMetaRaw.minCount : null,
+            targetKits: typeof bufferMetaRaw.targetKits === 'number' ? bufferMetaRaw.targetKits : (typeof raw?.bufferKitsNeeded === 'number' ? raw.bufferKitsNeeded : 0),
+            dailyBurnRate: typeof bufferMetaRaw.dailyBurnRate === 'number' ? bufferMetaRaw.dailyBurnRate : 0
+          }
 
           return {
             ...raw,
             pendingOrders,
             pendingOrderQuantity,
-            originalDeficit
+            originalDeficit,
+            requiredWithBuffer: typeof raw?.requiredWithBuffer === 'number' ? raw.requiredWithBuffer : (Number(raw?.kitsRequired) || 0) + (typeof raw?.bufferKitsNeeded === 'number' ? raw.bufferKitsNeeded : 0),
+            bufferKitsNeeded: typeof raw?.bufferKitsNeeded === 'number' ? raw.bufferKitsNeeded : 0,
+            bufferMeta
           }
         })
         setForecast(sanitized)
@@ -252,7 +277,15 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
     [supplyDeficit]
   )
   const lowBufferAll = useMemo(
-    () => forecast.filter((item: ForecastItem) => item.deficit <= 0 && (item.kitsAvailable - item.kitsRequired) <= 2),
+    () => forecast.filter((item: ForecastItem) => {
+      if (item.deficit > 0) return false
+      const bufferTarget = item.bufferMeta?.targetKits ?? item.bufferKitsNeeded ?? 0
+      const totalTarget = item.requiredWithBuffer ?? (item.kitsRequired + bufferTarget)
+      const slackAfterBuffer = item.kitsAvailable - totalTarget
+      if (slackAfterBuffer < 0) return false
+      const threshold = bufferTarget > 0 ? Math.min(2, bufferTarget) : 2
+      return slackAfterBuffer <= threshold
+    }),
     [forecast]
   )
   const lowBuffer = lowBufferAll
@@ -699,7 +732,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
       {!dismissed.has('lowBuffer') && (
         <Section
           id="lowBuffer"
-          title="Low buffer (<= 2 extra kits)"
+          title="Low safety buffer"
           count={lowBuffer.length}
           tone="yellow"
           dismissible
@@ -709,6 +742,14 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
         >
           {lowBuffer.map((item: ForecastItem) => {
             const hasCoverage = (item.pendingOrderQuantity ?? 0) > 0
+            const bufferTarget = item.bufferMeta?.targetKits ?? item.bufferKitsNeeded ?? 0
+            const totalTarget = item.requiredWithBuffer ?? (item.kitsRequired + bufferTarget)
+            const slackAfterBuffer = item.kitsAvailable - totalTarget
+            const descriptor = item.bufferMeta?.source === 'kit-specific'
+              ? 'Kit override'
+              : item.bufferMeta?.source === 'study-default'
+                ? 'Study default'
+                : 'No buffer configured'
             return (
               <div
                 key={item.key}
@@ -717,8 +758,10 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
                 <div>
                   <div className="text-gray-200">{item.kitTypeName}</div>
                   <div className="text-[11px] text-gray-400">
-                    Buffer {item.kitsAvailable - item.kitsRequired}
-                    {hasCoverage && ` • ${item.pendingOrderQuantity} on order`}
+                    {descriptor}
+                    {bufferTarget > 0 ? ` · Target ${bufferTarget} kit${bufferTarget === 1 ? '' : 's'}` : ''}
+                    {slackAfterBuffer > 0 ? ` · ${slackAfterBuffer} kit${slackAfterBuffer === 1 ? '' : 's'} ready` : ' · Buffer depleted'}
+                    {hasCoverage && ` · ${item.pendingOrderQuantity} on order`}
                   </div>
                 </div>
                 {hasCoverage && (

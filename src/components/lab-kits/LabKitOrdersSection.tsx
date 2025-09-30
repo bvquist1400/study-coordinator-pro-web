@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import LabKitOrderModal from './LabKitOrderModal'
 import { formatDateUTC } from '@/lib/date-utils'
+import EmptyState from './EmptyState'
+import { EMPTY_STATE_TYPES, ACTION_TYPES } from '@/lib/lab-kits/empty-states'
 
 type OrderStatus = 'pending' | 'received' | 'cancelled'
 
@@ -253,7 +255,16 @@ export default function LabKitOrdersSection({
       {loading ? (
         <div className="px-6 py-10 text-center text-gray-400">Loading orders…</div>
       ) : orders.length === 0 ? (
-        <div className="px-6 py-10 text-center text-gray-400">No orders found for the selected filters.</div>
+        <div className="p-6">
+          <EmptyState
+            type={EMPTY_STATE_TYPES.NO_ORDERS}
+            onAction={(actionType) => {
+              if (actionType === ACTION_TYPES.OPEN_ORDER_MODAL) {
+                setShowCreateModal(true)
+              }
+            }}
+          />
+        </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-700">

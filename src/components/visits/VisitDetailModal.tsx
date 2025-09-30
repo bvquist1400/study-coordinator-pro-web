@@ -356,18 +356,19 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
         throw new Error('Not authenticated')
       }
 
+      const isCompleted = forceCompleted ? true : formData.status === 'completed'
+
       // Save aggregated per-drug compliance data via API
       if (formData.cycles.length > 0) {
         await saveAggregatedCompliance(session.access_token)
       }
 
       // Update lab kit status if accession number is provided
-      if (formData.accession_number && formData.status === 'completed') {
+      if (formData.accession_number && isCompleted) {
         await updateLabKitStatus(formData.accession_number, 'pending_shipment', session.access_token)
       }
 
       // Update visit record with summary (for backward compatibility)
-      const isCompleted = forceCompleted ? true : formData.status === 'completed'
       const firstCycle = formData.cycles[0]
       const totalReturned = formData.cycles.reduce((sum, c) => sum + Number(c.tablets_returned || 0), 0)
       const anyLastDose = (formData.cycles.find(c => !!c.last_dose_date)?.last_dose_date) || null

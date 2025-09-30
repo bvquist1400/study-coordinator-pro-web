@@ -625,6 +625,8 @@ export interface Database {
           study_id: string
           name: string
           description: string | null
+          buffer_days: number | null
+          buffer_count: number | null
           is_active: boolean
           created_at: string
           updated_at: string
@@ -634,6 +636,8 @@ export interface Database {
           study_id: string
           name: string
           description?: string | null
+          buffer_days?: number | null
+          buffer_count?: number | null
           is_active?: boolean
           created_at?: string
           updated_at?: string
@@ -643,6 +647,8 @@ export interface Database {
           study_id?: string
           name?: string
           description?: string | null
+          buffer_days?: number | null
+          buffer_count?: number | null
           is_active?: boolean
           created_at?: string
           updated_at?: string

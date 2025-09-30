@@ -5,14 +5,14 @@ import DashboardLayout from '@/components/dashboard/DashboardLayout'
 import { supabase } from '@/lib/supabase/client'
 import LabKitSummaryCards from '@/components/lab-kits/LabKitSummaryCards'
 import LabKitInventory from '@/components/lab-kits/LabKitInventory'
-import ExpiredKitsView from '@/components/lab-kits/ExpiredKitsView'
 import AddLabKitModal from '@/components/lab-kits/AddLabKitModal'
 import InventoryForecast from '@/components/lab-kits/InventoryForecast'
-import ShipmentsList from '@/components/lab-kits/ShipmentsList'
 import CreateShipmentModal from '@/components/lab-kits/CreateShipmentModal'
 import LabKitAlertsPanel from '@/components/lab-kits/LabKitAlertsPanel'
-import LabKitOrdersSection from '@/components/lab-kits/LabKitOrdersSection'
 import LabKitOrderModal from '@/components/lab-kits/LabKitOrderModal'
+import OrdersAndShipmentsView from '@/components/lab-kits/OrdersAndShipmentsView'
+import ArchiveView from '@/components/lab-kits/ArchiveView'
+import KitTypeSettingsPanel from '@/components/lab-kits/KitTypeSettingsPanel'
 import { useSite } from '@/components/site/SiteProvider'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { todayLocalISODate } from '@/lib/date-utils'
@@ -47,7 +47,7 @@ interface Study {
   study_title: string
 }
 
-type ViewMode = 'inventory' | 'expired' | 'shipments' | 'alerts' | 'orders'
+type ViewMode = 'inventory' | 'forecast' | 'orders-shipments' | 'archive' | 'alerts' | 'settings'
 
 function LabKitsPageContent() {
   const router = useRouter()
@@ -167,6 +167,36 @@ function LabKitsPageContent() {
     setViewMode('inventory') // Ensure we're on inventory view
   }
 
+  const handleOpenAddKit = useCallback(() => {
+    if (!canManageStudy) return
+    setShowAddModal(true)
+    setViewMode('inventory')
+  }, [canManageStudy])
+
+  const handleOpenBulkImport = useCallback(() => {
+    if (!canManageStudy) return
+    router.push('/lab-kits/bulk-import')
+  }, [canManageStudy, router])
+
+  const handleOpenQuickStart = useCallback(() => {
+    window.open('/docs/lab-kit-coordinator-quickstart.md', '_blank')
+  }, [])
+
+  const handleResetExpiringFilter = useCallback(() => {
+    if (showExpiringOnly) {
+      setShowExpiringOnly(false)
+    }
+  }, [showExpiringOnly])
+
+  const handleCreateShipment = useCallback(() => {
+    if (!canManageStudy) return
+    setShowCreateShipment(true)
+  }, [canManageStudy])
+
+  const handleOpenShipmentsGuide = useCallback(() => {
+    window.open('/docs/lab-kit-shipments-guide.md', '_blank')
+  }, [])
+
   const handleOrderReceived = useCallback((details: { study_id: string; kit_type_id: string | null; received_date: string | null; kit_type_name: string | null }) => {
     const targetStudyId = details.study_id || selectedStudyId
     if (!targetStudyId || targetStudyId === 'all') {
@@ -215,7 +245,7 @@ function LabKitsPageContent() {
               <button
                 onClick={() => {
                   if (!canManageStudy) return
-                  setViewMode('orders')
+                  setViewMode('orders-shipments')
                   setShowOrderModal(true)
                 }}
                 disabled={!canManageStudy}
@@ -223,7 +253,7 @@ function LabKitsPageContent() {
               >
                 Plan Order
               </button>
-              {viewMode === 'shipments' && (
+              {viewMode === 'orders-shipments' && (
                 <button
                   onClick={() => setShowCreateShipment(true)}
                   disabled={!canManageStudy}
@@ -274,34 +304,34 @@ function LabKitsPageContent() {
                   Inventory
                 </button>
                 <button
-                  onClick={() => setViewMode('expired')}
+                  onClick={() => setViewMode('forecast')}
                   className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                    viewMode === 'expired'
-                      ? 'bg-red-600 text-white'
-                      : 'text-gray-400 hover:text-white'
-                  }`}
-                >
-                  Expired
-                </button>
-                <button
-                  onClick={() => setViewMode('shipments')}
-                  className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                    viewMode === 'shipments'
+                    viewMode === 'forecast'
                       ? 'bg-blue-600 text-white'
                       : 'text-gray-400 hover:text-white'
                   }`}
                 >
-                  Shipments
+                  Forecast
                 </button>
                 <button
-                  onClick={() => setViewMode('orders')}
+                  onClick={() => setViewMode('orders-shipments')}
                   className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                    viewMode === 'orders'
+                    viewMode === 'orders-shipments'
                       ? 'bg-blue-600 text-white'
                       : 'text-gray-400 hover:text-white'
                   }`}
                 >
-                  Orders
+                  Orders & Shipments
+                </button>
+                <button
+                  onClick={() => setViewMode('archive')}
+                  className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                    viewMode === 'archive'
+                      ? 'bg-gray-600 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Archive
                 </button>
                 <button
                   onClick={() => setViewMode('alerts')}
@@ -311,9 +341,20 @@ function LabKitsPageContent() {
                       : 'text-gray-400 hover:text-white'
                   }`}
                 >
-                  Alerts{alertsCount > 0 && (
-                    <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-red-600 text-white">{alertsCount}</span>
+                  Alerts
+                  {alertsCount > 0 && (
+                    <span className="ml-2 text-xs px-1.5 py-0.5 rounded-full bg-red-600 text-white">{alertsCount}</span>
                   )}
+                </button>
+                <button
+                  onClick={() => setViewMode('settings')}
+                  className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                    viewMode === 'settings'
+                      ? 'bg-gray-600 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Settings
                 </button>
               </div>
             </div>
@@ -343,46 +384,52 @@ function LabKitsPageContent() {
             {/* Main Content */}
             {viewMode === 'inventory' && (
               <div className="space-y-6">
-                {/* Inventory Forecast (hidden when viewing all studies) */}
-                {selectedStudyId !== 'all' && (
-                  <InventoryForecast studyId={selectedStudyId} daysAhead={30} />
-                )}
-                
-                {/* Lab Kit Inventory */}
                 <LabKitInventory
                   studyId={selectedStudyId}
                   refreshKey={refreshKey}
                   onRefresh={handleRefresh}
                   showExpiringOnly={showExpiringOnly}
                   prefillFilters={inventoryFilter}
+                  onOpenAddKit={handleOpenAddKit}
+                  onOpenBulkImport={handleOpenBulkImport}
+                  onOpenQuickStart={handleOpenQuickStart}
+                  onResetExpiringFilter={handleResetExpiringFilter}
                 />
               </div>
             )}
 
-            {viewMode === 'expired' && (
-              <ExpiredKitsView
-                studyId={selectedStudyId}
-                refreshKey={refreshKey}
-                onRefresh={handleRefresh}
-              />
+            {viewMode === 'forecast' && (
+              selectedStudyId === 'all' ? (
+                <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-10 text-center text-gray-400">
+                  Select a study to view the forecast.
+                </div>
+              ) : (
+                <InventoryForecast studyId={selectedStudyId} daysAhead={30} />
+              )
             )}
 
-            {viewMode === 'shipments' && (
-              <ShipmentsList
-                studyId={selectedStudyId === 'all' ? null : selectedStudyId}
-                refreshKey={refreshKey}
-                onRefresh={handleRefresh}
+            {viewMode === 'orders-shipments' && (
+              <OrdersAndShipmentsView
+                studyId={selectedStudyId}
+                ordersRefreshKey={ordersRefreshKey}
+                shipmentsRefreshKey={refreshKey}
+                onOrdersRefresh={handleOrdersRefresh}
+                onShipmentsRefresh={handleRefresh}
+                onOrderReceived={handleOrderReceived}
                 onLocateKit={handleLocateKit}
-              />
-            )}
-
-            {viewMode === 'orders' && (
-              <LabKitOrdersSection
-                studyId={selectedStudyId}
-                refreshKey={ordersRefreshKey}
                 externalNotice={ordersNotice}
                 onClearExternalNotice={clearOrdersNotice}
-                onOrderReceived={handleOrderReceived}
+                onCreateShipment={handleCreateShipment}
+                onOpenShipmentsGuide={handleOpenShipmentsGuide}
+              />
+            )}
+
+            {viewMode === 'archive' && (
+              <ArchiveView
+                studyId={selectedStudyId}
+                refreshKey={refreshKey}
+                onRefresh={handleRefresh}
+                onNavigateToInventory={() => setViewMode('inventory')}
               />
             )}
 
@@ -391,15 +438,32 @@ function LabKitsPageContent() {
                 studyId={selectedStudyId}
                 onNavigate={(dest, options) => {
                   if (dest === 'inventory') {
-                    if (options?.expiringOnly) setShowExpiringOnly(true)
-                    setViewMode('inventory')
+                    if (options?.expiringOnly) {
+                      setShowExpiringOnly(true)
+                      setViewMode('inventory')
+                    } else {
+                      setViewMode('inventory')
+                    }
                   } else if (dest === 'expired') {
-                    setViewMode('expired')
+                    setViewMode('archive')
                   }
                 }}
                 onCountChange={(n) => setAlertsCount(n)}
                 onOrderReceived={handleOrderReceived}
               />
+            )}
+
+            {viewMode === 'settings' && (
+              selectedStudyId === 'all' ? (
+                <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-10 text-center text-gray-400">
+                  Select a study to manage kit settings.
+                </div>
+              ) : (
+                <KitTypeSettingsPanel
+                  studyId={selectedStudyId}
+                  canManage={canManageStudy}
+                />
+              )
             )}
           </>
         )}

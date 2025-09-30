@@ -57,6 +57,13 @@ interface InventoryForecastItem {
   pendingOrderQuantity: number
   pendingOrders: ForecastPendingOrder[]
   bufferKitsNeeded: number
+  bufferMeta: {
+    source: 'kit-specific' | 'study-default' | 'none'
+    appliedDays: number | null
+    minCount: number | null
+    targetKits: number
+    dailyBurnRate: number
+  }
 }
 
 interface ForecastSummary {
@@ -69,7 +76,7 @@ interface ForecastSummary {
   visitWindowBufferDays: number
 }
 
-type KitTypeRow = { id: string; name: string | null; is_active: boolean | null }
+type KitTypeRow = { id: string; name: string | null; is_active: boolean | null; buffer_days: number | null; buffer_count: number | null }
 type RequirementRow = {
   id: string
   visit_schedule_id: string
@@ -191,7 +198,7 @@ if (studySettingsError) {
     const [{ data: kitTypeRows, error: kitTypeError }, { data: scheduleRows, error: scheduleError }] = await Promise.all([
       supabase
         .from('study_kit_types')
-        .select('id, name, is_active')
+        .select('id, name, is_active, buffer_days, buffer_count')
         .eq('study_id', studyId),
       supabase
         .from('visit_schedules')
@@ -277,7 +284,14 @@ if (studySettingsError) {
         originalDeficit: 0,
         pendingOrderQuantity: 0,
         pendingOrders: [],
-        bufferKitsNeeded: 0
+        bufferKitsNeeded: 0,
+        bufferMeta: {
+          source: 'none',
+          appliedDays: null,
+          minCount: null,
+          targetKits: 0,
+          dailyBurnRate: 0
+        }
       }
 
       entryByKey.set(key, entry)
@@ -468,12 +482,48 @@ if (studySettingsError) {
         entry.pendingOrders = []
       }
 
-      const bufferKitsNeeded = inventoryBufferDays > 0 && effectiveDaysAhead > 0
-        ? Math.max(0, Math.ceil((entry.kitsRequired / Math.max(1, effectiveDaysAhead)) * inventoryBufferDays))
+      const kitTypeInfo = entry.kitTypeId ? kitTypeById.get(entry.kitTypeId) ?? null : null
+      const kitBufferDaysRaw = kitTypeInfo?.buffer_days
+      const kitBufferCountRaw = kitTypeInfo?.buffer_count
+
+      const appliedDaysRaw = kitBufferDaysRaw !== null && kitBufferDaysRaw !== undefined
+        ? kitBufferDaysRaw
+        : inventoryBufferDays
+
+      const appliedDays = appliedDaysRaw && Number.isFinite(appliedDaysRaw)
+        ? Math.max(0, Math.min(120, appliedDaysRaw))
         : 0
+
+      const minCountRaw = kitBufferCountRaw !== null && kitBufferCountRaw !== undefined
+        ? kitBufferCountRaw
+        : 0
+      const minCount = Math.max(0, Math.min(999, minCountRaw))
+
+      const dailyBurnRate = entry.kitsRequired > 0 && effectiveDaysAhead > 0
+        ? entry.kitsRequired / Math.max(1, effectiveDaysAhead)
+        : 0
+
+      const bufferFromDays = appliedDays > 0 && effectiveDaysAhead > 0
+        ? Math.ceil(dailyBurnRate * appliedDays)
+        : 0
+
+      const bufferKitsNeeded = Math.max(bufferFromDays, minCount)
+      const bufferSource: 'kit-specific' | 'study-default' | 'none' =
+        (kitBufferDaysRaw !== null && kitBufferDaysRaw !== undefined) || (kitBufferCountRaw !== null && kitBufferCountRaw !== undefined)
+          ? 'kit-specific'
+          : inventoryBufferDays > 0
+            ? 'study-default'
+            : 'none'
 
       entry.bufferKitsNeeded = bufferKitsNeeded
       entry.requiredWithBuffer = entry.kitsRequired + bufferKitsNeeded
+      entry.bufferMeta = {
+        source: bufferSource,
+        appliedDays: appliedDays > 0 ? appliedDays : null,
+        minCount: minCount > 0 ? minCount : null,
+        targetKits: bufferKitsNeeded,
+        dailyBurnRate
+      }
 
       entry.originalDeficit = Math.max(0, entry.requiredWithBuffer - entry.kitsAvailable)
       entry.deficit = Math.max(0, entry.requiredWithBuffer - (entry.kitsAvailable + entry.pendingOrderQuantity))

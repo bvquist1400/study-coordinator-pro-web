@@ -36,6 +36,14 @@ interface ForecastPendingOrder {
   receivedDate: string | null
 }
 
+interface ForecastBufferMeta {
+  source: 'kit-specific' | 'study-default' | 'none'
+  appliedDays: number | null
+  minCount: number | null
+  targetKits: number
+  dailyBurnRate: number
+}
+
 interface InventoryForecastItem {
   key: string
   kitTypeId: string | null
@@ -55,6 +63,7 @@ interface InventoryForecastItem {
   pendingOrderQuantity: number
   pendingOrders: ForecastPendingOrder[]
   bufferKitsNeeded: number
+  bufferMeta: ForecastBufferMeta
 }
 
 interface ForecastSummary {
@@ -93,7 +102,46 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
 
       if (response.ok) {
         const data = await response.json()
-        setForecast(data.forecast || [])
+        const parsedForecast: InventoryForecastItem[] = Array.isArray(data.forecast)
+          ? data.forecast.map((raw: any): InventoryForecastItem | null => {
+              if (!raw) return null
+              const bufferMetaRaw = raw.bufferMeta || {}
+              const bufferMeta: ForecastBufferMeta = {
+                source:
+                  bufferMetaRaw.source === 'kit-specific' || bufferMetaRaw.source === 'study-default' || bufferMetaRaw.source === 'none'
+                    ? bufferMetaRaw.source
+                    : 'none',
+                appliedDays: typeof bufferMetaRaw.appliedDays === 'number' ? bufferMetaRaw.appliedDays : null,
+                minCount: typeof bufferMetaRaw.minCount === 'number' ? bufferMetaRaw.minCount : null,
+                targetKits: typeof bufferMetaRaw.targetKits === 'number' ? bufferMetaRaw.targetKits : (typeof raw.bufferKitsNeeded === 'number' ? raw.bufferKitsNeeded : 0),
+                dailyBurnRate: typeof bufferMetaRaw.dailyBurnRate === 'number' ? bufferMetaRaw.dailyBurnRate : 0
+              }
+
+              return {
+                key: String(raw.key ?? raw.kitTypeId ?? raw.kitTypeName ?? Math.random()),
+                kitTypeId: raw.kitTypeId ?? null,
+                kitTypeName: raw.kitTypeName ?? 'Unknown kit',
+                visitName: raw.visitName ?? raw.kitTypeName ?? 'Visit',
+                optional: Boolean(raw.optional),
+                visitsScheduled: Number(raw.visitsScheduled) || 0,
+                kitsRequired: Number(raw.kitsRequired) || 0,
+                requiredWithBuffer: typeof raw.requiredWithBuffer === 'number' ? raw.requiredWithBuffer : (Number(raw.kitsRequired) || 0) + (typeof raw.bufferKitsNeeded === 'number' ? raw.bufferKitsNeeded : 0),
+                kitsAvailable: Number(raw.kitsAvailable) || 0,
+                kitsExpiringSoon: Number(raw.kitsExpiringSoon) || 0,
+                deficit: Number(raw.deficit) || 0,
+                status: raw.status === 'critical' || raw.status === 'warning' ? raw.status : 'ok',
+                upcomingVisits: Array.isArray(raw.upcomingVisits) ? raw.upcomingVisits : [],
+                requirements: Array.isArray(raw.requirements) ? raw.requirements : [],
+                originalDeficit: Number(raw.originalDeficit) || 0,
+                pendingOrderQuantity: Number(raw.pendingOrderQuantity) || 0,
+                pendingOrders: Array.isArray(raw.pendingOrders) ? raw.pendingOrders : [],
+                bufferKitsNeeded: typeof raw.bufferKitsNeeded === 'number' ? raw.bufferKitsNeeded : 0,
+                bufferMeta
+              }
+            }).filter(Boolean) as InventoryForecastItem[]
+          : []
+
+        setForecast(parsedForecast)
         setSummary(data.summary || null)
       } else {
         console.error('Failed to fetch inventory forecast:', response.status)
@@ -135,17 +183,17 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
   const getStatusMessage = (item: InventoryForecastItem) => {
     const outstanding = Math.max(0, item.deficit)
     const pending = item.pendingOrderQuantity ?? 0
+    const bufferTarget = item.bufferMeta?.targetKits ?? item.bufferKitsNeeded ?? 0
+    const totalTarget = item.requiredWithBuffer ?? (item.kitsRequired + bufferTarget)
     const original = Math.max(0, item.originalDeficit ?? outstanding)
-    const totalTarget = item.requiredWithBuffer ?? item.kitsRequired
-    const bufferGoal = item.bufferKitsNeeded ?? Math.max(0, totalTarget - item.kitsRequired)
     const slackAfterPending = item.kitsAvailable + pending - totalTarget
     const slackOnHand = item.kitsAvailable - totalTarget
 
     if (outstanding > 0) {
       if (pending > 0) {
-        return `${outstanding} kit${outstanding === 1 ? '' : 's'} short after ordering ${pending} (target ${totalTarget}${bufferGoal > 0 ? ` incl. ${bufferGoal} buffer` : ''})`
+        return `${outstanding} kit${outstanding === 1 ? '' : 's'} short after ordering ${pending} (target ${totalTarget}${bufferTarget > 0 ? ` incl. ${bufferTarget} buffer` : ''})`
       }
-      return `${outstanding} kit${outstanding === 1 ? '' : 's'} short (target ${totalTarget}${bufferGoal > 0 ? ` incl. ${bufferGoal} buffer` : ''})`
+      return `${outstanding} kit${outstanding === 1 ? '' : 's'} short (target ${totalTarget}${bufferTarget > 0 ? ` incl. ${bufferTarget} buffer` : ''})`
     }
 
     if (original > 0 && pending > 0) {
@@ -156,12 +204,15 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
       return `${item.kitsExpiringSoon} kit${item.kitsExpiringSoon === 1 ? '' : 's'} expiring soon`
     }
 
-    if (bufferGoal > 0) {
+    if (bufferTarget > 0) {
       const extra = Math.max(0, slackAfterPending)
-      if (extra <= 2) {
-        return `Buffer goal ${bufferGoal}; ${extra} extra kit${extra === 1 ? '' : 's'} after buffer`
+      if (extra === 0 && pending > 0) {
+        return `Buffer goal ${bufferTarget}; ${pending} kit${pending === 1 ? '' : 's'} en route`
       }
-      return `${extra} extra kit${extra === 1 ? '' : 's'} ready after ${bufferGoal}-kit buffer`
+      if (extra <= Math.min(2, bufferTarget)) {
+        return `Buffer goal ${bufferTarget}; ${extra} extra kit${extra === 1 ? '' : 's'} after buffer`
+      }
+      return `${extra} extra kit${extra === 1 ? '' : 's'} ready after ${bufferTarget}-kit buffer`
     }
 
     const buffer = slackOnHand
@@ -270,10 +321,13 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
         ) : (
           visible.map((item) => {
             const pendingQty = item.pendingOrderQuantity ?? 0
+            const bufferTarget = item.bufferMeta?.targetKits ?? item.bufferKitsNeeded ?? 0
+            const totalTarget = item.requiredWithBuffer ?? (item.kitsRequired + bufferTarget)
+            const slackAfterBuffer = item.kitsAvailable - totalTarget
+            const lowBufferThreshold = bufferTarget > 0 ? Math.min(2, bufferTarget) : 2
+            const hasLowBuffer = slackAfterBuffer >= 0 && slackAfterBuffer <= lowBufferThreshold
             const hasPendingCoverage = pendingQty > 0 && item.deficit <= 0 && (item.originalDeficit ?? 0) > 0
-            const lowBuffer = (item.kitsAvailable - item.kitsRequired)
-            const lowBufferWithPending = pendingQty > 0 && lowBuffer <= 2
-            const highlight = hasPendingCoverage || lowBufferWithPending
+            const highlight = hasPendingCoverage || hasLowBuffer
 
             return (
             <div
@@ -303,6 +357,28 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
                       )}
                     </div>
                     <p className="text-sm text-gray-400">{getStatusMessage(item)}</p>
+                    {(() => {
+                      const meta = item.bufferMeta
+                      if (!meta) return null
+                      const details: string[] = []
+                      if (meta.appliedDays) {
+                        details.push(`${meta.appliedDays} day${meta.appliedDays === 1 ? '' : 's'}`)
+                      }
+                      if (meta.minCount) {
+                        details.push(`min ${meta.minCount} kit${meta.minCount === 1 ? '' : 's'}`)
+                      }
+                      const descriptor = meta.source === 'kit-specific'
+                        ? 'Kit override'
+                        : meta.source === 'study-default'
+                          ? 'Study default'
+                          : 'No buffer configured'
+                      return (
+                        <p className="text-xs text-gray-500 mt-1">
+                          {descriptor}
+                          {details.length > 0 ? ` · ${details.join(' · ')}` : ''}
+                        </p>
+                      )
+                    })()}
                   </div>
                 </div>
                 
