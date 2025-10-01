@@ -74,7 +74,7 @@ Multiple issues need resolution in the lab kit workflow:
 - **Supabase Notes**:
   - Relationships already exist via `lab_kit_shipments`; evaluate if we need a materialized view or denormalized fields after wiring the APIs.
 
-#### B. **Multi-Kit Support** (Priority: MEDIUM)
+#### B. **Multi-Kit Support** (Priority: MEDIUM) ✅
 - **Problem**: Studies may use multiple kits per visit or kits across multiple visits
 - **Actions**:
   ```typescript
@@ -94,18 +94,19 @@ Multiple issues need resolution in the lab kit workflow:
     is_optional BOOLEAN DEFAULT FALSE
   );
   ```
-- **Progress**: Added a dedicated `visit_kit_requirements` table, exposed CRUD APIs, surfaced requirements on visit schedule reads, and introduced a “Manage Kit Requirements” editor inside the Schedule of Events builder (with optimistic syncing to the new API). Inventory forecasting now rolls up kit demand per shared kit type, Add Lab Kit / bulk edit / bulk import use the shared catalog with SOE-driven recommendations, and coordinators can leave kits unassigned for multi-visit usage. **Next follow-up**: introduce adjustable safety buffers in forecasting and tighten the inventory alert UX (collapsible groups, dismissals).
+- **Progress**: Added a dedicated `visit_kit_requirements` table, exposed CRUD APIs, surfaced requirements on visit schedule reads, and introduced a “Manage Kit Requirements” editor inside the Schedule of Events builder (with optimistic syncing to the new API). Inventory forecasting now rolls up kit demand per shared kit type, Add Lab Kit / bulk edit / bulk import use the shared catalog with SOE-driven recommendations, and coordinators can leave kits unassigned for multi-visit usage. **Next follow-up**: instrument usage analytics and evaluate additional auto-assignment heuristics as coordinators adopt the workflow.
 
-#### C. **Inventory Forecast UI** (Priority: LOW)
-- **Problem**: Alerts overwhelming on Lab Kit management page
+#### C. **Inventory Forecast UI** (Priority: LOW) ✅
+- **Problem**: Forecast tab overwhelmed coordinators with a flat list of kit rows and mixed severities.
 - **Actions**:
   ```typescript
-  // Consolidate alert display
-  - Group alerts by severity (critical/warning/info)
-  - Create collapsible alert sections
-  - Add summary view with expandable details
-  - Implement alert dismissal with persistence
+  // Consolidate forecast insights
+  - Group forecast rows by severity (critical/warning/stable) with collapsible sections
+  - Add severity summary chips and total shortfall indicators in the header
+  - Preserve per-kit expansion for requirements/visits while reducing noise by defaulting to issues
+  - Provide single-click toggle to reveal stable kits when coordinators want the full picture
   ```
+- **Status**: Completed — the Forecast tab now surfaces severity chips, collapse/expand controls, and contextual messaging so coordinators can triage critical kits quickly while still drilling into requirements and upcoming visits on demand.
 
 #### D. **Adjustable Buffer** (Priority: LOW)
 - **Problem**: Need configurable buffer for inventory predictions
@@ -253,11 +254,11 @@ Multiple issues need resolution in the lab kit workflow:
 ### **Week 2: Visit Management**
 4. ✅ Add unscheduled visit support
 5. ✅ Implement visit rescheduling
-6. ⬜ Fix accession number display
+6. ✅ Fix accession number display
 
 ### **Week 3: Lab Kit Enhancements**
-7. ⬜ Implement multi-kit per visit support
-8. ⬜ Consolidate inventory forecast UI
+7. ✅ Implement multi-kit per visit support
+8. ✅ Consolidate inventory forecast UI
 9. ⬜ Add adjustable buffer configuration
 
 ### **Week 4: Integrations & Polish**
