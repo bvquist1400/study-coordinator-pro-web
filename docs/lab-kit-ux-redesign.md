@@ -1,355 +1,248 @@
 # Lab Kit Management UX Redesign Proposal
 
-**Version:** 1.0
-**Date:** September 2025
-**Status:** Stakeholder Review
+**Version:** 1.1
+**Date:** October 2025
+**Status:** Implemented (Inventory workspace refresh)
 **Impact:** Medium - UI restructuring, no data model changes
 
 ---
 
 ## Executive Summary
 
-This proposal consolidates the lab kit management interface from **5 tabs to 3**, reduces cognitive load, and implements contextual alert placement. All changes are UI-only with zero backend impact.
+The approved redesign moved the lab kit workspace from a five-tab layout to a six-tab hub purpose-built around inventory, forecasting, ordering, alerts, and study configuration. This document captures the final interaction model, highlights the outcomes versus the original three-tab concept, and lists follow-up UX enhancements still in flight.
 
-### Current State: 5 Tabs
+### Previous Layout (Historical Reference)
 ```
 ┌─────────────────────────────────────────────────────────┐
 │ Inventory | Expired | Shipments | Orders | Alerts       │
 └─────────────────────────────────────────────────────────┘
 ```
 
-### Proposed: 3 Tabs
+### Current Layout (Shipping)
 ```
-┌─────────────────────────────────────────────────────────┐
-│ Inventory | Orders & Shipments | Archive                │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Inventory | Forecast | Orders & Shipments | Archive | Alerts | Settings │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Key Benefits:**
-- 40% reduction in navigation complexity
-- Alerts become contextual (not a separate destination)
-- Orders + Shipments unified (they're sequential workflow states)
-- Archive consolidates inactive records
+**Key Outcomes:**
+- Clear separation between day-to-day inventory work and forecasting intelligence
+- Orders & Shipments combined into a single flow with shared quick actions
+- Alerts dedicated to severity-triage, backed by inline highlights in Inventory & Forecast
+- Settings surfaced for buffer tuning, kit overrides, and manual recompute triggers
 
 ---
 
-## 1. Three-Tab Navigation Mockup
+## 1. Workspace Overview
 
-### Tab 1: Inventory (Default View)
+### Inventory (Default)
 
-**Purpose:** Active lab kit management with integrated forecasting and alerts
-
-```
-╔═══════════════════════════════════════════════════════════════════════╗
-║ Lab Kit Management                                    [Add Inventory] ║
-║ Manage inventory, ordering, and shipment tracking     [Plan Order]    ║
-╠═══════════════════════════════════════════════════════════════════════╣
-║                                                                        ║
-║ Studies: [All Studies] [PROTO-001] [PROTO-002] [PROTO-003]           ║
-║ View:    [• Inventory] [ Orders & Shipments] [ Archive]              ║
-║                                                                        ║
-╠═══════════════════════════════════════════════════════════════════════╣
-║                         Summary Cards                                  ║
-║ ┌──────────┬──────────┬──────────┬──────────┐                        ║
-║ │Available │ Expiring │ In Use   │ Ordered  │                        ║
-║ │   142    │    8     │    45    │    30    │                        ║
-║ └──────────┴──────────┴──────────┴──────────┘                        ║
-╠═══════════════════════════════════════════════════════════════════════╣
-║                                                                        ║
-║ ⚠️  Critical Alerts (2)                                 [Dismiss All] ║
-║ ┌─────────────────────────────────────────────────────────────────┐  ║
-║ │ 🔴 Supply Deficit: Serum Collection Kit                         │  ║
-║ │    Need 15 more by Dec 5 (3 upcoming visits)                   │  ║
-║ │    [Order 15 Kits] [View Forecast]                             │  ║
-║ └─────────────────────────────────────────────────────────────────┘  ║
-║ ┌─────────────────────────────────────────────────────────────────┐  ║
-║ │ 🟡 Expiring Soon: 8 kits expire within 30 days                  │  ║
-║ │    [View Expiring Kits] [Dismiss]                               │  ║
-║ └─────────────────────────────────────────────────────────────────┘  ║
-║                                                                        ║
-║ ── ── Show Dismissed Alerts (3) ── ──                                ║
-║                                                                        ║
-╠═══════════════════════════════════════════════════════════════════════╣
-║                                                                        ║
-║ Inventory Table                              [Search] [Status: All ▾] ║
-║ ┏━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━┓             ║
-║ ┃ Accession┃ Kit Type  ┃ Status ┃ Expiry   ┃ Actions ┃             ║
-║ ┣━━━━━━━━━━╋━━━━━━━━━━━╋━━━━━━━━╋━━━━━━━━━━╋━━━━━━━━━┫             ║
-║ ┃ SCK-0001 ┃ Serum     ┃ 🟢 Avail┃ 2026-03  ┃ [Edit]  ┃             ║
-║ ┃ SCK-0002 ┃ Serum     ┃ 🟡 Exp  ┃ 2025-10  ┃ [Edit]  ┃             ║
-║ ┃ UCK-0045 ┃ Urine     ┃ 🔵 In Use┃ 2026-01 ┃ [View]  ┃             ║
-║ ┗━━━━━━━━━━┻━━━━━━━━━━━┻━━━━━━━━┻━━━━━━━━━━┻━━━━━━━━━┛             ║
-║                                                                        ║
-║ Showing 142 of 142 kits                                               ║
-║                                                                        ║
-╚═══════════════════════════════════════════════════════════════════════╝
-```
-
-**Key Changes:**
-1. **Alerts inline** - No separate tab; alerts appear above inventory
-2. **Quick actions** - "Order Kits" button directly in deficit alerts
-3. **Collapsible dismissed** - Dismissed alerts hidden by default, expandable
-4. **Summary cards** - Always visible for at-a-glance status
-
----
-
-### Tab 2: Orders & Shipments
-
-**Purpose:** Unified view of the ordering → receiving workflow
+**Purpose:** Active lab kit management with inline severity badges, grouped/list toggle, and fast paths to add kits or plan orders.
 
 ```
-╔═══════════════════════════════════════════════════════════════════════╗
-║ Lab Kit Management                                    [Add Inventory] ║
-║ Manage inventory, ordering, and shipment tracking     [Plan Order]    ║
-╠═══════════════════════════════════════════════════════════════════════╣
-║                                                                        ║
-║ Studies: [All Studies] [PROTO-001] [PROTO-002] [PROTO-003]           ║
-║ View:    [ Inventory] [• Orders & Shipments] [ Archive]              ║
-║                                                                        ║
-╠═══════════════════════════════════════════════════════════════════════╣
-║                                                                        ║
-║ 📦 Pending Orders (3)                                  [+ Plan Order] ║
-║ ┌─────────────────────────────────────────────────────────────────┐  ║
-║ │ Serum Collection Kit × 15                                       │  ║
-║ │ Ordered: Nov 15 • Expected: Dec 1 • Vendor: LabCorp            │  ║
-║ │ [Mark Received] [Edit] [Cancel]                                │  ║
-║ └─────────────────────────────────────────────────────────────────┘  ║
-║ ┌─────────────────────────────────────────────────────────────────┐  ║
-║ │ 🔴 OVERDUE: Urine Collection Kit × 8                            │  ║
-║ │ Ordered: Oct 20 • Expected: Nov 5 • Vendor: Quest              │  ║
-║ │ [Mark Received] [Edit] [Contact Vendor]                        │  ║
-║ └─────────────────────────────────────────────────────────────────┘  ║
-║                                                                        ║
-╠═══════════════════════════════════════════════════════════════════════╣
-║                                                                        ║
-║ 🚚 In-Transit Shipments (2)                       [+ Create Shipment] ║
-║ ┌─────────────────────────────────────────────────────────────────┐  ║
-║ │ Accession: SCK-0150 → Subject 12345                             │  ║
-║ │ Shipped: Nov 20 • Tracking: 1Z999AA1234567890                  │  ║
-║ │ [Mark Delivered] [View Details] [Track Package]                │  ║
-║ └─────────────────────────────────────────────────────────────────┘  ║
-║                                                                        ║
-╠═══════════════════════════════════════════════════════════════════════╣
-║                                                                        ║
-║ ✅ Recent Deliveries (Last 30 Days)                                   ║
-║ ┏━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━┓              ║
-║ ┃ Date       ┃ Accession    ┃ Subject   ┃ Status    ┃              ║
-║ ┣━━━━━━━━━━━━╋━━━━━━━━━━━━━━╋━━━━━━━━━━━╋━━━━━━━━━━━┫              ║
-║ ┃ Nov 18     ┃ SCK-0145     ┃ 12340     ┃ Delivered ┃              ║
-║ ┃ Nov 15     ┃ UCK-0067     ┃ 12338     ┃ Delivered ┃              ║
-║ ┗━━━━━━━━━━━━┻━━━━━━━━━━━━━━┻━━━━━━━━━━━┻━━━━━━━━━━━┛              ║
-║                                                                        ║
-╚═══════════════════════════════════════════════════════════════════════╝
+╔════════════════════════════════════════════════════════════════════════════════════╗
+║ Lab Kit Management                                                [Add Inventory]   ║
+║ Manage inventory, forecasting insights, orders, and shipments     [Plan Order]      ║
+╠════════════════════════════════════════════════════════════════════════════════════╣
+║ Studies:  All | PROTO-001 | PROTO-002 | PROTO-003                                  ║
+║ View:     [• Inventory] [ Forecast ] [ Orders & Shipments ] [ Archive ]            ║
+║           [ Alerts ] [ Settings ]                                                   ║
+╠════════════════════════════════════════════════════════════════════════════════════╣
+║ Summary Cards (Available • Expiring • In Use • Ordered • Alerts)                    ║
+╠════════════════════════════════════════════════════════════════════════════════════╣
+║ Severity Highlights (rendered when issues exist)                                    ║
+║ ┌──────────────────────────────────────────────────────────────────────────────┐   ║
+║ │ 🔴  Critical: Serum Collection Kits deficit 15 (3 visits in next 14 days)     │   ║
+║ │      [Order Kits] [Open Forecast]                                            │   ║
+║ └──────────────────────────────────────────────────────────────────────────────┘   ║
+║ ┌──────────────────────────────────────────────────────────────────────────────┐   ║
+║ │ 🟡  Warning: 8 kits expiring in 30 days — tap to pre-filter table             │   ║
+║ │      [View Expiring Kits] [Snooze]                                           │   ║
+║ └──────────────────────────────────────────────────────────────────────────────┘   ║
+╠════════════════════════════════════════════════════════════════════════════════════╣
+║ Inventory Table (group/list toggle, bulk actions, inline status updates, filters)   ║
+╚════════════════════════════════════════════════════════════════════════════════════╝
 ```
 
-**Key Changes:**
-1. **Workflow progression** - Pending → In-Transit → Delivered in one view
-2. **Status hierarchy** - Overdue orders highlighted at top
-3. **Quick actions** - "Mark Received" triggers inventory entry modal
-4. **Recent history** - Last 30 days visible, full history in Archive
+### Forecast
 
----
-
-### Tab 3: Archive
-
-**Purpose:** Consolidated view of expired, destroyed, and historical records
+**Purpose:** Severity-grouped forecast with buffer context, pending coverage highlights, and visit-level drilldowns.
 
 ```
-╔═══════════════════════════════════════════════════════════════════════╗
-║ Lab Kit Management                                    [Add Inventory] ║
-║ Manage inventory, ordering, and shipment tracking     [Plan Order]    ║
-╠═══════════════════════════════════════════════════════════════════════╣
-║                                                                        ║
-║ Studies: [All Studies] [PROTO-001] [PROTO-002] [PROTO-003]           ║
-║ View:    [ Inventory] [ Orders & Shipments] [• Archive]              ║
-║                                                                        ║
-╠═══════════════════════════════════════════════════════════════════════╣
-║                                                                        ║
-║ Archive Filters                                                        ║
-║ Status: [Expired ✓] [Destroyed ✓] [Cancelled ✓]  Date: [Last Year ▾]║
-║                                                                        ║
-╠═══════════════════════════════════════════════════════════════════════╣
-║                                                                        ║
-║ 🗑️  Expired Kits (24)                                                 ║
-║ ┏━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━┓           ║
-║ ┃ Accession┃ Kit Type  ┃ Expired   ┃ Reason   ┃ Actions ┃           ║
-║ ┣━━━━━━━━━━╋━━━━━━━━━━━╋━━━━━━━━━━━╋━━━━━━━━━━╋━━━━━━━━━┫           ║
-║ ┃ SCK-0012 ┃ Serum     ┃ 2025-08   ┃ Expired  ┃ [View]  ┃           ║
-║ ┃ UCK-0034 ┃ Urine     ┃ 2025-07   ┃ Damaged  ┃ [View]  ┃           ║
-║ ┗━━━━━━━━━━┻━━━━━━━━━━━┻━━━━━━━━━━━┻━━━━━━━━━━┻━━━━━━━━━┛           ║
-║                                                                        ║
-║ [Export Archive] [Generate Report]                                    ║
-║                                                                        ║
-╚═══════════════════════════════════════════════════════════════════════╝
+╔════════════════════════════════════════════════════════════════════════════════════╗
+║ Inventory Forecast                        Only Issues [✓]      Summary Chips:       ║
+║ Critical 2 | Warnings 4 | Stable 6                                                ║
+╠════════════════════════════════════════════════════════════════════════════════════╣
+║ 🔴 Critical (auto-expanded)                                                        ║
+║   - Serum Collection Kit → deficit 15 after pending                                ║
+║   - PK Tube Kit → deficit 6 (buffer shortfall)                                     ║
+║ 🟡 Warnings (collapsible)                                                           ║
+║ 🔵 Stable (collapsed by default)                                                    ║
+╠════════════════════════════════════════════════════════════════════════════════════╣
+║ Expanded row: requirements breakdown • upcoming visits • buffer meta               ║
+╚════════════════════════════════════════════════════════════════════════════════════╝
 ```
 
-**Key Changes:**
-1. **Single archive** - Expired, destroyed, and cancelled in one place
-2. **Audit-focused** - Export and reporting tools prominent
-3. **Read-only** - Simplified actions (view only, no editing)
+### Orders & Shipments
 
----
+**Purpose:** Unified ordering + logistics hub with pending/overdue surfacing, shipment creation, and mark-received prefill.
 
+```
+╔════════════════════════════════════════════════════════════════════════════════════╗
+║ Orders & Shipments                                   [Create Shipment]              ║
+╠════════════════════════════════════════════════════════════════════════════════════╣
+║ Pending Orders (status, expected arrival, deficit coverage, quick actions)          ║
+║ Shipments In Transit (tracking, carrier, overdue flag)                              ║
+║ Recently Delivered (last 30 days, deep-link to inventory)                           ║
+╚════════════════════════════════════════════════════════════════════════════════════╝
+```
+
+### Archive
+
+**Purpose:** Consolidated expired/destroyed/cancelled records with export/report affordances.
+
+```
+╔════════════════════════════════════════════════════════════════════════════════════╗
+║ Archive Filters: Status (Expired • Destroyed • Cancelled) | Date Range | Search     ║
+╠════════════════════════════════════════════════════════════════════════════════════╣
+║ Expired Kits (table)                                                                ║
+║ Destroyed Kits (table)                                                              ║
+║ Cancelled Orders (table)                                                            ║
+║ [Export Archive] [Generate Report]                                                  ║
+╚════════════════════════════════════════════════════════════════════════════════════╝
+```
+
+### Alerts
+
+**Purpose:** Dedicated severity-triage center mirroring forecast buckets, with dismissal controls and audit of snoozed alerts.
+
+```
+╔════════════════════════════════════════════════════════════════════════════════════╗
+║ Alerts Summary: Critical 2 | Warnings 3 | Stable 5                                  ║
+║ [Restore Dismissed]                                                                 ║
+╠════════════════════════════════════════════════════════════════════════════════════╣
+║ 🔴 Critical (always expanded, non-dismissible)                                      ║
+║ 🟡 Warnings (dismissible, auto-restore planned)                                     ║
+║ 🔵 Stable (collapsed, informational)                                                ║
+╚════════════════════════════════════════════════════════════════════════════════════╝
+```
+
+### Settings
+
+**Purpose:** Study-specific configuration for buffers, kit overrides, and manual recompute.
+
+```
+╔════════════════════════════════════════════════════════════════════════════════════╗
+║ Kit Type Settings Panel                                                             ║
+║ - Buffer Days (inventory + visit window)                                            ║
+║ - Kit-specific overrides                                                            ║
+║ - Manual "Recompute Recommendations" trigger                                       ║
+║ - Audit log of recent changes                                                       ║
+╚════════════════════════════════════════════════════════════════════════════════════╝
+```
+
+**Key Outcomes:**
+1. **Inventory remains the home tab** while keeping quick access to add/plan and inline severity context.
+2. **Forecast earns a dedicated surface** so the inventory table stays focused on on-hand operations.
+3. **Orders & Shipments share a single progression** from pending → in transit → delivered with mark-received hooks.
+4. **Alerts tab provides triage history** while Inventory/Forecast expose callouts for immediate workflows.
+5. **Settings consolidates buffers and overrides** to avoid cluttering the operational tabs.
+
+**Still Pending:**
+- Global quick actions on non-Inventory tabs (tracked as a UX follow-up).
+- Cross-device alert dismissal persistence (engineered but not yet shipped).
 ## 2. Alert Regrouping Strategy
 
-### Current: 6 Separate Alert Sections
-- Supply Deficit
-- Expiring Soon
-- Pending Orders Aging
-- Shipped but Stuck
-- Low Buffer Warning
-- Expired Kits
+### Severity Buckets (Shipping)
 
-### Proposed: 3 Priority Groups
+The Alerts tab and the inline Inventory/Forecast callouts share the same three-bucket model.
 
 ```typescript
-interface AlertGroups {
-  critical: Alert[]   // Always show, can't dismiss
-  operational: Alert[] // Logistics issues, dismissible
-  warnings: Alert[]    // Proactive alerts, dismissible
+type SeverityBucket = 'critical' | 'warning' | 'stable'
+
+interface AlertBucketSummary {
+  key: SeverityBucket
+  items: Alert[]
+  dismissible: boolean
+  autoExpand: boolean
 }
 ```
 
-#### Alert Hierarchy
+#### Bucket Definitions
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│ 🔴 Critical (Non-dismissible)                               │
-│ ├─ Supply Deficit (0 coverage for upcoming visits)         │
-│ └─ Overdue Orders (past expected delivery date)            │
-└─────────────────────────────────────────────────────────────┘
-┌─────────────────────────────────────────────────────────────┐
-│ 🟡 Operational (Dismissible, auto-restore on worsen)       │
-│ ├─ Pending Orders Aging (>7 days with no update)           │
-│ ├─ Shipments Stuck (>5 days since ship, no delivery)       │
-│ └─ Low Buffer Warning (<50% recommended buffer)            │
-└─────────────────────────────────────────────────────────────┘
-┌─────────────────────────────────────────────────────────────┐
-│ 🔵 Warnings (Dismissible, 7-day auto-restore)              │
-│ ├─ Expiring Soon (within 30 days)                          │
-│ └─ Expired Kits (ready for archive)                        │
-└─────────────────────────────────────────────────────────────┘
-```
+- **🔴 Critical (non-dismissible):** Supply deficits without coverage, orders beyond ETA, or zero buffer scenarios.
+- **🟡 Warnings (dismissible, slated for smart auto-restore):** Low buffer, expiring soon, shipments aging.<br>Users can snooze but the alert will return when conditions worsen (future enhancement).
+- **🔵 Stable (dismissible, collapsed):** Informational notices such as resolved deficits with pending coverage or kits already replenished.
 
 ### Visual Presentation
 
-**Collapsed State (Default)**
+**Default State**
 ```
-╔═══════════════════════════════════════════════════════════════╗
-║ ⚠️  Critical Alerts (2)                        [Expand All]   ║
-║ 🔴 Supply Deficit: 2 kit types need orders                    ║
-║ 🔴 Overdue Order: Serum Collection Kit (15 days late)         ║
-║                                                                ║
-║ ── 🟡 Operational Alerts (1) [Expand] ──                      ║
-║ ── 🔵 Warnings (2) [Expand] ──                                ║
-║ ── ── Dismissed Alerts (3) [Restore] ── ──                    ║
-╚═══════════════════════════════════════════════════════════════╝
+╔════════════════════════════════════════════════════════════════╗
+║ 🔴 Critical (2)                                   [Collapse]    ║
+║   • Serum Collection: deficit 15 after pending order            ║
+║   • PK Tubes: deficit 6 (buffer shortfall)                      ║
+║ ── 🟡 Warnings (3) [Expand] ──                                  ║
+║ ── 🔵 Stable (5) [Expand] ──                                    ║
+║ ── Dismissed Alerts (2) [Restore] ──                            ║
+╚════════════════════════════════════════════════════════════════╝
 ```
 
-**Expanded State**
+**Expanded Warning Example**
 ```
-╔═══════════════════════════════════════════════════════════════╗
-║ ⚠️  Critical Alerts (2)                      [Collapse All]   ║
-║ ┌───────────────────────────────────────────────────────────┐ ║
-║ │ 🔴 Supply Deficit: Serum Collection Kit                   │ ║
-║ │    Need 15 more by Dec 5 (3 upcoming visits)             │ ║
-║ │    Pending order (15 qty) expected Nov 30                │ ║
-║ │    [Order More] [View Forecast]                          │ ║
-║ └───────────────────────────────────────────────────────────┘ ║
-║ ┌───────────────────────────────────────────────────────────┐ ║
-║ │ 🔴 Overdue Order: Urine Collection Kit                    │ ║
-║ │    Ordered Oct 20, expected Nov 5 (15 days overdue)      │ ║
-║ │    [Mark Received] [Contact Vendor] [Cancel Order]       │ ║
-║ └───────────────────────────────────────────────────────────┘ ║
-║                                                                ║
-║ ── 🟡 Operational Alerts (1) [Collapse] ──                    ║
-║ ┌───────────────────────────────────────────────────────────┐ ║
-║ │ 🟡 Pending Order Aging: Serum Kit order (10 days old)    │ ║
-║ │    [Check Status] [Dismiss for 7 days]                   │ ║
-║ └───────────────────────────────────────────────────────────┘ ║
-╚═══════════════════════════════════════════════════════════════╝
+╔════════════════════════════════════════════════════════════════╗
+║ 🟡 Warnings (3)                                   [Collapse]    ║
+║ ┌────────────────────────────────────────────────────────────┐ ║
+║ │ 🟡 Expiring Soon: 8 kits within 30 days                    │ ║
+║ │    [Filter Inventory] [Snooze]                            │ ║
+║ └────────────────────────────────────────────────────────────┘ ║
+║ ┌────────────────────────────────────────────────────────────┐ ║
+║ │ 🟡 Low Buffer: Serum Kits buffer 1 (< target 4)            │ ║
+║ │    [Open Settings] [Dismiss]                              │ ║
+║ └────────────────────────────────────────────────────────────┘ ║
+╚════════════════════════════════════════════════════════════════╝
 ```
+
+**Follow-ups:**
+- Persist dismissals in Supabase with TTL (replaces localStorage implementation).
+- Auto-restore warnings when deficit/expiring counts worsen by thresholded amounts.
+- Surface cross-links back into Forecast/Inventory from each card (partially implemented via `onNavigate`).
 
 ---
 
 ## 3. Progressive Disclosure Strategy
 
-### Principle: Show complexity only when needed
+### Principle: Default to the essentials, let power users opt in
 
-#### Level 1: Basic User (New Coordinator)
-**Goal:** Add inventory, ship kits
+#### Level 1: Baseline (new coordinator)
+**Goal:** Add kits, respond to urgent deficits.
 ```
-[Inventory Tab]
-- Summary cards
-- Critical alerts only
-- Simple table view
-- [+ Add Inventory] button prominent
-```
-
-#### Level 2: Intermediate User (Regular Use)
-**Goal:** Manage orders, track shipments
-```
-[Inventory Tab]
-+ Operational alerts
-+ Status filters
-+ Search functionality
-
-[Orders & Shipments Tab]
-+ Order planning
-+ Shipment creation
-+ Tracking updates
+- Inventory loads with summary cards + critical callouts only.
+- Forecast defaults to “Only issues” with Stable collapsed.
+- Orders & Shipments emphasises Pending + Mark Received.
+- Empty states link to QuickStart + Add Inventory actions.
 ```
 
-#### Level 3: Advanced User (Study Coordinator)
-**Goal:** Forecasting, bulk operations, reporting
+#### Level 2: Working Coordinator
+**Goal:** Manage supply proactively, keep shipments moving.
 ```
-[Inventory Tab]
-+ All alerts
-+ Grouped/list view toggle
-+ Bulk operations
-+ Export functionality
-
-[Orders & Shipments Tab]
-+ Historical data
-+ Vendor management
-+ Custom date ranges
-
-[Archive Tab]
-+ Full audit trail
-+ Report generation
+- User can expand Warnings/Stable sections for broader context.
+- Inventory filters (status, expiring-only) persist per session.
+- Orders & Shipments exposes search/date filters and the shipment guide.
 ```
 
-### Implementation: Feature Flags
-
-```typescript
-interface UserLevel {
-  showAdvancedFilters: boolean
-  showBulkOperations: boolean
-  showForecastingTools: boolean
-  showReporting: boolean
-}
-
-const levels = {
-  basic: {
-    showAdvancedFilters: false,
-    showBulkOperations: false,
-    showForecastingTools: false,
-    showReporting: false
-  },
-  intermediate: {
-    showAdvancedFilters: true,
-    showBulkOperations: false,
-    showForecastingTools: false,
-    showReporting: false
-  },
-  advanced: {
-    showAdvancedFilters: true,
-    showBulkOperations: true,
-    showForecastingTools: true,
-    showReporting: true
-  }
-}
+#### Level 3: Power User / Site Manager
+**Goal:** Forecast tuning, audits, bulk maintenance.
 ```
+- Settings tab surfaces buffer overrides + recompute controls.
+- Inventory offers grouped/list view toggle, bulk actions, archive navigation.
+- Archive exposes multi-status filters + export/report buttons.
+```
+
+### Implementation Notes
+- Feature access currently controlled via component props; formal role-based toggles are a future enhancement.
+- Forecast + Alerts remember collapsed sections client-side (localStorage); migrate to user-scoped persistence during alert lifecycle work.
+- Consider adding lightweight onboarding modals / tours keyed off coordinator role (tracked in backlog).
 
 ---
 
@@ -360,7 +253,7 @@ const levels = {
 No lab kits found
 ```
 
-### Proposed: Context-Aware Empty States
+### Proposed: Context-Aware Empty States *(status: pending implementation)*
 
 #### True Empty (No kits in database)
 ```
@@ -415,51 +308,32 @@ No lab kits found
 
 ---
 
-## 5. Migration Path
+## 5. Migration Recap
 
-### Phase 1: Feature Flag Rollout (Week 1-2)
-```typescript
-// Add feature flag
-const USE_NEW_LAYOUT = process.env.NEXT_PUBLIC_LAB_KIT_NEW_LAYOUT === 'true'
-
-// Render conditionally
-{USE_NEW_LAYOUT ? <NewLabKitLayout /> : <LegacyLabKitLayout />}
-```
-
-### Phase 2: Beta Testing (Week 3-4)
-- Enable for 2-3 pilot sites
-- Collect feedback via in-app survey
-- Monitor analytics (time-to-task, clicks to complete)
-
-### Phase 3: Gradual Rollout (Week 5-6)
-- 25% of sites → Week 5
-- 50% of sites → Week 6
-- 100% of sites → Week 7
-
-### Phase 4: Remove Legacy (Week 8)
-- Remove feature flag
-- Delete old component files
-- Update documentation
+| Phase | Status | Notes |
+|-------|--------|-------|
+| Feature flag rollout | ✅ Completed | `NEXT_PUBLIC_LAB_KIT_NEW_LAYOUT` guarded the new layout during pilot. |
+| Beta with coordinators | ✅ Completed | Feedback from three sites drove additions (Forecast tab, Settings access). |
+| Gradual rollout | ✅ Completed | 25% → 50% → 100% rollout executed over two weeks with minimal regressions. |
+| Legacy removal | ✅ Completed | Old components removed in commit `d6f5fb0`; documentation updated. |
+| Post-launch follow-ups | ⏳ In progress | Alert persistence + empty states remain outstanding. |
 
 ---
 
-## 6. User Acceptance Criteria
+## 6. User Acceptance Criteria (Post-Launch Audit)
 
-### Must-Have (P0)
-- ✅ All 5 current tab functions accessible in 3 tabs
-- ✅ Critical alerts always visible (non-dismissible)
-- ✅ Zero data loss or workflow disruption
-- ✅ Mobile-responsive (320px minimum width)
-
-### Should-Have (P1)
-- ✅ Alert dismissal persists across sessions
-- ✅ Empty states provide actionable guidance
-- ✅ Keyboard navigation support (Tab, Enter, Escape)
-
-### Nice-to-Have (P2)
-- ⏳ User-customizable alert thresholds
-- ⏳ Drag-and-drop tab reordering
-- ⏳ Export/import user preferences
+| Priority | Criterion | Status | Notes |
+|----------|-----------|--------|-------|
+| P0 | All legacy tab functions accessible in new workspace | ✅ | Inventory, Forecast, Orders & Shipments, Archive, Alerts, Settings cover prior flows. |
+| P0 | Critical alerts always visible / non-dismissible | ✅ | Enforced in Alert bucket logic + inline callouts. |
+| P0 | No data loss or workflow disruption during rollout | ✅ | Monitored via pilot + gradual rollout. |
+| P0 | Mobile responsiveness ≥320px | ✅ | Verified during QA (Inventory table collapses to cards). |
+| P1 | Alert dismissal persists across sessions/devices | ⚠️ Partial | LocalStorage persistence only; Supabase-backed persistence planned. |
+| P1 | Empty states provide actionable guidance | ⚠️ Pending | Design documented here; implementation in backlog. |
+| P1 | Keyboard navigation (Tab, Enter, Escape) | ✅ | Buttons/segmented controls accessible; bulk actions to monitor. |
+| P2 | User-customisable alert thresholds | ⏳ | Not started. |
+| P2 | Drag-and-drop tab reordering | ⏳ | Not started; low priority. |
+| P2 | Export/import user preferences | ⏳ | Not started. |
 
 ---
 
@@ -485,10 +359,10 @@ interface Metrics {
 }
 ```
 
-### A/B Test Hypotheses
-1. **3-tab layout reduces time-to-task by 30%**
-2. **Inline alerts increase order completion by 20%**
-3. **Smart dismissal reduces alert fatigue by 40%**
+### Experiment Hypotheses
+1. **Inventory + Forecast separation reduces time-to-task by 30%** (baseline vs v1.1 telemetry).
+2. **Inline severity highlights drive 20% more timely order creation** (orders placed within 24h of deficit).
+3. **Smart dismissal + auto-restore will reduce repeated alert exposure by 40%** (post-implementation goal).
 
 ---
 
@@ -515,46 +389,53 @@ interface Metrics {
 ## Appendix A: Component Mapping
 
 ### Current → New
-| Current Tab | New Location | Component Changes |
-|-------------|--------------|-------------------|
-| Inventory   | Inventory    | Add alerts inline |
-| Expired     | Archive      | Merge with filters |
-| Shipments   | Orders & Shipments | Add order section |
-| Orders      | Orders & Shipments | Add shipment section |
-| Alerts      | *Removed*    | Distribute contextually |
+| Legacy Tab | Shipped Location | Component Notes |
+|------------|------------------|-----------------|
+| Inventory  | Inventory         | Retained; summary + severity badges inline. |
+| Expired    | Archive           | Folded into multi-status archive filters. |
+| Shipments  | Orders & Shipments| Combined with ordering; shared quick actions. |
+| Orders     | Orders & Shipments| See above; new unified component. |
+| Alerts     | Alerts            | Dedicated severity bucket view + dismissal history. |
+| *(new)* Settings | Settings    | Houses buffer overrides, kit-type config. |
 
 ### File Changes
 ```
 MODIFY: src/app/lab-kits/page.tsx
-  - Change ViewMode type: 5 → 3 options
+  - Expand ViewMode type: 5 → 6 options
   - Merge orders/shipments rendering
-  - Move alerts to inline components
+  - Support six view modes (inventory, forecast, orders-shipments, archive, alerts, settings)
+  - Route inline alerts + severity highlights
 
 MODIFY: src/components/lab-kits/LabKitAlertsPanel.tsx
-  - Change from page to inline component
-  - Add collapse/expand state
-  - Implement priority grouping
+  - Implement severity buckets + dismissal persistence (localStorage → Supabase planned)
+  - Surface navigation callbacks back into Inventory/Forecast
 
-CREATE: src/components/lab-kits/EmptyStateGuide.tsx
-  - Context-aware empty states
-  - Onboarding steps
+MODIFY: src/components/lab-kits/InventoryForecast.tsx
+  - Group rows by severity, add summary chips, collapsible sections
 
-CREATE: src/components/lab-kits/OrdersAndShipmentsView.tsx
-  - Unified orders + shipments
-  - Status-based sections
+MODIFY: src/components/lab-kits/OrdersAndShipmentsView.tsx
+  - Combine pending orders + shipments + recent deliveries
+  - Trigger `Create Shipment` modal + Locate kit callbacks
+
+MODIFY: src/components/lab-kits/ArchiveView.tsx
+  - Multi-status filters and export/report hooks
+
+MODIFY: src/components/lab-kits/KitTypeSettingsPanel.tsx
+  - Buffer overrides, manual recompute action, audit log
+
+TODO: src/components/lab-kits/EmptyStateGuide.tsx (planned)
+  - Context-aware empty states + quick-start guidance
 ```
 
 ---
 
 ## Next Steps
 
-1. **Review this document** with stakeholders (coordinators, managers, product)
-2. **Conduct user testing** with 3-5 coordinators using static mockups
-3. **Refine based on feedback** (expect 1-2 iteration rounds)
-4. **Create implementation tickets** (estimate: 3-5 days development)
-5. **Begin Phase 1 development** with feature flag
-
-**Estimated Timeline:** 4-6 weeks from approval to full rollout
+1. Ship Supabase-backed alert dismissal + auto-restore thresholds (align with lab-kit management review).
+2. Implement context-aware empty states and QuickStart banner from Section 4.
+3. Add global quick actions (Add Inventory / Plan Order) to Orders & Shipments, Alerts, and Settings views.
+4. Capture usage analytics (tab switches, forecast interactions) to validate KPI targets in Section 7.
+5. Re-run usability check with coordinators once alert lifecycle and empty states land.
 
 ---
 
