@@ -634,7 +634,6 @@ if (studySettingsError) {
     const restoreUpdates: Array<{ id: string; rule: string }> = []
 
     const nowIso = new Date().toISOString()
-
     if (Array.isArray(dismissalRows)) {
       for (const row of dismissalRows as any[]) {
         const alertId = row.alert_id as string
@@ -716,18 +715,14 @@ if (studySettingsError) {
     }
 
     if (restoreUpdates.length > 0) {
-      const updatePayload: LabKitAlertDismissalUpdate = {
-        auto_restore_rule: '',
-        restored_at: nowIso,
-        updated_at: nowIso
-      }
       await Promise.all(
         restoreUpdates.map(update =>
           supabase
             .from('lab_kit_alert_dismissals')
             .update<LabKitAlertDismissalUpdate>({
-              ...updatePayload,
-              auto_restore_rule: update.rule
+              auto_restore_rule: update.rule,
+              restored_at: nowIso,
+              updated_at: nowIso
             })
             .eq('id', update.id)
         )
