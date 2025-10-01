@@ -90,19 +90,20 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
   const EXPIRING_DAYS = 30
   const PENDING_AGING_DAYS = 7
   const SHIPPED_AGING_DAYS = 10
-  const storageKey = useMemo(() => `lab-kit-alerts:${studyId}`, [studyId])
 
   const load = useCallback(async () => {
     if (studyId === 'all') {
       // For multi-study view, keep panel minimal until multi-study alert API is added
       setForecast([])
       setKits([])
+      setDismissed(new Set())
       setLoading(false)
       onCountChange && onCountChange(0)
       return
     }
     try {
       setLoading(true)
+      setPanelNotice(null)
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
       if (!token) return
@@ -183,6 +184,23 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
           }
         })
         setForecast(sanitized)
+
+        const dismissedAlerts = Array.isArray(json.dismissedAlerts) ? json.dismissedAlerts as string[] : []
+        setDismissed(new Set(dismissedAlerts))
+
+        if (Array.isArray(json.autoRestoredAlerts) && json.autoRestoredAlerts.length > 0) {
+          const labelMap: Record<string, string> = {
+            supplyDeficit: 'Supply deficit',
+            expiringSoon: 'Expiring kits',
+            pendingAging: 'Pending shipments',
+            shippedStuck: 'Shipped without delivery',
+            lowBuffer: 'Low buffer',
+            expired: 'Expired kits'
+          }
+          const friendly = json.autoRestoredAlerts.map((id: string) => labelMap[id] || id)
+          const label = friendly.length === 1 ? friendly[0] : `${friendly.length} alerts`
+          setPanelNotice({ type: 'success', message: `${label} automatically restored.` })
+        }
       } else {
         setForecast([])
       }
@@ -194,21 +212,6 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
   useEffect(() => { load() }, [load])
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    try {
-      const raw = window.localStorage.getItem(storageKey)
-      if (raw) {
-        const parsed = JSON.parse(raw)
-        if (Array.isArray(parsed)) {
-          setDismissed(new Set(parsed))
-        }
-      }
-    } catch (err) {
-      console.error('Failed to load dismissed lab kit alerts', err)
-    }
-  }, [storageKey])
-
-  useEffect(() => {
     setOpen(prev => {
       const next = new Set(prev)
       let changed = false
@@ -218,13 +221,6 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
       return changed ? next : prev
     })
   }, [dismissed])
-
-  const persistDismissed = useCallback((next: Set<string>) => {
-    setDismissed(new Set(next))
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(storageKey, JSON.stringify(Array.from(next)))
-    }
-  }, [storageKey])
 
   const ensureOpen = useCallback((id: string, count: number) => {
     if (count <= 0) {
@@ -302,6 +298,145 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
     return enriched.kit_type_info?.name || enriched.kit_type_label || kit.kit_type || ''
   }
 
+  const buildDismissalConditions = useCallback((id: string): Record<string, unknown> => {
+    switch (id) {
+      case 'supplyDeficit': {
+        const totalDeficit = activeSupplyDeficit.reduce((sum, item) => sum + Math.max(0, item.deficit), 0)
+        const maxDeficit = activeSupplyDeficit.reduce((max, item) => Math.max(max, Math.max(0, item.deficit)), 0)
+        return {
+          deficit: totalDeficit,
+          maxDeficit,
+          count: activeSupplyDeficit.length
+        }
+      }
+      case 'expiringSoon': {
+        let earliest: string | null = null
+        for (const kit of expiringSoon) {
+          if (kit.expiration_date && (!earliest || kit.expiration_date < earliest)) {
+            earliest = kit.expiration_date
+          }
+        }
+        return {
+          kitsExpiringSoon: expiringSoon.length,
+          earliestExpiryDate: earliest
+        }
+      }
+      case 'pendingAging': {
+        const maxDays = pendingAging.reduce((max, kit: LabKit) => {
+          const days = ageInDays((kit as any).updated_at || (kit as any).created_at)
+          return Math.max(max, days)
+        }, 0)
+        return {
+          count: pendingAging.length,
+          maxDays
+        }
+      }
+      case 'shippedStuck': {
+        const maxDays = shippedStuck.reduce((max, kit: LabKit) => {
+          const days = ageInDays((kit as any).updated_at || (kit as any).created_at)
+          return Math.max(max, days)
+        }, 0)
+        return {
+          count: shippedStuck.length,
+          maxDays
+        }
+      }
+      case 'lowBuffer': {
+        let minSlack: number | null = null
+        for (const item of lowBuffer as ForecastItem[]) {
+          const bufferTarget = item.bufferMeta?.targetKits ?? item.bufferKitsNeeded ?? 0
+          const totalTarget = item.requiredWithBuffer ?? (item.kitsRequired + bufferTarget)
+          const slackAfterBuffer = (item.kitsAvailable + (item.pendingOrderQuantity ?? 0)) - totalTarget
+          if (slackAfterBuffer >= 0) {
+            if (minSlack === null || slackAfterBuffer < minSlack) {
+              minSlack = slackAfterBuffer
+            }
+          }
+        }
+        return {
+          count: lowBuffer.length,
+          minSlack
+        }
+      }
+      case 'expired': {
+        return { count: expired.length }
+      }
+      default:
+        return {}
+    }
+  }, [activeSupplyDeficit, expiringSoon, pendingAging, shippedStuck, lowBuffer, expired])
+
+  const dismissAlert = useCallback(async (alertId: string, conditions: Record<string, unknown>) => {
+    if (studyId === 'all') return false
+    try {
+      setPanelNotice(null)
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) throw new Error('Authentication required. Please sign in again.')
+
+      const response = await fetch('/api/lab-kit-alerts/dismiss', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ study_id: studyId, alert_id: alertId, conditions })
+      })
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}))
+        throw new Error(body.error || 'Failed to dismiss alert.')
+      }
+
+      const body = await response.json().catch(() => ({}))
+
+      setDismissed(prev => {
+        const next = new Set(prev)
+        next.add(alertId)
+        return next
+      })
+
+      return true
+    } catch (error) {
+      setPanelNotice({ type: 'error', message: error instanceof Error ? error.message : 'Failed to dismiss alert.' })
+      return false
+    }
+  }, [studyId])
+
+  const restoreAlert = useCallback(async (alertId: string) => {
+    if (studyId === 'all') return false
+    try {
+      setPanelNotice(null)
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) throw new Error('Authentication required. Please sign in again.')
+
+      const params = new URLSearchParams({ study_id: studyId, alert_id: alertId })
+      const response = await fetch(`/api/lab-kit-alerts/dismiss?${params.toString()}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}))
+        throw new Error(body.error || 'Failed to restore alert.')
+      }
+
+      setDismissed(prev => {
+        const next = new Set(prev)
+        next.delete(alertId)
+        return next
+      })
+
+      return true
+    } catch (error) {
+      setPanelNotice({ type: 'error', message: error instanceof Error ? error.message : 'Failed to restore alert.' })
+      return false
+    }
+  }, [studyId])
+
   const summary = useMemo(() => {
     const activeCriticalCount = activeSupplyDeficit.length
     return {
@@ -334,25 +469,26 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
     setOpen(n)
   }
 
-  const dismissSection = useCallback((id: string) => {
-    const next = new Set(dismissed)
-    next.add(id)
-    persistDismissed(next)
-  }, [dismissed, persistDismissed])
+  const dismissSection = useCallback(async (id: string) => {
+    const conditions = buildDismissalConditions(id)
+    const success = await dismissAlert(id, conditions)
+    if (success) {
+      setOpen(prev => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
+    }
+  }, [buildDismissalConditions, dismissAlert])
 
-  const restoreAll = useCallback(() => {
-    persistDismissed(new Set())
-    setOpen(prev => {
-      const next = new Set(prev)
-      if (activeSupplyDeficit.length > 0) next.add('supplyDeficit')
-      if (expiringSoon.length > 0) next.add('expiringSoon')
-      if (pendingAging.length > 0) next.add('pendingAging')
-      if (shippedStuck.length > 0) next.add('shippedStuck')
-      if (lowBuffer.length > 0) next.add('lowBuffer')
-      if (expired.length > 0) next.add('expired')
-      return next
-    })
-  }, [persistDismissed, activeSupplyDeficit.length, expiringSoon.length, pendingAging.length, shippedStuck.length, lowBuffer.length, expired.length])
+  const restoreAll = useCallback(async () => {
+    const ids = Array.from(dismissed)
+    if (ids.length === 0) return
+    const results = await Promise.all(ids.map(alertId => restoreAlert(alertId)))
+    if (results.some(Boolean)) {
+      setPanelNotice({ type: 'success', message: 'Hidden alerts restored.' })
+    }
+  }, [dismissed, restoreAlert])
 
   const handleOrderSuccess = useCallback(async (message?: string) => {
     await load()
@@ -550,7 +686,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
           </span>
           {dismissed.size > 0 && (
             <button
-              onClick={restoreAll}
+              onClick={() => { void restoreAll() }}
               className="ml-auto text-xs text-blue-400 hover:text-blue-200"
             >
               Restore hidden
@@ -571,7 +707,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
           count={activeSupplyDeficit.length}
           tone="red"
           dismissible
-          onDismiss={() => dismissSection('supplyDeficit')}
+          onDismiss={() => { void dismissSection('supplyDeficit') }}
           actionLabel="Go to Inventory"
           onAction={() => onNavigate?.('inventory') }
           forceShowChildren={supplyDeficit.length > 0}
@@ -664,7 +800,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
           count={expiringSoon.length}
           tone="yellow"
           dismissible
-          onDismiss={() => dismissSection('expiringSoon')}
+          onDismiss={() => { void dismissSection('expiringSoon') }}
           actionLabel="View in Inventory"
           onAction={() => onNavigate?.('inventory', { expiringOnly: true }) }
         >
@@ -690,7 +826,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
           count={pendingAging.length}
           tone="purple"
           dismissible
-          onDismiss={() => dismissSection('pendingAging')}
+          onDismiss={() => { void dismissSection('pendingAging') }}
           actionLabel="Go to Inventory"
           onAction={() => onNavigate?.('inventory')}
         >
@@ -713,7 +849,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
           count={shippedStuck.length}
           tone="blue"
           dismissible
-          onDismiss={() => dismissSection('shippedStuck')}
+          onDismiss={() => { void dismissSection('shippedStuck') }}
           actionLabel="Go to Inventory"
           onAction={() => onNavigate?.('inventory')}
         >
@@ -736,7 +872,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
           count={lowBuffer.length}
           tone="yellow"
           dismissible
-          onDismiss={() => dismissSection('lowBuffer')}
+          onDismiss={() => { void dismissSection('lowBuffer') }}
           actionLabel="Go to Inventory"
           onAction={() => onNavigate?.('inventory')}
         >
@@ -780,7 +916,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
           count={expired.length}
           tone="gray"
           dismissible
-          onDismiss={() => dismissSection('expired')}
+          onDismiss={() => { void dismissSection('expired') }}
           actionLabel="Go to Expired View"
           onAction={() => onNavigate?.('expired')}
         >

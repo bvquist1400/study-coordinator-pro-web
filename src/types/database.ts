@@ -763,6 +763,50 @@ export interface Database {
           updated_at?: string
         }
       }
+      lab_kit_alert_dismissals: {
+        Row: {
+          id: string
+          user_id: string
+          study_id: string
+          alert_id: string
+          dismissed_at: string
+          snooze_until: string | null
+          conditions: Json
+          auto_restore_rule: string | null
+          manually_restored: boolean
+          restored_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          study_id: string
+          alert_id: string
+          dismissed_at?: string
+          snooze_until?: string | null
+          conditions: Json
+          auto_restore_rule?: string | null
+          manually_restored?: boolean
+          restored_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          study_id?: string
+          alert_id?: string
+          dismissed_at?: string
+          snooze_until?: string | null
+          conditions?: Json
+          auto_restore_rule?: string | null
+          manually_restored?: boolean
+          restored_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
       lab_kits: {
         Row: {
           id: string
@@ -993,6 +1037,9 @@ export type LabKitUpdate = Database['public']['Tables']['lab_kits']['Update']
 export type LabKitOrder = Database['public']['Tables']['lab_kit_orders']['Row']
 export type LabKitOrderInsert = Database['public']['Tables']['lab_kit_orders']['Insert']
 export type LabKitOrderUpdate = Database['public']['Tables']['lab_kit_orders']['Update']
+export type LabKitAlertDismissal = Database['public']['Tables']['lab_kit_alert_dismissals']['Row']
+export type LabKitAlertDismissalInsert = Database['public']['Tables']['lab_kit_alert_dismissals']['Insert']
+export type LabKitAlertDismissalUpdate = Database['public']['Tables']['lab_kit_alert_dismissals']['Update']
 
 export type LabKitShipment = Database['public']['Tables']['lab_kit_shipments']['Row']
 export type LabKitShipmentInsert = Database['public']['Tables']['lab_kit_shipments']['Insert']

@@ -5,6 +5,7 @@ import type { Study } from '@/types/database'
 
 const BUFFER_THRESHOLD = 2
 const DEFAULT_WINDOW_DAYS = 30
+const DEFAULT_SNOOZE_DAYS = 7
 
 interface ForecastUpcomingVisit {
   visit_date: string
@@ -375,12 +376,15 @@ if (studySettingsError) {
       .from('lab_kits')
       .select('id, kit_type_id, kit_type, status, expiration_date')
       .eq('study_id', studyId)
-      .in('status', ['available', 'assigned'])
+      .in('status', ['available', 'assigned', 'pending_shipment', 'shipped', 'expired'])
 
     if (kitError) {
       logger.error('inventory-forecast: failed to load lab kits', kitError, { studyId })
       return NextResponse.json({ error: 'Failed to load lab kits' }, { status: 500 })
     }
+
+    let expiringSoonCount = 0
+    let earliestExpiringDate: string | null = null
 
     for (const kit of (kitRows || []) as LabKitRow[]) {
       const kitTypeId = kit.kit_type_id
@@ -404,6 +408,12 @@ if (studySettingsError) {
         entry.kitsAvailable += 1
         if (withinExpiryWindow(kit.expiration_date, today, expiryCutoff)) {
           entry.kitsExpiringSoon += 1
+          expiringSoonCount += 1
+          if (kit.expiration_date) {
+            if (!earliestExpiringDate || kit.expiration_date < earliestExpiringDate) {
+              earliestExpiringDate = kit.expiration_date
+            }
+          }
         }
       }
     }
@@ -563,7 +573,169 @@ if (studySettingsError) {
       visitWindowBufferDays
     }
 
-    return NextResponse.json({ forecast, summary })
+    const supplyDeficitMetrics = forecast.reduce(
+      (acc, item) => {
+        const deficit = Math.max(0, item.deficit)
+        if (deficit > 0) {
+          acc.total += deficit
+          acc.count += 1
+          acc.max = Math.max(acc.max, deficit)
+        }
+        return acc
+      },
+      { total: 0, count: 0, max: 0 }
+    )
+
+    const lowBufferMetrics = forecast.reduce(
+      (acc, item) => {
+        const slack = (item.kitsAvailable + item.pendingOrderQuantity) - item.requiredWithBuffer
+        if (item.deficit <= 0 && slack >= 0 && item.status === 'warning') {
+          acc.count += 1
+          acc.minSlack = Math.min(acc.minSlack, slack)
+        }
+        return acc
+      },
+      { count: 0, minSlack: Number.POSITIVE_INFINITY }
+    )
+
+    const alertMetrics = {
+      supplyDeficit: {
+        totalDeficit: supplyDeficitMetrics.total,
+        maxDeficit: supplyDeficitMetrics.max,
+        count: supplyDeficitMetrics.count
+      },
+      lowBuffer: {
+        count: lowBufferMetrics.count,
+        minSlack: Number.isFinite(lowBufferMetrics.minSlack) ? lowBufferMetrics.minSlack : null
+      },
+      expiringSoon: {
+        count: expiringSoonCount,
+        earliestExpiryDate: earliestExpiringDate
+      }
+    }
+
+    const { data: dismissalRows, error: dismissalError } = await supabase
+      .from('lab_kit_alert_dismissals')
+      .select('id, alert_id, conditions, snooze_until, dismissed_at')
+      .eq('study_id', studyId)
+      .eq('user_id', user.id)
+      .is('restored_at', null)
+
+    if (dismissalError) {
+      logger.error('inventory-forecast: failed to load alert dismissals', dismissalError, { studyId, userId: user.id })
+      return NextResponse.json({ error: 'Failed to load alert state' }, { status: 500 })
+    }
+
+    const activeAlerts = new Set<string>()
+    const metadata: Array<{ alertId: string; snoozeUntil: string | null }> = []
+    const autoRestoredAlerts: string[] = []
+
+    const now = new Date()
+    const restoreUpdates: Array<{ id: string; rule: string }> = []
+
+    if (Array.isArray(dismissalRows)) {
+      for (const row of dismissalRows as any[]) {
+        const alertId = row.alert_id as string
+        const conditions = (row.conditions || {}) as Record<string, any>
+        const snoozeUntil = typeof row.snooze_until === 'string' ? row.snooze_until : null
+        const dismissedAt = typeof row.dismissed_at === 'string' ? row.dismissed_at : null
+
+        let shouldRestore = false
+        let restoreRule = ''
+
+        if (snoozeUntil) {
+          const snoozeDate = new Date(snoozeUntil)
+          if (!Number.isNaN(snoozeDate.getTime()) && snoozeDate <= now) {
+            shouldRestore = true
+            restoreRule = 'snooze_expired'
+          }
+        }
+
+        if (!shouldRestore) {
+          switch (alertId) {
+            case 'supplyDeficit': {
+              const previousDeficit = Number(conditions?.deficit ?? 0)
+              const currentDeficit = alertMetrics.supplyDeficit.totalDeficit
+              if (currentDeficit >= previousDeficit * 1.5 && currentDeficit > previousDeficit) {
+                shouldRestore = true
+                restoreRule = 'supply_deficit_increase'
+              } else if (currentDeficit >= 10 && previousDeficit < 10) {
+                shouldRestore = true
+                restoreRule = 'supply_deficit_threshold'
+              }
+              break
+            }
+            case 'expiringSoon': {
+              const prevCount = Number(conditions?.kitsExpiringSoon ?? 0)
+              const prevEarliest = typeof conditions?.earliestExpiryDate === 'string' ? conditions.earliestExpiryDate : null
+              const currentCount = alertMetrics.expiringSoon.count
+              if (currentCount >= prevCount * 2 && currentCount > prevCount) {
+                shouldRestore = true
+                restoreRule = 'expiring_count_increase'
+              } else if (alertMetrics.expiringSoon.earliestExpiryDate && prevEarliest) {
+                const prevDate = new Date(prevEarliest)
+                const currentDate = new Date(alertMetrics.expiringSoon.earliestExpiryDate)
+                if (!Number.isNaN(prevDate.getTime()) && !Number.isNaN(currentDate.getTime())) {
+                  const prevDays = Math.floor((prevDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+                  const currentDays = Math.floor((currentDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+                  if (currentDays < prevDays - 2) {
+                    shouldRestore = true
+                    restoreRule = 'expiring_window_shorter'
+                  }
+                }
+              }
+              break
+            }
+            default: {
+              // For other alerts, rely on snooze window only
+              if (!snoozeUntil && dismissedAt) {
+                const dismissedDate = new Date(dismissedAt)
+                if (!Number.isNaN(dismissedDate.getTime())) {
+                  const daysElapsed = Math.floor((now.getTime() - dismissedDate.getTime()) / (1000 * 60 * 60 * 24))
+                  if (daysElapsed >= DEFAULT_SNOOZE_DAYS) {
+                    shouldRestore = true
+                    restoreRule = 'default_window'
+                  }
+                }
+              }
+              break
+            }
+          }
+        }
+
+        if (shouldRestore) {
+          restoreUpdates.push({ id: row.id as string, rule: restoreRule })
+          autoRestoredAlerts.push(alertId)
+        } else {
+          activeAlerts.add(alertId)
+          metadata.push({ alertId, snoozeUntil })
+        }
+      }
+    }
+
+    if (restoreUpdates.length > 0) {
+      await Promise.all(
+        restoreUpdates.map(update =>
+          supabase
+            .from('lab_kit_alert_dismissals')
+            .update({
+              auto_restore_rule: update.rule,
+              restored_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', update.id)
+        )
+      )
+    }
+
+    return NextResponse.json({
+      forecast,
+      summary,
+      dismissedAlerts: Array.from(activeAlerts),
+      dismissedMetadata: metadata,
+      autoRestoredAlerts,
+      alertMetrics
+    })
   } catch (error) {
     logger.error('inventory-forecast: unexpected error', error as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
