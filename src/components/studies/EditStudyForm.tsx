@@ -30,6 +30,7 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
     anchor_day: '0',
     inventory_buffer_days: '14',
     visit_window_buffer_days: '0',
+    delivery_days_default: '5',
     notes: ''
   })
   const [sections, setSections] = useState<StudySection[]>([])
@@ -72,6 +73,7 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
         anchor_day: study.anchor_day ? String(study.anchor_day) : '0',
         inventory_buffer_days: study.inventory_buffer_days !== undefined && study.inventory_buffer_days !== null ? String(study.inventory_buffer_days) : '14',
         visit_window_buffer_days: study.visit_window_buffer_days !== undefined && study.visit_window_buffer_days !== null ? String(study.visit_window_buffer_days) : '0',
+        delivery_days_default: study.delivery_days_default !== undefined && study.delivery_days_default !== null ? String(study.delivery_days_default) : '5',
         notes: study.notes || ''
       })
     }
@@ -126,6 +128,8 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
     if (isNaN(inventoryBuffer) || inventoryBuffer < 0 || inventoryBuffer > 120) newErrors.inventory_buffer_days = 'Inventory buffer must be between 0 and 120 days'
     const visitWindowBuffer = Number(formData.visit_window_buffer_days)
     if (isNaN(visitWindowBuffer) || visitWindowBuffer < 0 || visitWindowBuffer > 60) newErrors.visit_window_buffer_days = 'Visit window buffer must be between 0 and 60 days'
+    const deliveryDays = Number(formData.delivery_days_default)
+    if (isNaN(deliveryDays) || deliveryDays < 0 || deliveryDays > 120) newErrors.delivery_days_default = 'Delivery time must be between 0 and 120 days'
     if (formData.start_date && formData.end_date) {
       const s = new Date(formData.start_date)
       const e = new Date(formData.end_date)
@@ -161,6 +165,7 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
         anchor_day: formData.anchor_day,
         inventory_buffer_days: formData.inventory_buffer_days,
         visit_window_buffer_days: formData.visit_window_buffer_days,
+        delivery_days_default: formData.delivery_days_default,
         notes: formData.notes.trim() || null
       }
       const resp = await fetch('/api/studies', {

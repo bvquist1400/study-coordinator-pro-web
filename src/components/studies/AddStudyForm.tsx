@@ -27,6 +27,7 @@ interface StudyFormData {
   anchor_day: '0' | '1'
   inventory_buffer_days: string
   visit_window_buffer_days: string
+  delivery_days_default: string
   notes: string
   enable_sections: boolean
   section_code: string
@@ -58,6 +59,7 @@ export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) 
     anchor_day: '0',
     inventory_buffer_days: '14',
     visit_window_buffer_days: '0',
+    delivery_days_default: '5',
     notes: '',
     enable_sections: false,
     section_code: 'S1',
@@ -117,7 +119,12 @@ export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) 
     if (isNaN(visitWindowBuffer) || visitWindowBuffer < 0 || visitWindowBuffer > 60) {
       newErrors.visit_window_buffer_days = 'Visit window buffer must be between 0 and 60 days'
     }
-    
+
+    const deliveryDays = Number(formData.delivery_days_default)
+    if (isNaN(deliveryDays) || deliveryDays < 0 || deliveryDays > 120) {
+      newErrors.delivery_days_default = 'Delivery time must be between 0 and 120 days'
+    }
+
     // Date validation
     if (formData.start_date && formData.end_date) {
       const startDate = new Date(formData.start_date)
@@ -183,6 +190,7 @@ export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) 
         visit_window_days: 7, // Default value as defined in schema
         inventory_buffer_days: Number(formData.inventory_buffer_days),
         visit_window_buffer_days: Number(formData.visit_window_buffer_days),
+        delivery_days_default: Number(formData.delivery_days_default),
         dosing_frequency: formData.dosing_frequency,
         compliance_threshold: Number(formData.compliance_threshold),
         anchor_day: Number(formData.anchor_day),
@@ -598,7 +606,7 @@ export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) 
             </div>
 
             {/* Forecast Buffers */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   Inventory Buffer (days)
@@ -640,6 +648,27 @@ export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) 
                 </p>
                 {errors.visit_window_buffer_days && (
                   <p className="text-red-400 text-sm mt-1">{errors.visit_window_buffer_days}</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Delivery Time to Site (days)
+                </label>
+                <input
+                  type="number"
+                  name="delivery_days_default"
+                  value={formData.delivery_days_default}
+                  onChange={handleInputChange}
+                  className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  min="0"
+                  max="120"
+                  disabled={isSubmitting}
+                />
+                <p className="text-gray-400 text-xs mt-1">
+                  Average days from ordering until kits arrive on site. Used in order recommendations.
+                </p>
+                {errors.delivery_days_default && (
+                  <p className="text-red-400 text-sm mt-1">{errors.delivery_days_default}</p>
                 )}
               </div>
             </div>

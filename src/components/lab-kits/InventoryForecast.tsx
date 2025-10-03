@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { formatDateUTC } from '@/lib/date-utils'
 
@@ -42,6 +42,13 @@ interface ForecastBufferMeta {
   minCount: number | null
   targetKits: number
   dailyBurnRate: number
+  deliveryDays: number
+}
+
+interface RiskFactor {
+  type: string
+  score: number
+  detail: string
 }
 
 interface InventoryForecastItem {
@@ -64,16 +71,26 @@ interface InventoryForecastItem {
   pendingOrders: ForecastPendingOrder[]
   bufferKitsNeeded: number
   bufferMeta: ForecastBufferMeta
+  baselineTarget: number
+  dynamicCushion: number
+  deliveryDaysApplied: number
+  recommendedOrderQty: number
+  riskScore: number
+  riskLevel: "high" | "medium" | "low"
+  riskFactors: RiskFactor[]
 }
 
 interface ForecastSummary {
   totalVisitsScheduled: number
   criticalIssues: number
   warnings: number
+  highRisk: number
+  mediumRisk: number
   daysAhead: number
   baseWindowDays: number
   inventoryBufferDays: number
   visitWindowBufferDays: number
+  deliveryDaysDefault: number
 }
 
 interface InventoryForecastProps {
@@ -135,7 +152,8 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
                 appliedDays: typeof bufferMetaRaw.appliedDays === 'number' ? bufferMetaRaw.appliedDays : null,
                 minCount: typeof bufferMetaRaw.minCount === 'number' ? bufferMetaRaw.minCount : null,
                 targetKits: typeof bufferMetaRaw.targetKits === 'number' ? bufferMetaRaw.targetKits : (typeof raw.bufferKitsNeeded === 'number' ? raw.bufferKitsNeeded : 0),
-                dailyBurnRate: typeof bufferMetaRaw.dailyBurnRate === 'number' ? bufferMetaRaw.dailyBurnRate : 0
+                dailyBurnRate: typeof bufferMetaRaw.dailyBurnRate === 'number' ? bufferMetaRaw.dailyBurnRate : 0,
+                deliveryDays: typeof bufferMetaRaw.deliveryDays === 'number' ? bufferMetaRaw.deliveryDays : (typeof raw.deliveryDaysApplied === 'number' ? raw.deliveryDaysApplied : 0)
               }
 
               return {
@@ -157,7 +175,20 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
                 pendingOrderQuantity: Number(raw.pendingOrderQuantity) || 0,
                 pendingOrders: Array.isArray(raw.pendingOrders) ? raw.pendingOrders : [],
                 bufferKitsNeeded: typeof raw.bufferKitsNeeded === 'number' ? raw.bufferKitsNeeded : 0,
-                bufferMeta
+                bufferMeta,
+                baselineTarget: typeof raw.baselineTarget === 'number' ? raw.baselineTarget : Number(raw.kitsRequired) || 0,
+                dynamicCushion: typeof raw.dynamicCushion === 'number' ? raw.dynamicCushion : 0,
+                deliveryDaysApplied: typeof raw.deliveryDaysApplied === 'number' ? raw.deliveryDaysApplied : bufferMeta.deliveryDays || 0,
+                recommendedOrderQty: typeof raw.recommendedOrderQty === 'number' ? Math.max(0, Math.round(raw.recommendedOrderQty)) : 0,
+                riskScore: typeof raw.riskScore === 'number' ? raw.riskScore : 0,
+                riskLevel: raw.riskLevel === 'high' || raw.riskLevel === 'medium' ? raw.riskLevel : 'low',
+                riskFactors: Array.isArray(raw.riskFactors)
+                  ? raw.riskFactors.map((factor: any) => ({
+                      type: typeof factor?.type === 'string' ? factor.type : 'context',
+                      score: Number(factor?.score) || 0,
+                      detail: typeof factor?.detail === 'string' ? factor.detail : ''
+                    }))
+                  : []
               }
             }).filter(Boolean) as InventoryForecastItem[]
           : []
@@ -206,6 +237,24 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
   const filteredBuckets = severityBuckets.filter((bucket) => bucket.items.length > 0 && (!showOnlyIssues || bucket.key !== 'ok'))
   const hasIssues = severityBuckets.some((bucket) => bucket.key !== 'ok' && bucket.items.length > 0)
 
+  const suggestedOrders = useMemo(() => {
+    return forecast
+      .filter((item) => item.recommendedOrderQty > 0)
+      .slice()
+      .sort((a, b) => {
+        const riskRank: Record<InventoryForecastItem['riskLevel'], number> = { high: 0, medium: 1, low: 2 }
+        const riskDiff = riskRank[a.riskLevel] - riskRank[b.riskLevel]
+        if (riskDiff !== 0) return riskDiff
+        const scoreDiff = b.riskScore - a.riskScore
+        if (scoreDiff !== 0) return scoreDiff
+        return b.recommendedOrderQty - a.recommendedOrderQty
+      })
+  }, [forecast])
+  const totalSuggestedQty = suggestedOrders.reduce((sum, item) => sum + item.recommendedOrderQty, 0)
+  const highRiskCount = summary?.highRisk ?? 0
+  const mediumRiskCount = summary?.mediumRisk ?? 0
+  const hasSuggestedOrders = suggestedOrders.length > 0
+
   const getStatusIcon = (status: 'ok' | 'warning' | 'critical') => {
     switch (status) {
       case 'critical':
@@ -237,6 +286,7 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
     const original = Math.max(0, item.originalDeficit ?? outstanding)
     const slackAfterPending = item.kitsAvailable + pending - totalTarget
     const slackOnHand = item.kitsAvailable - totalTarget
+    const recommended = Math.max(0, item.recommendedOrderQty || 0)
 
     if (outstanding > 0) {
       if (pending > 0) {
@@ -247,6 +297,11 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
 
     if (original > 0 && pending > 0) {
       return `${pending} kit${pending === 1 ? '' : 's'} en route to satisfy buffer target (${totalTarget})`
+    }
+
+    if (recommended > 0) {
+      const reason = item.riskFactors.find((factor) => factor.type === 'deficit' || factor.type === 'surge')?.detail || item.riskFactors[0]?.detail
+      return `Suggest ordering ${recommended} kit${recommended === 1 ? '' : 's'}${reason ? ` · ${reason}` : ''}`
     }
 
     if (item.kitsExpiringSoon > 0) {
@@ -317,12 +372,17 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
             <h3 className="text-xl font-bold text-white">Inventory Forecast</h3>
             <p className="text-gray-400 mt-1">
               {summary
-                ? `Next ${summary.daysAhead} days supply analysis${summary.visitWindowBufferDays > 0 ? ` (base ${summary.baseWindowDays} + ${summary.visitWindowBufferDays} buffer)` : ''}`
+                ? `Next ${summary.daysAhead} days · Safety cushion ${summary.inventoryBufferDays}d · Delivery time ${summary.deliveryDaysDefault}d`
                 : `Next ${daysAhead} days supply analysis`}
             </p>
-            {summary && summary.inventoryBufferDays > 0 && (
+            {summary && (
               <p className="text-xs text-gray-500 mt-1">
-                Inventory buffer target: {summary.inventoryBufferDays} day{summary.inventoryBufferDays === 1 ? '' : 's'}
+                Buffer: {summary.inventoryBufferDays}d inventory · {summary.visitWindowBufferDays}d window{summary.deliveryDaysDefault ? ` · Delivery ${summary.deliveryDaysDefault}d` : ''}
+              </p>
+            )}
+            {hasSuggestedOrders && (
+              <p className="text-xs text-purple-200 mt-2">
+                {`${suggestedOrders.length} kit type${suggestedOrders.length === 1 ? '' : 's'} need orders totaling ${totalSuggestedQty} kit${totalSuggestedQty === 1 ? '' : 's'}.`}
               </p>
             )}
             {totalShortfall > 0 && (
@@ -340,6 +400,8 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
             <div className="flex flex-wrap gap-2 justify-start lg:justify-end">
               <SummaryChip label="Critical" count={totalCritical} tone="red" />
               <SummaryChip label="Warnings" count={totalWarnings} tone="yellow" />
+              <SummaryChip label="High Risk" count={highRiskCount} tone="red" />
+              <SummaryChip label="Suggested Orders" count={suggestedOrders.length} tone={hasSuggestedOrders ? 'yellow' : 'green'} />
               <SummaryChip label="Stable" count={totalStable} tone="green" />
             </div>
             <div className="flex items-center gap-3">
@@ -348,7 +410,21 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
                   <div>{summary.totalVisitsScheduled} visit{summary.totalVisitsScheduled === 1 ? '' : 's'} scheduled</div>
                   {(summary.inventoryBufferDays > 0 || summary.visitWindowBufferDays > 0) && (
                     <div className="text-xs text-gray-500">
-                      Buffer: {summary.inventoryBufferDays}d inventory · {summary.visitWindowBufferDays}d window
+                      Buffer: {summary.inventoryBufferDays}d inventory · {summary.visitWindowBufferDays}d window{summary.deliveryDaysDefault ? ` · Delivery ${summary.deliveryDaysDefault}d` : ''}
+                    </div>
+                  )}
+                  {(summary.highRisk > 0 || summary.mediumRisk > 0) && (
+                    <div className="text-xs text-gray-500 mt-1">
+                      {summary.highRisk > 0 && (
+                        <span className="text-red-300 font-semibold mr-2">
+                          {summary.highRisk} high-risk
+                        </span>
+                      )}
+                      {summary.mediumRisk > 0 && (
+                        <span className="text-yellow-200">
+                          {summary.mediumRisk} medium-risk
+                        </span>
+                      )}
                     </div>
                   )}
                   {(summary.criticalIssues > 0 || summary.warnings > 0) && (
@@ -363,6 +439,11 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
                           {summary.warnings} warning{summary.warnings === 1 ? '' : 's'}
                         </span>
                       )}
+                    </div>
+                  )}
+                  {hasSuggestedOrders && (
+                    <div className="text-xs text-purple-200 mt-1">
+                      Suggested orders: {suggestedOrders.length} kit type{suggestedOrders.length === 1 ? '' : 's'}
                     </div>
                   )}
                 </div>
@@ -380,6 +461,39 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
           </div>
         </div>
       </div>
+
+      {hasSuggestedOrders && (
+        <div className="px-6 py-4 border-b border-gray-700 bg-purple-500/5">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-semibold text-purple-200 uppercase tracking-wide">Suggested Orders</h4>
+            <span className="text-xs text-purple-200/80">{`Top ${Math.min(3, suggestedOrders.length)} of ${suggestedOrders.length}`}</span>
+          </div>
+          <div className="space-y-2">
+            {suggestedOrders.slice(0, 3).map((item) => {
+              const primaryFactor = item.riskFactors.find((factor) => factor.type === 'deficit' || factor.type === 'surge') || item.riskFactors[0]
+              return (
+                <div key={item.key} className="flex items-start justify-between gap-4 rounded-lg border border-purple-500/40 bg-purple-500/10 px-4 py-3">
+                  <div className="text-sm text-purple-100">
+                    <div className="font-medium text-white">{item.kitTypeName}</div>
+                    <div className="text-xs text-purple-200/80">
+                      {primaryFactor?.detail || 'Covers upcoming demand and delivery window'}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-semibold text-purple-100">Order {item.recommendedOrderQty}</div>
+                    {item.deliveryDaysApplied > 0 && (
+                      <div className="text-[10px] uppercase tracking-wide text-purple-200/70">Delivery {item.deliveryDaysApplied}d</div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {suggestedOrders.length > 3 && (
+            <p className="text-xs text-purple-200/70 mt-2">{`+${suggestedOrders.length - 3} more kit type${suggestedOrders.length - 3 === 1 ? '' : 's'} flagged below`}</p>
+          )}
+        </div>
+      )}
 
       {/* Forecast Sections */}
       <div className="divide-y divide-gray-700">

@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 })
     }
 
-    const { study_id, name, description = null, buffer_days = null, buffer_count = null } = payload
+    const { study_id, name, description = null, buffer_days = null, buffer_count = null, delivery_days = null } = payload
     if (!study_id || !name) {
       return NextResponse.json({ error: 'study_id and name are required' }, { status: 400 })
     }
@@ -65,6 +65,9 @@ export async function POST(request: NextRequest) {
     const parsedBufferCount = buffer_count === null || buffer_count === undefined || buffer_count === ''
       ? null
       : Number(buffer_count)
+    const parsedDeliveryDays = delivery_days === null || delivery_days === undefined || delivery_days === ''
+      ? null
+      : Number(delivery_days)
 
     if (parsedBufferDays !== null && (!Number.isFinite(parsedBufferDays) || parsedBufferDays < 0 || parsedBufferDays > 120)) {
       return NextResponse.json({ error: 'buffer_days must be between 0 and 120' }, { status: 400 })
@@ -72,6 +75,10 @@ export async function POST(request: NextRequest) {
 
     if (parsedBufferCount !== null && (!Number.isInteger(parsedBufferCount) || parsedBufferCount < 0 || parsedBufferCount > 999)) {
       return NextResponse.json({ error: 'buffer_count must be between 0 and 999' }, { status: 400 })
+    }
+
+    if (parsedDeliveryDays !== null && (!Number.isFinite(parsedDeliveryDays) || parsedDeliveryDays < 0 || parsedDeliveryDays > 120)) {
+      return NextResponse.json({ error: 'delivery_days must be between 0 and 120' }, { status: 400 })
     }
 
     const membership = await verifyStudyMembership(study_id, user.id)
@@ -85,7 +92,8 @@ export async function POST(request: NextRequest) {
       name,
       description: description || null,
       buffer_days: parsedBufferDays,
-      buffer_count: parsedBufferCount
+      buffer_count: parsedBufferCount,
+      delivery_days: parsedDeliveryDays
     }
 
     const { data, error } = await (supabase as any)
@@ -123,7 +131,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'id and study_id are required' }, { status: 400 })
     }
 
-    const { id, study_id, name, description, is_active, buffer_days = undefined, buffer_count = undefined } = payload
+    const { id, study_id, name, description, is_active, buffer_days = undefined, buffer_count = undefined, delivery_days = undefined } = payload
 
     const membership = await verifyStudyMembership(study_id, user.id)
     if (!membership.success) {
@@ -151,6 +159,14 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ error: 'buffer_count must be between 0 and 999' }, { status: 400 })
       }
       update.buffer_count = parsed
+    }
+
+    if (delivery_days !== undefined) {
+      const parsed = delivery_days === null || delivery_days === '' ? null : Number(delivery_days)
+      if (parsed !== null && (!Number.isFinite(parsed) || parsed < 0 || parsed > 120)) {
+        return NextResponse.json({ error: 'delivery_days must be between 0 and 120' }, { status: 400 })
+      }
+      update.delivery_days = parsed
     }
 
     if (Object.keys(update).length === 0) {

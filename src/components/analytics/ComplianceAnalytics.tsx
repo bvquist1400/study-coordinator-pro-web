@@ -42,6 +42,14 @@ interface ComplianceSummary {
   activeAlerts: number
 }
 
+const defaultSummary: ComplianceSummary = {
+  overallTimingRate: 0,
+  overallDrugRate: 0,
+  totalVisits: 0,
+  totalDrugRecords: 0,
+  activeAlerts: 0
+}
+
 interface ComplianceAnalyticsProps {
   studyId?: string
   className?: string
@@ -52,13 +60,7 @@ export default function ComplianceAnalytics({ studyId, className }: ComplianceAn
   const [trends, setTrends] = useState<ComplianceTrend[]>([])
   const [studyBreakdown, setStudyBreakdown] = useState<StudyCompliance[]>([])
   const [alerts, setAlerts] = useState<ComplianceAlert[]>([])
-  const [summary, setSummary] = useState<ComplianceSummary>({
-    overallTimingRate: 0,
-    overallDrugRate: 0,
-    totalVisits: 0,
-    totalDrugRecords: 0,
-    activeAlerts: 0
-  })
+  const [summary, setSummary] = useState<ComplianceSummary>(defaultSummary)
   const [months, setMonths] = useState(12)
   const [error, setError] = useState<string | null>(null)
 
@@ -84,7 +86,7 @@ export default function ComplianceAnalytics({ studyId, className }: ComplianceAn
       setTrends(data.trends || [])
       setStudyBreakdown(data.studyBreakdown || [])
       setAlerts(data.alerts || [])
-      setSummary(data.summary || {})
+      setSummary(data.summary ? { ...defaultSummary, ...data.summary } : defaultSummary)
       
     } catch (error) {
       console.error('Error fetching compliance analytics:', error)
@@ -176,7 +178,7 @@ export default function ComplianceAnalytics({ studyId, className }: ComplianceAn
       </div>
 
       {/* Summary Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
           <div className="text-sm text-gray-400 mb-1">Visit Timing</div>
           <div 
@@ -384,6 +386,7 @@ export default function ComplianceAnalytics({ studyId, className }: ComplianceAn
         )}
       </div>
 
+      {/* Compliance Alerts */}
       {/* Compliance Alerts */}
       {alerts.length > 0 && (
         <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">

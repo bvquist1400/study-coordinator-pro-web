@@ -14,6 +14,7 @@ create table public.studies (
   visit_window_days integer null default 7,
   inventory_buffer_days integer not null default 14,
   visit_window_buffer_days integer not null default 0,
+  delivery_days_default integer not null default 5,
   dosing_frequency text null default 'QD'::text,
   compliance_threshold numeric null default 80.0,
   notes text null,
@@ -54,6 +55,9 @@ create table public.studies (
         ]
       )
     )
+  ),
+  constraint studies_delivery_days_default_check check (
+    delivery_days_default >= 0 and delivery_days_default <= 120
   )
 ) TABLESPACE pg_default;
 

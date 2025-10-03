@@ -25,6 +25,7 @@ interface Study {
   anchor_day: number
   inventory_buffer_days: number
   visit_window_buffer_days: number
+  delivery_days_default: number
   notes: string | null
   protocol_version?: string | null
   updated_at?: string
@@ -192,6 +193,7 @@ export default function StudyDetailsModal({ studyId, onClose }: StudyDetailsModa
               <div><span className="text-gray-400">Visit Windows:</span> {windowSummary || 'Variable by visit'}</div>
               <div><span className="text-gray-400">Inventory Buffer:</span> {study.inventory_buffer_days} day{study.inventory_buffer_days === 1 ? '' : 's'}</div>
               <div><span className="text-gray-400">Visit Window Buffer:</span> {study.visit_window_buffer_days} day{study.visit_window_buffer_days === 1 ? '' : 's'}</div>
+              <div><span className="text-gray-400">Delivery Time to Site:</span> {study.delivery_days_default} day{study.delivery_days_default === 1 ? '' : 's'}</div>
             </div>
           </div>
 

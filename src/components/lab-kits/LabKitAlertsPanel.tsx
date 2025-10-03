@@ -14,6 +14,12 @@ interface LabKitAlertsPanelProps {
   onOrderReceived?: (details: { study_id: string; kit_type_id: string | null; received_date: string | null; kit_type_name: string | null }) => void
 }
 
+type RiskFactor = {
+  type: string
+  score: number
+  detail: string
+}
+
 type ForecastItem = {
   key: string
   kitTypeId: string | null
@@ -31,6 +37,11 @@ type ForecastItem = {
   requiredWithBuffer: number
   bufferKitsNeeded: number
   bufferMeta: ForecastBufferMeta
+  deliveryDaysApplied: number
+  recommendedOrderQty: number
+  riskScore: number
+  riskLevel: 'high' | 'medium' | 'low'
+  riskFactors: RiskFactor[]
 }
 
 type ForecastPendingOrder = {
@@ -52,16 +63,18 @@ type ForecastBufferMeta = {
   minCount: number | null
   targetKits: number
   dailyBurnRate: number
+  deliveryDays: number
 }
 
 type AlertTone = 'red' | 'yellow' | 'blue' | 'purple' | 'gray'
 
-function SummaryPill({ label, count, tone }: { label: string; count: number; tone: 'red' | 'yellow' | 'blue' }) {
+function SummaryPill({ label, count, tone }: { label: string; count: number; tone: 'red' | 'yellow' | 'blue' | 'purple' }) {
   const isZero = count === 0
-  const toneClasses: Record<'red' | 'yellow' | 'blue', { border: string; text: string; dot: string }> = {
+  const toneClasses: Record<'red' | 'yellow' | 'blue' | 'purple', { border: string; text: string; dot: string }> = {
     red: { border: 'border-red-500/50 bg-red-500/10', text: 'text-red-200', dot: 'bg-red-500' },
     yellow: { border: 'border-yellow-400/60 bg-yellow-500/10', text: 'text-yellow-200', dot: 'bg-yellow-400' },
-    blue: { border: 'border-blue-500/50 bg-blue-500/10', text: 'text-blue-200', dot: 'bg-blue-500' }
+    blue: { border: 'border-blue-500/50 bg-blue-500/10', text: 'text-blue-200', dot: 'bg-blue-500' },
+    purple: { border: 'border-purple-500/50 bg-purple-500/10', text: 'text-purple-200', dot: 'bg-purple-500' }
   }
 
   const classes = toneClasses[tone]
@@ -172,7 +185,8 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
             appliedDays: typeof bufferMetaRaw.appliedDays === 'number' ? bufferMetaRaw.appliedDays : null,
             minCount: typeof bufferMetaRaw.minCount === 'number' ? bufferMetaRaw.minCount : null,
             targetKits: typeof bufferMetaRaw.targetKits === 'number' ? bufferMetaRaw.targetKits : (typeof raw?.bufferKitsNeeded === 'number' ? raw.bufferKitsNeeded : 0),
-            dailyBurnRate: typeof bufferMetaRaw.dailyBurnRate === 'number' ? bufferMetaRaw.dailyBurnRate : 0
+            dailyBurnRate: typeof bufferMetaRaw.dailyBurnRate === 'number' ? bufferMetaRaw.dailyBurnRate : 0,
+            deliveryDays: typeof bufferMetaRaw.deliveryDays === 'number' ? bufferMetaRaw.deliveryDays : (typeof raw?.deliveryDaysApplied === 'number' ? raw.deliveryDaysApplied : 0)
           }
 
           return {
@@ -182,7 +196,18 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
             originalDeficit,
             requiredWithBuffer: typeof raw?.requiredWithBuffer === 'number' ? raw.requiredWithBuffer : (Number(raw?.kitsRequired) || 0) + (typeof raw?.bufferKitsNeeded === 'number' ? raw.bufferKitsNeeded : 0),
             bufferKitsNeeded: typeof raw?.bufferKitsNeeded === 'number' ? raw.bufferKitsNeeded : 0,
-            bufferMeta
+            bufferMeta,
+            deliveryDaysApplied: typeof raw?.deliveryDaysApplied === 'number' ? raw.deliveryDaysApplied : bufferMeta.deliveryDays || 0,
+            recommendedOrderQty: typeof raw?.recommendedOrderQty === 'number' ? Math.max(0, Math.round(raw.recommendedOrderQty)) : 0,
+            riskScore: typeof raw?.riskScore === 'number' ? raw.riskScore : 0,
+            riskLevel: raw?.riskLevel === 'high' || raw?.riskLevel === 'medium' ? raw.riskLevel : 'low',
+            riskFactors: Array.isArray(raw?.riskFactors)
+              ? (raw.riskFactors as any[]).map((factor, idx) => ({
+                  type: typeof factor?.type === 'string' ? factor.type : `factor-${idx}`,
+                  score: Number(factor?.score) || 0,
+                  detail: typeof factor?.detail === 'string' ? factor.detail : ''
+                }))
+              : []
           }
         })
         setForecast(sanitized)
@@ -287,6 +312,22 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
     [forecast]
   )
   const lowBuffer = lowBufferAll
+
+  const suggestedOrders = useMemo(() => {
+    const rank: Record<ForecastItem['riskLevel'], number> = { high: 0, medium: 1, low: 2 }
+    return forecast
+      .filter((item) => item.recommendedOrderQty > 0)
+      .slice()
+      .sort((a, b) => {
+        const riskDiff = rank[a.riskLevel] - rank[b.riskLevel]
+        if (riskDiff !== 0) return riskDiff
+        const scoreDiff = b.riskScore - a.riskScore
+        if (scoreDiff !== 0) return scoreDiff
+        return b.recommendedOrderQty - a.recommendedOrderQty
+      })
+  }, [forecast])
+  const totalSuggestedQuantity = suggestedOrders.reduce((sum, item) => sum + item.recommendedOrderQty, 0)
+  const hasSuggestedOrders = suggestedOrders.length > 0
 
   const getKitTypeLabel = (kit: LabKit) => {
     const enriched = kit as LabKit & {
@@ -444,11 +485,12 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
         (dismissed.has('pendingAging') ? 0 : pendingAging.length) +
         (dismissed.has('shippedStuck') ? 0 : shippedStuck.length) +
         (dismissed.has('lowBuffer') ? 0 : lowBuffer.length),
-      info: dismissed.has('expired') ? 0 : expired.length
+      info: dismissed.has('expired') ? 0 : expired.length,
+      suggested: suggestedOrders.length
     }
-  }, [dismissed, activeSupplyDeficit.length, expiringSoon.length, pendingAging.length, shippedStuck.length, lowBuffer.length, expired.length])
+  }, [dismissed, activeSupplyDeficit.length, expiringSoon.length, pendingAging.length, shippedStuck.length, lowBuffer.length, expired.length, suggestedOrders.length])
 
-  const totalActiveAlerts = summary.critical + summary.warning + summary.info
+  const totalActiveAlerts = summary.critical + summary.warning + summary.info + summary.suggested
 
   useEffect(() => {
     if (onCountChange) {
@@ -661,7 +703,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
           onSuccess={handleOrderSuccess}
           defaultKitTypeId={orderTarget.kitTypeId || undefined}
           defaultKitTypeName={orderTarget.kitTypeName}
-          defaultQuantity={Math.max(orderTarget.deficit, 1)}
+          defaultQuantity={Math.max(orderTarget.recommendedOrderQty ?? orderTarget.deficit ?? 1, 1)}
           defaultVendor={orderTarget.pendingOrders.find((order: ForecastPendingOrder) => Boolean(order.vendor))?.vendor ?? undefined}
           allowKitTypeChange={false}
           deficitSummary={{
@@ -680,6 +722,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
         <div className="flex flex-wrap items-center gap-3">
           <SummaryPill label="Critical" count={summary.critical} tone="red" />
           <SummaryPill label="Warning" count={summary.warning} tone="yellow" />
+          <SummaryPill label="Suggested" count={summary.suggested} tone="purple" />
           <SummaryPill label="Info" count={summary.info} tone="blue" />
           <span className="text-sm text-gray-500">
             Total open alerts: <span className="text-gray-200 font-semibold">{totalActiveAlerts}</span>
@@ -698,6 +741,51 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
             {panelNotice.message}
           </div>
         )}
+      {hasSuggestedOrders && (
+        <div className="border-b border-gray-700 bg-purple-500/5 px-6 py-4">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-semibold text-purple-200 uppercase tracking-wide">Suggested Orders</h4>
+            <span className="text-xs text-purple-200/80">{`Top ${Math.min(3, suggestedOrders.length)} of ${suggestedOrders.length}`}</span>
+          </div>
+          {suggestedOrders.length === 0 ? (
+            <p className="text-xs text-purple-200/70">All kit types appear covered.</p>
+          ) : (
+            <div className="space-y-2">
+              {suggestedOrders.slice(0, 3).map((item) => {
+                const primaryFactor = item.riskFactors.find((factor) => factor.type === 'deficit' || factor.type === 'surge') || item.riskFactors[0]
+                return (
+                  <div key={item.key} className="flex flex-wrap items-start justify-between gap-4 rounded-lg border border-purple-500/40 bg-purple-500/10 px-4 py-3">
+                    <div className="text-sm text-purple-100">
+                      <div className="font-medium text-white">{item.kitTypeName}</div>
+                      <div className="text-xs text-purple-200/80">
+                        {primaryFactor?.detail || 'Covers upcoming demand and delivery window'}
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 text-right">
+                      <div className="text-sm font-semibold text-purple-100">Order {item.recommendedOrderQty}</div>
+                      {item.deliveryDaysApplied > 0 && (
+                        <div className="text-[10px] uppercase tracking-wide text-purple-200/70">Delivery {item.deliveryDaysApplied}d</div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setOrderTarget(item)}
+                        className="mt-1 rounded border border-purple-400/60 px-3 py-1 text-[11px] font-semibold text-purple-200 hover:border-purple-300 hover:text-purple-100"
+                      >
+                        Plan order
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          {suggestedOrders.length > 3 && (
+            <p className="text-xs text-purple-200/70 mt-2">{`+${suggestedOrders.length - 3} more kit type${suggestedOrders.length - 3 === 1 ? '' : 's'} flagged below`}</p>
+          )}
+          <div className="text-xs text-purple-200/70 mt-2">Total recommended quantity: {totalSuggestedQuantity}</div>
+        </div>
+      )}
+
       </div>
 
       {!dismissed.has('supplyDeficit') && (

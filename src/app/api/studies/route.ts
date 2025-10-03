@@ -141,6 +141,9 @@ export async function POST(request: NextRequest) {
         visit_window_buffer_days: typeof studyData.visit_window_buffer_days !== 'undefined'
           ? Math.max(0, Math.min(60, parseInt(studyData.visit_window_buffer_days)))
           : 0,
+        delivery_days_default: typeof studyData.delivery_days_default !== 'undefined'
+          ? Math.max(0, Math.min(120, parseInt(studyData.delivery_days_default)))
+          : 5,
         anchor_day: studyData.anchor_day ? parseInt(studyData.anchor_day) : 0
       })
       .select()
@@ -216,6 +219,12 @@ export async function PUT(request: NextRequest) {
         updateObject.visit_window_buffer_days = Math.max(0, Math.min(60, Math.round(parsed)))
       }
     }
+    if (typeof updateData.delivery_days_default !== 'undefined') {
+      const parsed = Number(updateData.delivery_days_default)
+      if (Number.isFinite(parsed)) {
+        updateObject.delivery_days_default = Math.max(0, Math.min(120, Math.round(parsed)))
+      }
+    }
 
     // Verify membership before update
     const { data: targetStudy, error: targetErr } = await supabase
@@ -260,7 +269,8 @@ export async function PUT(request: NextRequest) {
         (msg.includes('protocol_version') && msg.includes('does not exist')) ||
         (msg.includes('anchor_day') && msg.includes('does not exist')) ||
         (msg.includes('inventory_buffer_days') && msg.includes('does not exist')) ||
-        (msg.includes('visit_window_buffer_days') && msg.includes('does not exist'))
+        (msg.includes('visit_window_buffer_days') && msg.includes('does not exist')) ||
+        (msg.includes('delivery_days_default') && msg.includes('does not exist'))
       ) {
         try {
           const {
@@ -268,6 +278,7 @@ export async function PUT(request: NextRequest) {
             anchor_day: _ad,
             inventory_buffer_days: _ib,
             visit_window_buffer_days: _vb,
+            delivery_days_default: _dd,
             ...fallback
           } = updateObject as Record<string, unknown>
           const retry = await (supabase as any)

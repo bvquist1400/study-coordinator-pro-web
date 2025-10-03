@@ -64,20 +64,31 @@ interface InventoryForecastItem {
     minCount: number | null
     targetKits: number
     dailyBurnRate: number
+    deliveryDays: number
   }
+  baselineTarget: number
+  dynamicCushion: number
+  deliveryDaysApplied: number
+  recommendedOrderQty: number
+  riskScore: number
+  riskLevel: 'high' | 'medium' | 'low'
+  riskFactors: Array<{ type: string; score: number; detail: string }>
 }
 
 interface ForecastSummary {
   totalVisitsScheduled: number
   criticalIssues: number
   warnings: number
+  highRisk: number
+  mediumRisk: number
   daysAhead: number
   baseWindowDays: number
   inventoryBufferDays: number
   visitWindowBufferDays: number
+  deliveryDaysDefault: number
 }
 
-type KitTypeRow = { id: string; name: string | null; is_active: boolean | null; buffer_days: number | null; buffer_count: number | null }
+type KitTypeRow = { id: string; name: string | null; is_active: boolean | null; buffer_days: number | null; buffer_count: number | null; delivery_days: number | null }
 type RequirementRow = {
   id: string
   visit_schedule_id: string
@@ -125,6 +136,12 @@ const severityWeight: Record<InventoryForecastItem['status'], number> = {
   ok: 2
 }
 
+const riskWeight: Record<'high' | 'medium' | 'low', number> = {
+  high: 0,
+  medium: 1,
+  low: 2
+}
+
 function normalizeName(value: string | null | undefined): string | null {
   if (!value) return null
   const trimmed = value.trim().toLowerCase()
@@ -151,6 +168,13 @@ function withinExpiryWindow(expiration: string | null, reference: Date, cutoff: 
   return expDate >= reference && expDate <= cutoff
 }
 
+function daysUntilVisit(dateISO: string, reference: Date): number {
+  const dt = new Date(dateISO)
+  if (Number.isNaN(dt.getTime())) return Number.POSITIVE_INFINITY
+  const diff = dt.getTime() - reference.getTime()
+  return Math.floor(diff / (1000 * 60 * 60 * 24))
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { user, error: authError, status: authStatus } = await authenticateUser(request)
@@ -174,10 +198,10 @@ export async function GET(request: NextRequest) {
 
    const supabase = createSupabaseAdmin()
 
-type StudyBufferSettings = Pick<Study, 'inventory_buffer_days' | 'visit_window_buffer_days'>
+type StudyBufferSettings = Pick<Study, 'inventory_buffer_days' | 'visit_window_buffer_days' | 'delivery_days_default'>
 const { data: studySettings, error: studySettingsError } = await supabase
   .from('studies')
-  .select('inventory_buffer_days, visit_window_buffer_days')
+  .select('inventory_buffer_days, visit_window_buffer_days, delivery_days_default')
   .eq('id', studyId)
   .single<StudyBufferSettings>()
 
@@ -189,6 +213,7 @@ if (studySettingsError) {
 
     const inventoryBufferDays = Math.max(0, Math.min(120, (studySettings?.inventory_buffer_days ?? 0)))
     const visitWindowBufferDays = Math.max(0, Math.min(60, (studySettings?.visit_window_buffer_days ?? 0)))
+    const deliveryDaysDefault = Math.max(0, Math.min(120, (studySettings?.delivery_days_default ?? 5)))
     const effectiveDaysAhead = Math.min(daysAhead + visitWindowBufferDays, 180)
 
     const { today, todayISO, future, futureISO } = isoDateRange(effectiveDaysAhead)
@@ -199,7 +224,7 @@ if (studySettingsError) {
     const [{ data: kitTypeRows, error: kitTypeError }, { data: scheduleRows, error: scheduleError }] = await Promise.all([
       supabase
         .from('study_kit_types')
-        .select('id, name, is_active, buffer_days, buffer_count')
+        .select('id, name, is_active, buffer_days, buffer_count, delivery_days')
         .eq('study_id', studyId),
       supabase
         .from('visit_schedules')
@@ -249,10 +274,13 @@ if (studySettingsError) {
         totalVisitsScheduled: 0,
         criticalIssues: 0,
         warnings: 0,
+        highRisk: 0,
+        mediumRisk: 0,
         daysAhead: effectiveDaysAhead,
         baseWindowDays: daysAhead,
         inventoryBufferDays,
-        visitWindowBufferDays
+        visitWindowBufferDays,
+        deliveryDaysDefault
       }
       return NextResponse.json({ forecast: [] as InventoryForecastItem[], summary })
     }
@@ -291,8 +319,16 @@ if (studySettingsError) {
           appliedDays: null,
           minCount: null,
           targetKits: 0,
-          dailyBurnRate: 0
-        }
+          dailyBurnRate: 0,
+          deliveryDays: 0
+        },
+        baselineTarget: 0,
+        dynamicCushion: 0,
+        deliveryDaysApplied: 0,
+        recommendedOrderQty: 0,
+        riskScore: 0,
+        riskLevel: 'low',
+        riskFactors: []
       }
 
       entryByKey.set(key, entry)
@@ -495,14 +531,19 @@ if (studySettingsError) {
       const kitTypeInfo = entry.kitTypeId ? kitTypeById.get(entry.kitTypeId) ?? null : null
       const kitBufferDaysRaw = kitTypeInfo?.buffer_days
       const kitBufferCountRaw = kitTypeInfo?.buffer_count
+      const kitDeliveryDaysRaw = kitTypeInfo?.delivery_days
 
       const appliedDaysRaw = kitBufferDaysRaw !== null && kitBufferDaysRaw !== undefined
         ? kitBufferDaysRaw
         : inventoryBufferDays
 
-      const appliedDays = appliedDaysRaw && Number.isFinite(appliedDaysRaw)
+      const safetyDays = appliedDaysRaw && Number.isFinite(appliedDaysRaw)
         ? Math.max(0, Math.min(120, appliedDaysRaw))
         : 0
+
+      const deliveryDaysApplied = kitDeliveryDaysRaw !== null && kitDeliveryDaysRaw !== undefined
+        ? Math.max(0, Math.min(120, kitDeliveryDaysRaw))
+        : deliveryDaysDefault
 
       const minCountRaw = kitBufferCountRaw !== null && kitBufferCountRaw !== undefined
         ? kitBufferCountRaw
@@ -513,32 +554,46 @@ if (studySettingsError) {
         ? entry.kitsRequired / Math.max(1, effectiveDaysAhead)
         : 0
 
-      const bufferFromDays = appliedDays > 0 && effectiveDaysAhead > 0
-        ? Math.ceil(dailyBurnRate * appliedDays)
+      const cushionFromSafety = safetyDays > 0 && dailyBurnRate > 0
+        ? Math.ceil(dailyBurnRate * safetyDays)
         : 0
 
+      const cushionFromDelivery = deliveryDaysApplied > 0 && dailyBurnRate > 0
+        ? Math.ceil(dailyBurnRate * deliveryDaysApplied)
+        : 0
+
+      const bufferFromDays = cushionFromSafety + cushionFromDelivery
       const bufferKitsNeeded = Math.max(bufferFromDays, minCount)
       const bufferSource: 'kit-specific' | 'study-default' | 'none' =
-        (kitBufferDaysRaw !== null && kitBufferDaysRaw !== undefined) || (kitBufferCountRaw !== null && kitBufferCountRaw !== undefined)
+        (kitBufferDaysRaw !== null && kitBufferDaysRaw !== undefined) || (kitBufferCountRaw !== null && kitBufferCountRaw !== undefined) || (kitDeliveryDaysRaw !== null && kitDeliveryDaysRaw !== undefined)
           ? 'kit-specific'
-          : inventoryBufferDays > 0
+          : inventoryBufferDays > 0 || deliveryDaysDefault > 0
             ? 'study-default'
             : 'none'
 
       entry.bufferKitsNeeded = bufferKitsNeeded
       entry.requiredWithBuffer = entry.kitsRequired + bufferKitsNeeded
+      entry.baselineTarget = Math.max(entry.kitsRequired, minCount)
+      entry.dynamicCushion = Math.max(0, bufferFromDays)
+      entry.deliveryDaysApplied = deliveryDaysApplied
       entry.bufferMeta = {
         source: bufferSource,
-        appliedDays: appliedDays > 0 ? appliedDays : null,
+        appliedDays: safetyDays > 0 ? safetyDays : null,
         minCount: minCount > 0 ? minCount : null,
         targetKits: bufferKitsNeeded,
-        dailyBurnRate
+        dailyBurnRate,
+        deliveryDays: deliveryDaysApplied
       }
 
       entry.originalDeficit = Math.max(0, entry.requiredWithBuffer - entry.kitsAvailable)
       entry.deficit = Math.max(0, entry.requiredWithBuffer - (entry.kitsAvailable + entry.pendingOrderQuantity))
 
+      const usableKits = Math.max(0, entry.kitsAvailable - entry.kitsExpiringSoon)
+      const coverageAfterPending = usableKits + entry.pendingOrderQuantity
+      entry.recommendedOrderQty = Math.max(0, entry.requiredWithBuffer - coverageAfterPending)
+
       const slackAfterPending = (entry.kitsAvailable + entry.pendingOrderQuantity) - entry.requiredWithBuffer
+      const slackAfterExpiry = coverageAfterPending - entry.requiredWithBuffer
 
       if (entry.deficit > 0) {
         entry.status = entry.optional ? 'warning' : 'critical'
@@ -546,16 +601,57 @@ if (studySettingsError) {
         entry.status = 'warning'
       } else if (entry.requiredWithBuffer === 0) {
         entry.status = entry.kitsExpiringSoon > 0 ? 'warning' : 'ok'
-      } else if (slackAfterPending <= BUFFER_THRESHOLD || entry.kitsExpiringSoon > 0) {
+      } else if (slackAfterPending <= BUFFER_THRESHOLD || entry.kitsExpiringSoon > 0 || slackAfterExpiry <= 0) {
         entry.status = 'warning'
       } else {
         entry.status = 'ok'
       }
 
+      const riskFactors: Array<{ type: string; score: number; detail: string }> = []
+
+      if (entry.deficit > 0) {
+        riskFactors.push({ type: 'deficit', score: Math.min(60, 40 + entry.deficit * 5), detail: `Short ${entry.deficit} kits even after pending orders` })
+      } else if (entry.originalDeficit > 0) {
+        riskFactors.push({ type: 'covered', score: 25, detail: 'Pending orders cover an upcoming shortage' })
+      }
+
+      if (entry.kitsExpiringSoon > 0) {
+        riskFactors.push({ type: 'expiry', score: Math.min(20, entry.kitsExpiringSoon * 4), detail: `${entry.kitsExpiringSoon} kits expiring soon` })
+      }
+
+      const surgeWindow = Math.max(7, deliveryDaysApplied || 0)
+      let surgeQuantity = 0
+      for (const upcoming of entry.upcomingVisits) {
+        const diffDays = daysUntilVisit(upcoming.visit_date, today)
+        if (diffDays <= surgeWindow) {
+          surgeQuantity += upcoming.quantity_required
+        }
+      }
+      if (surgeQuantity > 0) {
+        riskFactors.push({ type: 'surge', score: Math.min(25, surgeQuantity * 3), detail: `${surgeQuantity} kits needed in next ${surgeWindow}d` })
+      }
+
+      if (deliveryDaysApplied > 0) {
+        riskFactors.push({ type: 'delivery', score: Math.min(15, deliveryDaysApplied), detail: `${deliveryDaysApplied}d delivery time` })
+      }
+
+      if (slackAfterExpiry < 0) {
+        riskFactors.push({ type: 'expiry_slack', score: 15, detail: 'Coverage relies on kits expiring soon' })
+      }
+
+      entry.riskFactors = riskFactors
+      const riskScore = Math.min(100, riskFactors.reduce((sum, factor) => sum + factor.score, 0))
+      entry.riskScore = riskScore
+      entry.riskLevel = entry.deficit > 0 || riskScore >= 70 ? 'high' : (riskScore >= 40 || entry.recommendedOrderQty > 0 ? 'medium' : 'low')
+
       forecast.push(entry)
     }
 
     forecast.sort((a, b) => {
+      const riskDiff = riskWeight[a.riskLevel] - riskWeight[b.riskLevel]
+      if (riskDiff !== 0) return riskDiff
+      const scoreDiff = b.riskScore - a.riskScore
+      if (scoreDiff !== 0) return scoreDiff
       const severityDiff = severityWeight[a.status] - severityWeight[b.status]
       if (severityDiff !== 0) return severityDiff
       const deficitDiff = b.deficit - a.deficit
@@ -567,10 +663,13 @@ if (studySettingsError) {
       totalVisitsScheduled: forecast.reduce((sum, item) => sum + item.visitsScheduled, 0),
       criticalIssues: forecast.filter(item => item.status === 'critical').length,
       warnings: forecast.filter(item => item.status === 'warning').length,
+      highRisk: forecast.filter(item => item.riskLevel === 'high').length,
+      mediumRisk: forecast.filter(item => item.riskLevel === 'medium').length,
       daysAhead: effectiveDaysAhead,
       baseWindowDays: daysAhead,
       inventoryBufferDays,
-      visitWindowBufferDays
+      visitWindowBufferDays,
+      deliveryDaysDefault
     }
 
     const supplyDeficitMetrics = forecast.reduce(
@@ -584,6 +683,17 @@ if (studySettingsError) {
         return acc
       },
       { total: 0, count: 0, max: 0 }
+    )
+
+    const suggestedOrderMetrics = forecast.reduce(
+      (acc, item) => {
+        if (item.recommendedOrderQty > 0) {
+          acc.count += 1
+          acc.totalQty += item.recommendedOrderQty
+        }
+        return acc
+      },
+      { count: 0, totalQty: 0 }
     )
 
     const lowBufferMetrics = forecast.reduce(
@@ -611,7 +721,8 @@ if (studySettingsError) {
       expiringSoon: {
         count: expiringSoonCount,
         earliestExpiryDate: earliestExpiringDate
-      }
+      },
+      suggestedOrders: suggestedOrderMetrics
     }
 
     const { data: dismissalRows, error: dismissalError } = await supabase
@@ -716,16 +827,17 @@ if (studySettingsError) {
 
     if (restoreUpdates.length > 0) {
       await Promise.all(
-        restoreUpdates.map(update =>
-          supabase
+        restoreUpdates.map(update => {
+          const payload: LabKitAlertDismissalUpdate = {
+            auto_restore_rule: update.rule,
+            restored_at: nowIso,
+            updated_at: nowIso
+          }
+          return (supabase as any)
             .from('lab_kit_alert_dismissals')
-            .update<LabKitAlertDismissalUpdate>({
-              auto_restore_rule: update.rule,
-              restored_at: nowIso,
-              updated_at: nowIso
-            })
+            .update(payload)
             .eq('id', update.id)
-        )
+        })
       )
     }
 

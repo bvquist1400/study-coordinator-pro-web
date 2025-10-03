@@ -97,6 +97,7 @@ export interface Database {
           visit_window_days: number
           inventory_buffer_days: number
           visit_window_buffer_days: number
+          delivery_days_default: number
           anchor_day: number
           dosing_frequency: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom'
           compliance_threshold: number
@@ -123,6 +124,7 @@ export interface Database {
           visit_window_days?: number
           inventory_buffer_days?: number
           visit_window_buffer_days?: number
+          delivery_days_default?: number
           anchor_day?: number
           dosing_frequency?: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom'
           compliance_threshold?: number
@@ -149,6 +151,7 @@ export interface Database {
           visit_window_days?: number
           inventory_buffer_days?: number
           visit_window_buffer_days?: number
+          delivery_days_default?: number
           anchor_day?: number
           dosing_frequency?: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom'
           compliance_threshold?: number
@@ -627,6 +630,7 @@ export interface Database {
           description: string | null
           buffer_days: number | null
           buffer_count: number | null
+          delivery_days: number | null
           is_active: boolean
           created_at: string
           updated_at: string
@@ -638,6 +642,7 @@ export interface Database {
           description?: string | null
           buffer_days?: number | null
           buffer_count?: number | null
+          delivery_days?: number | null
           is_active?: boolean
           created_at?: string
           updated_at?: string
@@ -649,6 +654,7 @@ export interface Database {
           description?: string | null
           buffer_days?: number | null
           buffer_count?: number | null
+          delivery_days?: number | null
           is_active?: boolean
           created_at?: string
           updated_at?: string
@@ -910,6 +916,8 @@ export interface Database {
           estimated_delivery: string | null
           actual_delivery: string | null
           tracking_status: string | null
+          ups_tracking_payload: Json | null
+          last_tracking_update: string | null
           tracking_details: Json | null
           destination_address: string | null
           created_at: string
@@ -926,6 +934,8 @@ export interface Database {
           estimated_delivery?: string | null
           actual_delivery?: string | null
           tracking_status?: string | null
+          ups_tracking_payload?: Json | null
+          last_tracking_update?: string | null
           tracking_details?: Json | null
           destination_address?: string | null
           created_at?: string
@@ -942,6 +952,8 @@ export interface Database {
           estimated_delivery?: string | null
           actual_delivery?: string | null
           tracking_status?: string | null
+          ups_tracking_payload?: Json | null
+          last_tracking_update?: string | null
           tracking_details?: Json | null
           destination_address?: string | null
           created_at?: string

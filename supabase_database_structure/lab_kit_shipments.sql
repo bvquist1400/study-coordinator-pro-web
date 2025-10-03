@@ -9,6 +9,8 @@ create table public.lab_kit_shipments (
   estimated_delivery date null,
   actual_delivery date null,
   tracking_status text null,
+  ups_tracking_payload jsonb null,
+  last_tracking_update timestamp with time zone null,
   notes text null,
   created_at timestamp with time zone null default now(),
   updated_at timestamp with time zone null default now(),

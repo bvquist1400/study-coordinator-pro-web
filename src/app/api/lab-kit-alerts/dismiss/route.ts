@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
 
     const supabase = createSupabaseAdmin()
 
-    const { error: upsertError } = await supabase
+    const { error: upsertError } = await (supabase as any)
       .from('lab_kit_alert_dismissals')
       .upsert({
         user_id: user.id,
@@ -98,7 +98,7 @@ export async function DELETE(request: NextRequest) {
     const supabase = createSupabaseAdmin()
     const nowIso = new Date().toISOString()
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await (supabase as any)
       .from('lab_kit_alert_dismissals')
       .update({
         manually_restored: true,

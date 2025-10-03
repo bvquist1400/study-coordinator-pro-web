@@ -144,15 +144,15 @@ export function ComplianceProgressBar({
 
   return (
     <div className="space-y-1">
-      <div className={`w-full bg-gray-200 rounded-full ${heightClasses[height]} overflow-hidden`}>
-        <div 
+      <div className={`w-full rounded-full bg-gray-800/60 ${heightClasses[height]} overflow-hidden`}>
+        <div
           className={`${heightClasses[height]} ${colorClasses[status]} transition-all duration-300 ease-out`}
           style={{ width: `${Math.min(100, Math.max(0, percentage))}%` }}
         ></div>
       </div>
       {showPercentage && (
-        <div className="flex justify-between items-center text-xs text-gray-600">
-          <span>{percentage}%</span>
+        <div className="flex justify-between items-center text-xs text-gray-400">
+          <span className="font-medium text-gray-200">{percentage}%</span>
           <span className="capitalize">{getComplianceLabel(status)}</span>
         </div>
       )}

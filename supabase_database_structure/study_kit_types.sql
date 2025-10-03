@@ -5,6 +5,7 @@ create table public.study_kit_types (
   description text null,
   buffer_days integer null,
   buffer_count integer null,
+  delivery_days integer null,
   is_active boolean not null default true,
   created_at timestamp with time zone not null default now(),
   updated_at timestamp with time zone not null default now(),
@@ -13,6 +14,9 @@ create table public.study_kit_types (
   ),
   constraint study_kit_types_buffer_count_check check (
     buffer_count is null or (buffer_count >= 0 and buffer_count <= 999)
+  ),
+  constraint study_kit_types_delivery_days_check check (
+    delivery_days is null or (delivery_days >= 0 and delivery_days <= 120)
   ),
   constraint study_kit_types_pkey primary key (id)
 ) tablespace pg_default;

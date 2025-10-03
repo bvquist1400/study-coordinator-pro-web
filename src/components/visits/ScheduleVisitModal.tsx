@@ -522,7 +522,17 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
     const windowStart = calc.windowStart
     const windowEnd = calc.windowEnd
 
-    return { start: formatDateUTC(windowStart), end: formatDateUTC(windowEnd) }
+    const toISO = (date: Date) => {
+      const iso = date.toISOString()
+      return iso.split('T')[0]
+    }
+
+    return {
+      startISO: toISO(windowStart),
+      endISO: toISO(windowEnd),
+      startDisplay: formatDateUTC(windowStart),
+      endDisplay: formatDateUTC(windowEnd)
+    }
   }
 
   if (loading) {
@@ -539,6 +549,14 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
   }
 
   const visitWindow = getVisitWindow()
+  const isOutOfWindow = (() => {
+    if (!visitWindow || !scheduledDate) return false
+    const scheduled = parseDateUTC(scheduledDate)
+    const start = parseDateUTC(visitWindow.startISO)
+    const end = parseDateUTC(visitWindow.endISO)
+    if (!scheduled || !start || !end) return false
+    return scheduled.getTime() < start.getTime() || scheduled.getTime() > end.getTime()
+  })()
   const hasProtocolVisits = visitSchedules.length > 0
 
   return (
@@ -745,10 +763,18 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
               />
               {visitWindow && (
                 <p className="text-sm text-gray-400 mt-1">
-                  Visit window: {visitWindow.start} - {visitWindow.end}
+                  Visit window: {visitWindow.startDisplay} - {visitWindow.endDisplay}
                 </p>
               )}
             </div>
+            {visitWindow && isOutOfWindow && (
+              <div className="bg-amber-500/10 border border-amber-500/40 rounded-lg p-3">
+                <div className="text-sm font-semibold text-amber-300">Selected date is outside recommended window</div>
+                <div className="text-xs text-amber-200 mt-1">
+                  Protocol window is {visitWindow.startDisplay} – {visitWindow.endDisplay}. You can continue, but document the reason in study notes.
+                </div>
+              </div>
+            )}
 
             {/* Lab Kit Assignment - Hidden: Using predictive inventory system */}
             {false && (labKitRequired || selectedLabKit) && (

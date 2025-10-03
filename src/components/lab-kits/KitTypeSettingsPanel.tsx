@@ -12,6 +12,7 @@ interface KitTypeSettingsPanelProps {
 interface BufferDraft {
   bufferDays: string
   bufferCount: string
+  deliveryDays: string
   dirty: boolean
   saving: boolean
   error?: string | null
@@ -54,6 +55,7 @@ export default function KitTypeSettingsPanel({ studyId, canManage }: KitTypeSett
             next[type.id] = {
               bufferDays: type.buffer_days !== null && type.buffer_days !== undefined ? String(type.buffer_days) : '',
               bufferCount: type.buffer_count !== null && type.buffer_count !== undefined ? String(type.buffer_count) : '',
+              deliveryDays: type.delivery_days !== null && type.delivery_days !== undefined ? String(type.delivery_days) : '',
               dirty: false,
               saving: false,
               error: null,
@@ -76,12 +78,13 @@ export default function KitTypeSettingsPanel({ studyId, canManage }: KitTypeSett
 
   const activeKitTypes = useMemo(() => kitTypes.filter(type => type.is_active), [kitTypes])
 
-  const handleDraftChange = (id: string, field: 'bufferDays' | 'bufferCount', value: string) => {
+  const handleDraftChange = (id: string, field: 'bufferDays' | 'bufferCount' | 'deliveryDays', value: string) => {
     setDrafts(prev => ({
       ...prev,
       [id]: {
         bufferDays: field === 'bufferDays' ? value : prev[id]?.bufferDays ?? '',
         bufferCount: field === 'bufferCount' ? value : prev[id]?.bufferCount ?? '',
+        deliveryDays: field === 'deliveryDays' ? value : prev[id]?.deliveryDays ?? '',
         dirty: true,
         saving: prev[id]?.saving ?? false,
         error: null,
@@ -105,6 +108,13 @@ export default function KitTypeSettingsPanel({ studyId, canManage }: KitTypeSett
         return 'Minimum kits must be between 0 and 999'
       }
     }
+    const rawDelivery = draft.deliveryDays.trim()
+    if (rawDelivery !== '') {
+      const parsed = Number(rawDelivery)
+      if (!Number.isFinite(parsed) || parsed < 0 || parsed > 120) {
+        return 'Delivery time must be between 0 and 120 days'
+      }
+    }
     return null
   }
 
@@ -123,6 +133,7 @@ export default function KitTypeSettingsPanel({ studyId, canManage }: KitTypeSett
 
     const bufferDays = draft.bufferDays.trim() === '' ? null : Number(draft.bufferDays.trim())
     const bufferCount = draft.bufferCount.trim() === '' ? null : Number(draft.bufferCount.trim())
+    const deliveryDays = draft.deliveryDays.trim() === '' ? null : Number(draft.deliveryDays.trim())
 
     try {
       setDrafts(prev => ({
@@ -143,7 +154,8 @@ export default function KitTypeSettingsPanel({ studyId, canManage }: KitTypeSett
           id,
           study_id: studyId,
           buffer_days: bufferDays,
-          buffer_count: bufferCount
+          buffer_count: bufferCount,
+          delivery_days: deliveryDays
         })
       })
 
@@ -157,13 +169,14 @@ export default function KitTypeSettingsPanel({ studyId, canManage }: KitTypeSett
         [id]: {
           bufferDays: bufferDays !== null ? String(bufferDays) : '',
           bufferCount: bufferCount !== null ? String(bufferCount) : '',
+          deliveryDays: deliveryDays !== null ? String(deliveryDays) : '',
           dirty: false,
           saving: false,
           error: null,
           success: 'Saved'
         }
       }))
-      setKitTypes(prev => prev.map(type => type.id === id ? { ...type, buffer_days: bufferDays, buffer_count: bufferCount } : type))
+      setKitTypes(prev => prev.map(type => type.id === id ? { ...type, buffer_days: bufferDays, buffer_count: bufferCount, delivery_days: deliveryDays } : type))
     } catch (err) {
       setDrafts(prev => ({
         ...prev,
@@ -178,6 +191,7 @@ export default function KitTypeSettingsPanel({ studyId, canManage }: KitTypeSett
       [id]: {
         bufferDays: '',
         bufferCount: '',
+        deliveryDays: '',
         dirty: true,
         saving: false,
         error: null,
@@ -190,8 +204,8 @@ export default function KitTypeSettingsPanel({ studyId, canManage }: KitTypeSett
     <div className="bg-gray-800/50 border border-gray-700 rounded-lg">
       <div className="p-6 border-b border-gray-700 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-white">Kit Safety Buffers</h3>
-          <p className="text-sm text-gray-400">Override the study default buffer for specific kit types. Leave fields blank to inherit the global setting.</p>
+          <h3 className="text-lg font-semibold text-white">Safety Cushion & Delivery</h3>
+          <p className="text-sm text-gray-400">Adjust per-kit safety cushion, minimum stock, and delivery time. Leave blank to inherit the study defaults.</p>
         </div>
         <button
           type="button"
@@ -218,10 +232,11 @@ export default function KitTypeSettingsPanel({ studyId, canManage }: KitTypeSett
           </div>
         ) : (
           activeKitTypes.map(type => {
-            const draft = drafts[type.id] || { bufferDays: '', bufferCount: '', dirty: false, saving: false }
+            const draft = drafts[type.id] || { bufferDays: '', bufferCount: '', deliveryDays: '', dirty: false, saving: false }
             const validationError = draft.error ? null : validateDraft(draft)
             const bufferDaysDisplay = draft.bufferDays.trim() === '' && type.buffer_days !== null ? String(type.buffer_days) : draft.bufferDays
             const bufferCountDisplay = draft.bufferCount.trim() === '' && type.buffer_count !== null ? String(type.buffer_count) : draft.bufferCount
+            const deliveryDaysDisplay = draft.deliveryDays.trim() === '' && type.delivery_days !== null ? String(type.delivery_days) : draft.deliveryDays
             return (
               <div key={type.id} className="p-6 space-y-3">
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
@@ -232,7 +247,7 @@ export default function KitTypeSettingsPanel({ studyId, canManage }: KitTypeSett
                   </div>
                   <div className="flex flex-wrap items-end gap-3">
                     <div className="w-32">
-                      <label className="block text-xs font-medium text-gray-400 mb-1">Buffer Days</label>
+                      <label className="block text-xs font-medium text-gray-400 mb-1">Safety Cushion (days)</label>
                       <input
                         type="number"
                         min={0}
@@ -245,7 +260,7 @@ export default function KitTypeSettingsPanel({ studyId, canManage }: KitTypeSett
                       />
                     </div>
                     <div className="w-32">
-                      <label className="block text-xs font-medium text-gray-400 mb-1">Min Kits</label>
+                      <label className="block text-xs font-medium text-gray-400 mb-1">Minimum Kits On Hand</label>
                       <input
                         type="number"
                         min={0}
@@ -253,6 +268,19 @@ export default function KitTypeSettingsPanel({ studyId, canManage }: KitTypeSett
                         value={bufferCountDisplay}
                         onChange={(e) => handleDraftChange(type.id, 'bufferCount', e.target.value)}
                         placeholder="0"
+                        className="w-full bg-gray-700/60 border border-gray-600 text-gray-100 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        disabled={!canManage}
+                      />
+                    </div>
+                    <div className="w-36">
+                      <label className="block text-xs font-medium text-gray-400 mb-1">Delivery Time to Site (days)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={120}
+                        value={deliveryDaysDisplay}
+                        onChange={(e) => handleDraftChange(type.id, 'deliveryDays', e.target.value)}
+                        placeholder="Default"
                         className="w-full bg-gray-700/60 border border-gray-600 text-gray-100 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         disabled={!canManage}
                       />

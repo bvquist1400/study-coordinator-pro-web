@@ -30,6 +30,15 @@ interface ComplianceAlert {
   created_at: string
 }
 
+interface TimingBreakdown {
+  onTime: number
+  early: number
+  late: number
+  outsideWindow: number
+  noWindowData: number
+  total: number
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -90,6 +99,7 @@ export async function GET(request: NextRequest) {
         visit_name,
         status,
         visit_date,
+        days_from_scheduled,
         is_within_window,
         updated_at,
         study_id,
@@ -173,29 +183,66 @@ export async function GET(request: NextRequest) {
       logger.error('Error fetching cycle compliance view', cycleError)
     }
 
+    const timingBreakdown: TimingBreakdown = {
+      onTime: 0,
+      early: 0,
+      late: 0,
+      outsideWindow: 0,
+      noWindowData: 0,
+      total: 0
+    }
+
     // Calculate monthly trends
-    const monthlyData: { [key: string]: { visitTiming: number[], drugCompliance: number[] } } = {}
+    const monthlyData: {
+      [key: string]: {
+        visitTiming: number[]
+        drugCompliance: number[]
+      }
+    } = {}
     
     // Initialize months
     for (let i = 0; i < months; i++) {
       const date = new Date()
       date.setMonth(date.getMonth() - (months - 1 - i))
       const monthKey = date.toISOString().substring(0, 7)
-      monthlyData[monthKey] = { visitTiming: [], drugCompliance: [] }
+      monthlyData[monthKey] = {
+        visitTiming: [],
+        drugCompliance: []
+      }
     }
 
     // Process visit timing compliance
     const visitsRows = (visits || []) as any[]
     visitsRows.forEach(visit => {
-      const month = visit.updated_at.substring(0, 7)
+      const visitData = visit as any
+      const month = visitData.updated_at.substring(0, 7)
+      const delta = typeof visitData.days_from_scheduled === 'number' ? visitData.days_from_scheduled : null
+      const withinWindow = visitData.is_within_window
+
+      if (withinWindow === true) {
+        timingBreakdown.total += 1
+        if (delta !== null) {
+          if (delta < 0) timingBreakdown.early += 1
+          else if (delta > 0) timingBreakdown.late += 1
+          else timingBreakdown.onTime += 1
+        } else {
+          timingBreakdown.onTime += 1
+        }
+      } else if (withinWindow === false) {
+        timingBreakdown.total += 1
+        timingBreakdown.outsideWindow += 1
+      } else {
+        timingBreakdown.noWindowData += 1
+      }
+
       if (monthlyData[month]) {
-        const visitData = visit as any
         // Only include visits with a computed window result; skip nulls
-        if (visitData.is_within_window === true) {
+        if (withinWindow === true) {
           monthlyData[month].visitTiming.push(100)
-        } else if (visitData.is_within_window === false) {
+        } else if (withinWindow === false) {
           monthlyData[month].visitTiming.push(0)
         }
+
       }
     })
 
@@ -218,6 +265,8 @@ export async function GET(request: NextRequest) {
         }
       }
     })
+
+    timingBreakdown.total = timingBreakdown.onTime + timingBreakdown.early + timingBreakdown.late + timingBreakdown.outsideWindow
 
     // Convert to trend data
     const trends: ComplianceTrend[] = Object.keys(monthlyData).sort().map(month => {
@@ -355,6 +404,7 @@ export async function GET(request: NextRequest) {
       })
     })
 
+    // Predictive alerts for upcoming scheduled visits nearing window close
     // Calculate summary metrics
     const timingEligibleVisits = visits?.filter(v => (v as any).is_within_window !== null) || []
     const totalVisits = timingEligibleVisits.length

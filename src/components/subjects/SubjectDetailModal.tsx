@@ -76,6 +76,40 @@ interface SubjectMetrics {
   }[]
 }
 
+interface DrugCycleItem {
+  drug_id: string | null
+  drug_code: string | null
+  drug_name: string | null
+  first_dose_date: string | null
+  tablets_dispensed: number | null
+  tablets_returned: number | null
+  last_dose_date: string | null
+  expected_return_date: string | null
+  compliance_percentage: number | null
+}
+
+interface PerVisitCycle {
+  visit_id: string
+  visit_date: string | null
+  visit_name: string | null
+  items: DrugCycleItem[]
+  avg_compliance: number | null
+}
+
+interface DrugSummary {
+  key: string
+  name: string
+  code: string | null
+  average: number | null
+  status: ComplianceResult['status'] | null
+  totalDispensed: number
+  totalReturned: number
+  cyclesCount: number
+  lastVisitDate: string | null
+  lastVisitName: string | null
+  overCompliance: boolean
+}
+
 interface Visit {
   id: string
   visit_date: string
@@ -120,6 +154,13 @@ const _visitStatusLabels = {
   scheduled: 'Scheduled',
   missed: 'Missed',
   cancelled: 'Cancelled'
+}
+
+const complianceStatusStyles: Record<ComplianceResult['status'], string> = {
+  excellent: 'bg-green-900/40 text-green-300 border border-green-600/40',
+  good: 'bg-blue-900/40 text-blue-300 border border-blue-600/40',
+  acceptable: 'bg-yellow-900/40 text-yellow-200 border border-yellow-600/40',
+  poor: 'bg-red-900/40 text-red-300 border border-red-600/40'
 }
 
 const percentageToStatus = (
@@ -174,13 +215,13 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'timeline' | 'drug-compliance' | 'notes'>('timeline')
   const [showEditForm, setShowEditForm] = useState(false)
-  const [perVisitCycles, setPerVisitCycles] = useState<Array<{ visit_id: string; visit_date: string; visit_name: string | null; items: any[]; avg_compliance: number | null }>>([])
+  const [perVisitCycles, setPerVisitCycles] = useState<PerVisitCycle[]>([])
 
   const overallCompliance = useMemo(() => {
     const visitPercentages: number[] = []
     for (const cycle of perVisitCycles) {
       if (Array.isArray(cycle.items)) {
-        cycle.items.forEach((item: any) => {
+        cycle.items.forEach((item) => {
           if (typeof item?.compliance_percentage === 'number') {
             visitPercentages.push(Number(item.compliance_percentage))
           }
@@ -204,8 +245,12 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
     overallCompliance != null ? percentageToStatus(overallCompliance) : null
   ), [overallCompliance])
 
-  const sortedPerVisit = useMemo<Array<{ visit_id: string; visit_date: string; visit_name: string | null; items: any[]; avg_compliance: number | null }>>(
-    () => [...perVisitCycles].sort((a, b) => new Date(a.visit_date).getTime() - new Date(b.visit_date).getTime()),
+  const sortedPerVisit = useMemo<PerVisitCycle[]>(
+    () => [...perVisitCycles].sort((a, b) => {
+      const aTime = a.visit_date ? new Date(a.visit_date).getTime() : 0
+      const bTime = b.visit_date ? new Date(b.visit_date).getTime() : 0
+      return aTime - bTime
+    }),
     [perVisitCycles]
   )
 
@@ -227,6 +272,92 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
     const rounded = Math.ceil(Math.max(100, maxValue) / 10) * 10
     return rounded
   }, [complianceTrendData])
+
+  const perDrugSummaries = useMemo<DrugSummary[]>(() => {
+    const map = new Map<string, {
+      key: string
+      name: string
+      code: string | null
+      compliances: number[]
+      totalDispensed: number
+      totalReturned: number
+      cyclesCount: number
+      lastVisitDate: string | null
+      lastVisitName: string | null
+      overCompliance: boolean
+    }>()
+
+    sortedPerVisit.forEach((visit) => {
+      const visitDate = visit.visit_date
+      visit.items.forEach((item) => {
+        const key = item.drug_id ?? item.drug_code ?? item.drug_name ?? 'unknown'
+        const existing = map.get(key)
+        const name = item.drug_name || item.drug_code || 'Unknown drug'
+        const code = item.drug_code ?? null
+
+        if (!existing) {
+          map.set(key, {
+            key,
+            name,
+            code,
+            compliances: [],
+            totalDispensed: 0,
+            totalReturned: 0,
+            cyclesCount: 0,
+            lastVisitDate: null,
+            lastVisitName: null,
+            overCompliance: false
+          })
+        }
+
+        const summary = map.get(key)!
+        const dispensed = item.tablets_dispensed
+        const returned = item.tablets_returned
+        if (typeof dispensed === 'number' && !Number.isNaN(dispensed)) summary.totalDispensed += dispensed
+        if (typeof returned === 'number' && !Number.isNaN(returned)) summary.totalReturned += returned
+        summary.cyclesCount += 1
+
+        if (typeof item.compliance_percentage === 'number' && !Number.isNaN(item.compliance_percentage)) {
+          summary.compliances.push(item.compliance_percentage)
+          if (item.compliance_percentage > 100) summary.overCompliance = true
+        }
+
+        const candidateDate = visitDate || item.last_dose_date || item.first_dose_date
+        if (candidateDate) {
+          if (!summary.lastVisitDate || new Date(candidateDate).getTime() > new Date(summary.lastVisitDate).getTime()) {
+            summary.lastVisitDate = candidateDate
+            summary.lastVisitName = visit.visit_name ?? null
+          }
+        }
+      })
+    })
+
+    return Array.from(map.values())
+      .map<DrugSummary>((entry) => {
+        const average = entry.compliances.length > 0
+          ? Math.round(entry.compliances.reduce((total, value) => total + value, 0) / entry.compliances.length)
+          : null
+        return {
+          key: entry.key,
+          name: entry.name,
+          code: entry.code,
+          average,
+          status: average != null ? percentageToStatus(average) : null,
+          totalDispensed: entry.totalDispensed,
+          totalReturned: entry.totalReturned,
+          cyclesCount: entry.cyclesCount,
+          lastVisitDate: entry.lastVisitDate,
+          lastVisitName: entry.lastVisitName,
+          overCompliance: entry.overCompliance
+        }
+      })
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [sortedPerVisit])
+
+  const totalDrugCyclesTracked = useMemo(
+    () => perDrugSummaries.reduce((total, summary) => total + summary.cyclesCount, 0),
+    [perDrugSummaries]
+  )
 
   const nextVisitInfo = useMemo(() => {
     const today = new Date()
@@ -272,8 +403,11 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
         'Drug',
         'Dispensed',
         'Returned',
+        'First Dose Date',
         'Last Dose Date',
-        'Compliance (%)'
+        'Expected Return',
+        'Compliance (%)',
+        'Status'
       ].map(cell => sanitizeCsvField(cell)).join(',')
     ]
 
@@ -281,19 +415,24 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
       const visitLabel = visit.visit_name || '-'
       const visitDate = visit.visit_date ? formatDateUTC(visit.visit_date) : ''
       for (const item of visit.items || []) {
-        const cycleItem = item as any
         const complianceValue = typeof item?.compliance_percentage === 'number'
           ? Math.round(item.compliance_percentage)
+          : ''
+        const statusLabel = typeof complianceValue === 'number'
+          ? getComplianceLabel(percentageToStatus(complianceValue))
           : ''
 
         const row = [
           visitLabel,
           visitDate,
-          cycleItem?.drug_name ?? cycleItem?.study_drug ?? '',
-          cycleItem?.tablets_dispensed != null ? `${cycleItem.tablets_dispensed}` : '',
-          cycleItem?.tablets_returned != null ? `${cycleItem.tablets_returned}` : '',
-          cycleItem?.last_dose_date ? formatDateUTC(cycleItem.last_dose_date) : '',
-          complianceValue === '' ? '' : `${complianceValue}`
+          item?.drug_name ?? item?.drug_code ?? '',
+          item?.tablets_dispensed != null ? `${item.tablets_dispensed}` : '',
+          item?.tablets_returned != null ? `${item.tablets_returned}` : '',
+          item?.first_dose_date ? formatDateUTC(item.first_dose_date) : '',
+          item?.last_dose_date ? formatDateUTC(item.last_dose_date) : '',
+          item?.expected_return_date ? formatDateUTC(item.expected_return_date) : '',
+          complianceValue === '' ? '' : `${complianceValue}`,
+          statusLabel
         ]
 
         lines.push(row.map(cell => sanitizeCsvField(cell)).join(','))
@@ -366,7 +505,33 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
         const resp = await fetch(`/api/subjects/${subjectId}/drug-cycles`, { headers: { Authorization: `Bearer ${token}` } })
         if (!resp.ok) return
         const json = await resp.json()
-        setPerVisitCycles(json.per_visit || [])
+        const parsed: PerVisitCycle[] = Array.isArray(json?.per_visit)
+          ? json.per_visit.map((entry: any) => ({
+              visit_id: `${entry?.visit_id ?? 'unlinked'}`,
+              visit_date: entry?.visit_date ?? null,
+              visit_name: entry?.visit_name ?? null,
+              avg_compliance: typeof entry?.avg_compliance === 'number' ? entry.avg_compliance : null,
+              items: Array.isArray(entry?.items)
+                ? entry.items.map((item: any): DrugCycleItem => ({
+                    drug_id: item?.drug_id ?? null,
+                    drug_code: item?.drug_code ?? null,
+                    drug_name: item?.drug_name ?? null,
+                    first_dose_date: item?.first_dose_date ?? null,
+                    tablets_dispensed: typeof item?.tablets_dispensed === 'number' ? item.tablets_dispensed : item?.tablets_dispensed != null ? Number(item.tablets_dispensed) : null,
+                    tablets_returned: typeof item?.tablets_returned === 'number' ? item.tablets_returned : item?.tablets_returned != null ? Number(item.tablets_returned) : null,
+                    last_dose_date: item?.last_dose_date ?? null,
+                    expected_return_date: item?.expected_return_date ?? null,
+                    compliance_percentage: typeof item?.compliance_percentage === 'number'
+                      ? item.compliance_percentage
+                      : item?.compliance_percentage != null
+                        ? Number(item.compliance_percentage)
+                        : null
+                  }))
+                : []
+            }))
+          : []
+
+        setPerVisitCycles(parsed)
       } catch {}
     }
     loadPerVisit()
@@ -773,6 +938,81 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
                           </div>
                         </div>
 
+                        {perDrugSummaries.length > 0 && (
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <h5 className="text-white font-medium">Per-Drug Snapshot</h5>
+                              <span className="text-xs text-gray-500">Aggregated across {totalDrugCyclesTracked} cycle{totalDrugCyclesTracked === 1 ? '' : 's'}</span>
+                            </div>
+                            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                              {perDrugSummaries.map((summary) => (
+                                <div key={summary.key} className="rounded-lg border border-gray-700 bg-gray-900/40 p-4 space-y-3">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                      <div className="text-sm font-semibold text-gray-100">{summary.name}</div>
+                                      {summary.code && (
+                                        <div className="text-xs uppercase tracking-wide text-gray-500">{summary.code}</div>
+                                      )}
+                                      <div className="text-[11px] text-gray-500 mt-1">
+                                        {summary.cyclesCount} cycle{summary.cyclesCount === 1 ? '' : 's'} tracked
+                                      </div>
+                                    </div>
+                                    {summary.status && summary.average != null ? (
+                                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${complianceStatusStyles[summary.status]}`}>
+                                        <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
+                                        {summary.average}% · {getComplianceLabel(summary.status)}
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs text-gray-500">No data</span>
+                                    )}
+                                  </div>
+
+                                  {summary.status && summary.average != null && (
+                                    <div className="space-y-1">
+                                      <ComplianceProgressBar
+                                        percentage={summary.average}
+                                        status={summary.status}
+                                        height="sm"
+                                        showPercentage={false}
+                                      />
+                                      <div className="flex justify-between text-xs text-gray-500">
+                                        <span>{summary.average}%</span>
+                                        <span>{getComplianceLabel(summary.status)}</span>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  <div className="grid grid-cols-2 gap-3 text-xs text-gray-400">
+                                    <div>
+                                      <div className="text-[11px] uppercase tracking-wide text-gray-500">Dispensed</div>
+                                      <div className="text-sm text-gray-200 font-semibold">{summary.totalDispensed}</div>
+                                    </div>
+                                    <div>
+                                      <div className="text-[11px] uppercase tracking-wide text-gray-500">Returned</div>
+                                      <div className="text-sm text-gray-200 font-semibold">{summary.totalReturned}</div>
+                                    </div>
+                                  </div>
+
+                                  <div className="text-xs text-gray-500 border-t border-gray-800 pt-2">
+                                    {summary.lastVisitDate ? (
+                                      <span>
+                                        Last recorded {summary.lastVisitName ? `${summary.lastVisitName} · ` : ''}{formatDateUTC(summary.lastVisitDate)}
+                                      </span>
+                                    ) : (
+                                      <span>No visits recorded yet.</span>
+                                    )}
+                                  </div>
+                                  {summary.overCompliance && (
+                                    <div className="text-[11px] text-red-300">
+                                      One or more cycles exceeded 100% — double-check pill counts.
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
                         {complianceTrendData.length > 0 && (
                           <div className="space-y-4">
                             <div className="flex items-center justify-between">
@@ -812,77 +1052,131 @@ export default function SubjectDetailModal({ subjectId, studyId, isOpen, onClose
                           <div className="text-sm text-gray-400">No per-visit compliance entries.</div>
                         ) : (
                           <div className="overflow-x-auto">
-                            <table className="min-w-full text-sm text-left text-gray-300">
-                              <thead className="text-xs uppercase text-gray-400">
+                            <table className="min-w-[960px] w-full text-sm text-left text-gray-300 border-separate border-spacing-y-1">
+                              <thead className="text-[11px] uppercase tracking-wider text-gray-400 bg-gray-900/60">
                                 <tr>
-                                  <th className="px-3 py-2">Visit</th>
-                                  <th className="px-3 py-2">Visit Date</th>
-                                  <th className="px-3 py-2">Drug</th>
-                                  <th className="px-3 py-2">Dispensed</th>
-                                  <th className="px-3 py-2">Returned</th>
-                                  <th className="px-3 py-2">Last Dose Date</th>
-                                  <th className="px-3 py-2">Compliance</th>
+                                  <th className="px-3 py-2 font-semibold">Visit</th>
+                                  <th className="px-3 py-2 font-semibold whitespace-nowrap">Visit Date</th>
+                                  <th className="px-3 py-2 font-semibold">Drug</th>
+                                  <th className="px-3 py-2 font-semibold text-right">Dispensed</th>
+                                  <th className="px-3 py-2 font-semibold text-right">Returned</th>
+                                  <th className="px-3 py-2 font-semibold whitespace-nowrap">First Dose</th>
+                                  <th className="px-3 py-2 font-semibold whitespace-nowrap">Last Dose</th>
+                                  <th className="px-3 py-2 font-semibold whitespace-nowrap">Expected Return</th>
+                                  <th className="px-3 py-2 font-semibold">Compliance</th>
+                                  <th className="px-3 py-2 font-semibold">Status</th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {sortedPerVisit.map(visit => (
-                                  <Fragment key={visit.visit_id}>
-                                    {(visit.items || []).map((item: any, index: number) => {
-                                      const itemCompliance = typeof item?.compliance_percentage === 'number'
-                                        ? Math.round(item.compliance_percentage)
-                                        : null
-                                      const itemStatus = itemCompliance != null ? percentageToStatus(itemCompliance) : null
-                                      return (
-                                        <tr key={`${visit.visit_id}-${index}`} className="border-t border-gray-700/60">
-                                          <td className="px-3 py-2 text-gray-200">{visit.visit_name || '-'}</td>
-                                          <td className="px-3 py-2">{visit.visit_date ? formatDateUTC(visit.visit_date) : '-'}</td>
-                                          <td className="px-3 py-2">{item?.drug_name ?? item?.study_drug ?? '-'}</td>
-                                          <td className="px-3 py-2">{item?.tablets_dispensed ?? '-'}</td>
-                                          <td className="px-3 py-2">{item?.tablets_returned ?? '-'}</td>
-                                          <td className="px-3 py-2">{item?.last_dose_date ? formatDateUTC(item.last_dose_date) : '-'}</td>
-                                          <td className="px-3 py-2 align-top">
-                                            {itemCompliance != null && itemStatus ? (
-                                              <div className="space-y-1">
-                                                <ComplianceProgressBar
-                                                  percentage={itemCompliance}
-                                                  status={itemStatus}
-                                                  height="sm"
-                                                  showPercentage={false}
-                                                />
-                                                <div className="flex justify-between text-xs text-gray-400">
-                                                  <span>{itemCompliance}%</span>
-                                                  <span>{getComplianceLabel(itemStatus)}</span>
-                                                </div>
-                                                {itemCompliance > 100 && (
-                                                  <div className="text-[11px] text-red-300">
-                                                    Above 100% — investigate dosing and returns.
-                                                  </div>
-                                                )}
-                                              </div>
-                                            ) : (
-                                              <span className="text-gray-500">—</span>
+                                {sortedPerVisit.map((visit) => {
+                                  const items = visit.items.length > 0 ? visit.items : [null]
+                                  const visitAverageRounded =
+                                    typeof visit.avg_compliance === 'number' && !Number.isNaN(visit.avg_compliance)
+                                      ? Math.round(visit.avg_compliance)
+                                      : null
+                                  const visitAverageStatus = visitAverageRounded != null
+                                    ? percentageToStatus(visitAverageRounded)
+                                    : null
+                                  return (
+                                    <Fragment key={visit.visit_id}>
+                                      {items.map((item, index) => {
+                                        const itemCompliance = typeof item?.compliance_percentage === 'number'
+                                          ? Math.round(item.compliance_percentage)
+                                          : null
+                                        const itemStatus = itemCompliance != null ? percentageToStatus(itemCompliance) : null
+                                        const statusLabel = itemStatus ? getComplianceLabel(itemStatus) : null
+                                        return (
+                                          <tr
+                                            key={`${visit.visit_id}-${index}`}
+                                            className="bg-gray-900/40 border border-gray-800/80 hover:border-gray-700 transition-colors"
+                                          >
+                                            {index === 0 && (
+                                              <>
+                                                <td
+                                                  rowSpan={items.length}
+                                                  className="px-3 py-3 text-sm font-semibold text-white align-top whitespace-nowrap"
+                                                >
+                                                  {visit.visit_name || '—'}
+                                                  {index === 0 && visitAverageRounded != null && visitAverageStatus && (
+                                                    <div className="mt-1 text-xs text-gray-400 font-normal">
+                                                      Avg {visitAverageRounded}% · {getComplianceLabel(visitAverageStatus)}
+                                                    </div>
+                                                  )}
+                                                </td>
+                                                <td
+                                                  rowSpan={items.length}
+                                                  className="px-3 py-3 text-sm text-gray-300 align-top whitespace-nowrap"
+                                                >
+                                                  {visit.visit_date ? formatDateUTC(visit.visit_date) : '—'}
+                                                </td>
+                                              </>
                                             )}
-                                          </td>
-                                        </tr>
-                                      )
-                                    })}
-                                    {typeof visit.avg_compliance === 'number' && (
-                                      <tr className="border-t border-gray-700/60 bg-gray-900/40">
-                                        <td className="px-3 py-2 text-xs font-semibold text-gray-400" colSpan={6}>
-                                          Visit average
-                                        </td>
-                                        <td className="px-3 py-2">
-                                          <ComplianceProgressBar
-                                            percentage={Math.round(visit.avg_compliance)}
-                                            status={percentageToStatus(visit.avg_compliance)}
-                                            height="sm"
-                                            showPercentage
-                                          />
-                                        </td>
-                                      </tr>
-                                    )}
-                                  </Fragment>
-                                ))}
+                                            <td className="px-3 py-3 align-top">
+                                              {item ? (
+                                                <div className="space-y-1">
+                                                  <div className="text-sm font-medium text-gray-100">{item.drug_name || item.drug_code || '—'}</div>
+                                                  {item.drug_code && item.drug_name && item.drug_code !== item.drug_name && (
+                                                    <div className="text-xs uppercase tracking-wide text-gray-500">{item.drug_code}</div>
+                                                  )}
+                                                </div>
+                                              ) : (
+                                                <span className="text-gray-500">—</span>
+                                              )}
+                                            </td>
+                                            <td className="px-3 py-3 text-right text-gray-100">
+                                              {typeof item?.tablets_dispensed === 'number' ? item.tablets_dispensed : '—'}
+                                            </td>
+                                            <td className="px-3 py-3 text-right text-gray-100">
+                                              {typeof item?.tablets_returned === 'number' ? item.tablets_returned : '—'}
+                                            </td>
+                                            <td className="px-3 py-3 text-gray-300 whitespace-nowrap">
+                                              {item?.first_dose_date ? formatDateUTC(item.first_dose_date) : '—'}
+                                            </td>
+                                            <td className="px-3 py-3 text-gray-300 whitespace-nowrap">
+                                              {item?.last_dose_date ? formatDateUTC(item.last_dose_date) : '—'}
+                                            </td>
+                                            <td className="px-3 py-3 text-gray-300 whitespace-nowrap">
+                                              {item?.expected_return_date ? formatDateUTC(item.expected_return_date) : '—'}
+                                            </td>
+                                            <td className="px-3 py-3 align-top">
+                                              {itemCompliance != null && itemStatus ? (
+                                                <div className="space-y-1">
+                                                  <ComplianceProgressBar
+                                                    percentage={itemCompliance}
+                                                    status={itemStatus}
+                                                    height="sm"
+                                                    showPercentage={false}
+                                                  />
+                                                  <div className="flex justify-between text-xs text-gray-500">
+                                                    <span>{itemCompliance}%</span>
+                                                    <span>{statusLabel}</span>
+                                                  </div>
+                                                  {itemCompliance > 100 && (
+                                                    <div className="text-[11px] text-red-300">
+                                                      Above 100% — investigate dosing and returns.
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              ) : (
+                                                <span className="text-gray-500">—</span>
+                                              )}
+                                            </td>
+                                            <td className="px-3 py-3 align-top">
+                                              {itemStatus && statusLabel ? (
+                                                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${complianceStatusStyles[itemStatus]}`}>
+                                                  <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
+                                                  {statusLabel}
+                                                </span>
+                                              ) : (
+                                                <span className="text-gray-500">—</span>
+                                              )}
+                                            </td>
+                                          </tr>
+                                        )
+                                      })}
+                                    </Fragment>
+                                  )
+                                })}
                               </tbody>
                             </table>
                           </div>
