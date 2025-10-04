@@ -46,7 +46,13 @@ interface LabKitOrdersSectionProps {
   refreshKey?: number
   externalNotice?: { type: 'success' | 'error'; message: string } | null
   onClearExternalNotice?: () => void
-  onOrderReceived?: (details: { study_id: string; kit_type_id: string | null; received_date: string | null; kit_type_name: string | null }) => void
+  onOrderReceived?: (details: {
+    study_id: string
+    kit_type_id: string | null
+    received_date: string | null
+    kit_type_name: string | null
+    quantity?: number | null
+  }) => void
 }
 
 export default function LabKitOrdersSection({
@@ -153,7 +159,14 @@ export default function LabKitOrdersSection({
         const kitTypeId = updatedOrderData?.kit_type_id ?? order.kit_type_id ?? null
         const receivedDate = updatedOrderData?.received_date ?? receivedDateISO ?? order.received_date ?? null
         const kitTypeName = order.kit_type_name ?? null
-        onOrderReceived?.({ study_id: order.study_id, kit_type_id: kitTypeId, received_date: receivedDate, kit_type_name: kitTypeName })
+        const quantity = updatedOrderData?.quantity ?? order.quantity ?? null
+        onOrderReceived?.({
+          study_id: order.study_id,
+          kit_type_id: kitTypeId,
+          received_date: receivedDate,
+          kit_type_name: kitTypeName,
+          quantity
+        })
       }
 
       setPanelNotice({ type: 'success', message: nextStatus === 'received' ? 'Order marked as received.' : 'Order cancelled.' })

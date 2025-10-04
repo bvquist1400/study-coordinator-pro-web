@@ -13,6 +13,7 @@ interface OrdersAndShipmentsViewProps {
     kit_type_id: string | null
     received_date: string | null
     kit_type_name: string | null
+    quantity?: number | null
   }) => void
   onLocateKit: (details: { studyId?: string | null; accessionNumber?: string | null }) => void
   externalNotice: { type: 'success' | 'error'; message: string } | null

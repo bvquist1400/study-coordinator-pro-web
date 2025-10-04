@@ -65,7 +65,13 @@ function LabKitsPageContent() {
   const [ordersNotice, setOrdersNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [showExpiringOnly, setShowExpiringOnly] = useState(false)
   const [alertsCount, setAlertsCount] = useState(0)
-  const [addPrefill, setAddPrefill] = useState<{ kitTypeId?: string | null; receivedDate?: string | null; notes?: string | null } | null>(null)
+  const [addPrefill, setAddPrefill] = useState<{
+    kitTypeId?: string | null
+    kitTypeName?: string | null
+    receivedDate?: string | null
+    notes?: string | null
+    quantity?: number | null
+  } | null>(null)
   const [inventoryFilter, setInventoryFilter] = useState<{ search: string; status: string; version: number }>({ search: '', status: 'available', version: 0 })
   const { currentSiteId } = useSite()
 
@@ -197,7 +203,13 @@ function LabKitsPageContent() {
     window.open('/docs/lab-kit-shipments-guide.md', '_blank')
   }, [])
 
-  const handleOrderReceived = useCallback((details: { study_id: string; kit_type_id: string | null; received_date: string | null; kit_type_name: string | null }) => {
+  const handleOrderReceived = useCallback((details: {
+    study_id: string
+    kit_type_id: string | null
+    received_date: string | null
+    kit_type_name: string | null
+    quantity?: number | null
+  }) => {
     const targetStudyId = details.study_id || selectedStudyId
     if (!targetStudyId || targetStudyId === 'all') {
       setOrdersNotice({ type: 'error', message: 'Select a study to add inventory for this order.' })
@@ -210,7 +222,12 @@ function LabKitsPageContent() {
     }
 
     const receivedDate = details.received_date || todayLocalISODate()
-    setAddPrefill({ kitTypeId: details.kit_type_id, receivedDate })
+    setAddPrefill({
+      kitTypeId: details.kit_type_id,
+      kitTypeName: details.kit_type_name || null,
+      receivedDate,
+      quantity: details.quantity ?? null
+    })
     setInventoryFilter(prev => ({ search: '', status: 'available', version: prev.version + 1 }))
     setShowAddModal(true)
     setViewMode('inventory')

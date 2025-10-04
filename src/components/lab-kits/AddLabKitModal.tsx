@@ -10,6 +10,8 @@ interface AddLabKitModalProps {
   onAdd: () => void
   prefill?: {
     kitTypeId?: string | null
+    kitTypeName?: string | null
+    quantity?: number | null
     receivedDate?: string | null
     notes?: string | null
   }
@@ -65,6 +67,8 @@ export default function AddLabKitModal({ studyId, onClose, onAdd, prefill }: Add
     received_date: prefill?.receivedDate || todayLocalISODate(), // Default to today (local)
     notes: prefill?.notes || ''
   })
+  const [entryMode, setEntryMode] = useState<'single' | 'bulk'>(() => (prefill?.quantity && prefill.quantity > 1 ? 'bulk' : 'single'))
+  const [bulkAccessionText, setBulkAccessionText] = useState('')
   
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [requirementsByKitType, setRequirementsByKitType] = useState<Record<string, VisitKitRequirementSummary[]>>({})
@@ -161,6 +165,13 @@ export default function AddLabKitModal({ studyId, onClose, onAdd, prefill }: Add
   const recommendedVisitIds = useMemo(() => new Set(recommendedRequirements.map(req => req.visit_schedule_id).filter(Boolean) as string[]), [recommendedRequirements])
   const recommendedVisits = visitSchedules.filter(schedule => recommendedVisitIds.has(schedule.id))
   const otherVisits = visitSchedules.filter(schedule => !recommendedVisitIds.has(schedule.id))
+  const bulkAccessionCount = useMemo(() => (
+    bulkAccessionText
+      .split(/\r?\n/)
+      .map(code => code.trim())
+      .filter(code => code.length > 0)
+      .length
+  ), [bulkAccessionText])
 
   useEffect(() => {
     if (!kitTypesLoading && kitTypes.length === 1 && !formData.kit_type_id) {
@@ -176,7 +187,15 @@ export default function AddLabKitModal({ studyId, onClose, onAdd, prefill }: Add
       received_date: prefill.receivedDate || prev.received_date,
       notes: prefill.notes ?? prev.notes
     }))
+    if (prefill.quantity && prefill.quantity > 1) {
+      setEntryMode('bulk')
+    }
   }, [prefill])
+
+  const handleEntryModeChange = (mode: 'single' | 'bulk') => {
+    setEntryMode(mode)
+    setErrors(prev => ({ ...prev, accession_number: '', bulk_accessions: '' }))
+  }
 
   const handleChange = (field: keyof LabKitFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -208,8 +227,19 @@ export default function AddLabKitModal({ studyId, onClose, onAdd, prefill }: Add
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {}
 
-    if (!formData.accession_number.trim()) {
-      newErrors.accession_number = 'Accession number is required'
+    const isBulk = entryMode === 'bulk'
+    if (isBulk) {
+      const codes = bulkAccessionText
+        .split(/\r?\n/)
+        .map(code => code.trim())
+        .filter(code => code.length > 0)
+      if (codes.length === 0) {
+        newErrors.bulk_accessions = 'Enter at least one accession number'
+      }
+    } else {
+      if (!formData.accession_number.trim()) {
+        newErrors.accession_number = 'Accession number is required'
+      }
     }
 
     if (!formData.kit_type_id) {
@@ -241,8 +271,10 @@ export default function AddLabKitModal({ studyId, onClose, onAdd, prefill }: Add
       return
     }
 
+    setSaving(true)
+    let shouldCloseModal = false
+
     try {
-      setSaving(true)
       
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
@@ -251,9 +283,8 @@ export default function AddLabKitModal({ studyId, onClose, onAdd, prefill }: Add
 
       const kitType = formData.kit_type_id ? kitTypeMap.get(formData.kit_type_id) : null
 
-      const submitData = {
+      const basePayload = {
         study_id: studyId,
-        accession_number: formData.accession_number.trim(),
         kit_type_id: formData.kit_type_id,
         kit_type: kitType?.name || null,
         visit_schedule_id: formData.visit_schedule_id || null,
@@ -263,17 +294,70 @@ export default function AddLabKitModal({ studyId, onClose, onAdd, prefill }: Add
         status: 'available' as const
       }
 
+      if (entryMode === 'bulk') {
+        const codes = Array.from(new Set(
+          bulkAccessionText
+            .split(/\r?\n/)
+            .map(code => code.trim())
+            .filter(code => code.length > 0)
+        ))
+
+        let successCount = 0
+        const failures: string[] = []
+
+        for (const accession of codes) {
+          const response = await fetch('/api/lab-kits', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ ...basePayload, accession_number: accession })
+          })
+
+          if (response.ok) {
+            successCount += 1
+            continue
+          }
+
+          const errorBody = await response.json().catch(() => ({ error: 'Failed to add lab kit' }))
+          let message = errorBody.details || errorBody.error || response.statusText
+          if (response.status === 409) {
+            message = 'Accession already exists'
+          }
+          failures.push(`${accession}: ${message}`)
+        }
+
+        const summaryParts: string[] = []
+        if (successCount > 0) {
+          summaryParts.push(`Added ${successCount} kit${successCount === 1 ? '' : 's'} to inventory.`)
+        }
+        if (failures.length > 0) {
+          summaryParts.push(`Failed (${failures.length}):\n- ${failures.join('\n- ')}`)
+        }
+
+        alert(summaryParts.length > 0 ? summaryParts.join('\n\n') : 'No kits added.')
+
+        if (successCount > 0) {
+          shouldCloseModal = true
+          onAdd()
+        }
+
+        return
+      }
+
       const response = await fetch('/api/lab-kits', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(submitData)
+        body: JSON.stringify({ ...basePayload, accession_number: formData.accession_number.trim() })
       })
 
       if (response.ok) {
         alert(`Lab kit ${formData.accession_number} added successfully!`)
+        shouldCloseModal = true
         onAdd()
       } else {
         const error = await response.json().catch(() => ({ error: 'Failed to add lab kit' }))
@@ -290,7 +374,9 @@ export default function AddLabKitModal({ studyId, onClose, onAdd, prefill }: Add
       console.error('Error adding lab kit:', error)
       alert('Failed to add lab kit. Please try again.')
     } finally {
-      setSaving(false)
+      if (!shouldCloseModal) {
+        setSaving(false)
+      }
     }
   }
 
@@ -313,7 +399,7 @@ export default function AddLabKitModal({ studyId, onClose, onAdd, prefill }: Add
         <div className="p-6">
           {/* Header */}
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-white">Add New Lab Kit</h2>
+            <h2 className="text-2xl font-bold text-white">Add Lab Kit{entryMode === 'bulk' ? 's' : ''}</h2>
             <button
               onClick={onClose}
               className="text-gray-400 hover:text-white transition-colors"
@@ -324,23 +410,86 @@ export default function AddLabKitModal({ studyId, onClose, onAdd, prefill }: Add
             </button>
           </div>
 
+          {prefill?.kitTypeName && (
+            <div className="mb-4 rounded-lg border border-purple-500/30 bg-purple-500/10 px-4 py-3 text-sm text-purple-100">
+              <div className="font-semibold">{prefill.kitTypeName}</div>
+              <div className="text-xs text-purple-200/80">
+                Order marked as received{prefill.quantity ? ` · ${prefill.quantity} kit${prefill.quantity === 1 ? '' : 's'} expected` : ''}. Enter accession numbers below to add the kits to inventory.
+              </div>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Accession Number */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Accession Number *
-              </label>
-              <input
-                type="text"
-                value={formData.accession_number}
-                onChange={(e) => handleChange('accession_number', e.target.value)}
-                className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                placeholder="e.g., LK-2024-001"
-              />
-              {errors.accession_number && (
-                <p className="text-red-400 text-sm mt-1">{errors.accession_number}</p>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-4 text-sm text-gray-300">
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    type="radio"
+                    className="accent-green-500"
+                    checked={entryMode === 'single'}
+                    onChange={() => handleEntryModeChange('single')}
+                  />
+                  Single kit
+                </label>
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    type="radio"
+                    className="accent-green-500"
+                    checked={entryMode === 'bulk'}
+                    onChange={() => handleEntryModeChange('bulk')}
+                  />
+                  Multiple kits
+                  {prefill?.quantity && prefill.quantity > 1 && (
+                    <span className="text-xs text-purple-200/80">{prefill.quantity} expected</span>
+                  )}
+                </label>
+              </div>
+              {entryMode === 'bulk' && bulkAccessionCount > 0 && (
+                <div className="text-xs text-purple-200/80">
+                  {bulkAccessionCount} accession number{bulkAccessionCount === 1 ? '' : 's'} detected
+                </div>
               )}
             </div>
+
+            {/* Accession Number */}
+            {entryMode === 'bulk' ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Accession Numbers *
+                </label>
+                <textarea
+                  value={bulkAccessionText}
+                  onChange={(e) => setBulkAccessionText(e.target.value)}
+                  rows={5}
+                  className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  placeholder={prefill?.quantity && prefill.quantity > 1
+                    ? `Enter up to ${prefill.quantity} accession numbers, one per line`
+                    : 'Enter one accession number per line'}
+                />
+                {errors.bulk_accessions && (
+                  <p className="text-red-400 text-sm mt-1">{errors.bulk_accessions}</p>
+                )}
+                <p className="text-gray-400 text-xs mt-1">
+                  One accession number per line. Duplicate or blank lines are ignored.
+                </p>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Accession Number *
+                </label>
+                <input
+                  type="text"
+                  value={formData.accession_number}
+                  onChange={(e) => handleChange('accession_number', e.target.value)}
+                  className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  placeholder="e.g., LK-2024-001"
+                />
+                {errors.accession_number && (
+                  <p className="text-red-400 text-sm mt-1">{errors.accession_number}</p>
+                )}
+              </div>
+            )}
 
             {/* Visit Assignment */}
             <div>

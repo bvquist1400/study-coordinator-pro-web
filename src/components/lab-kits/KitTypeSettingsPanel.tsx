@@ -24,6 +24,10 @@ export default function KitTypeSettingsPanel({ studyId, canManage }: KitTypeSett
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [drafts, setDrafts] = useState<Record<string, BufferDraft>>({})
+  const [defaults, setDefaults] = useState<{ inventoryBuffer: string; deliveryDays: string } | null>(null)
+  const [defaultsDirty, setDefaultsDirty] = useState(false)
+  const [defaultsSaving, setDefaultsSaving] = useState(false)
+  const [defaultsNotice, setDefaultsNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
   const loadKitTypes = useCallback(async () => {
     try {
@@ -75,6 +79,34 @@ export default function KitTypeSettingsPanel({ studyId, canManage }: KitTypeSett
   }, [studyId])
 
   useEffect(() => { loadKitTypes() }, [loadKitTypes])
+
+  const loadStudyDefaults = useCallback(async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) return
+
+      const response = await fetch(`/api/studies/${studyId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+
+      if (!response.ok) return
+
+      const { study } = await response.json()
+      if (study) {
+        setDefaults({
+          inventoryBuffer: typeof study.inventory_buffer_days === 'number' ? String(study.inventory_buffer_days) : '0',
+          deliveryDays: typeof study.delivery_days_default === 'number' ? String(study.delivery_days_default) : '0'
+        })
+        setDefaultsDirty(false)
+        setDefaultsNotice(null)
+      }
+    } catch (err) {
+      console.error('Failed to load study defaults', err)
+    }
+  }, [studyId])
+
+  useEffect(() => { loadStudyDefaults() }, [loadStudyDefaults])
 
   const activeKitTypes = useMemo(() => kitTypes.filter(type => type.is_active), [kitTypes])
 
@@ -200,8 +232,130 @@ export default function KitTypeSettingsPanel({ studyId, canManage }: KitTypeSett
     }))
   }
 
+  const validateDefaults = () => {
+    if (!defaults) return 'Defaults not loaded'
+    const buffer = Number(defaults.inventoryBuffer)
+    if (!Number.isFinite(buffer) || buffer < 0 || buffer > 120) return 'Safety cushion must be between 0 and 120 days'
+    const delivery = Number(defaults.deliveryDays)
+    if (!Number.isFinite(delivery) || delivery < 0 || delivery > 120) return 'Delivery time must be between 0 and 120 days'
+    return null
+  }
+
+  const saveDefaults = async () => {
+    if (!defaults) return
+    const validationError = validateDefaults()
+    if (validationError) {
+      setDefaultsNotice({ type: 'error', message: validationError })
+      return
+    }
+
+    try {
+      setDefaultsSaving(true)
+      setDefaultsNotice(null)
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) throw new Error('Authentication required')
+
+      const response = await fetch('/api/studies', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          id: studyId,
+          inventory_buffer_days: Number(defaults.inventoryBuffer),
+          delivery_days_default: Number(defaults.deliveryDays)
+        })
+      })
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}))
+        throw new Error(body.error || body.details || 'Failed to update defaults')
+      }
+
+      setDefaultsDirty(false)
+      setDefaultsNotice({ type: 'success', message: 'Defaults updated' })
+      await Promise.all([loadKitTypes(), loadStudyDefaults()])
+    } catch (err) {
+      setDefaultsNotice({ type: 'error', message: err instanceof Error ? err.message : 'Failed to update defaults' })
+    } finally {
+      setDefaultsSaving(false)
+    }
+  }
+
   return (
     <div className="bg-gray-800/50 border border-gray-700 rounded-lg">
+      <div className="border-b border-gray-700 px-6 py-5 space-y-4">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-white">Study Defaults</h3>
+            <p className="text-sm text-gray-400">Update the baseline values inherited by each kit type.</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={loadStudyDefaults}
+              className="rounded-md border border-gray-600 px-3 py-2 text-sm text-gray-200 hover:bg-gray-700"
+              disabled={defaultsSaving}
+            >
+              Refresh
+            </button>
+            <button
+              type="button"
+              onClick={saveDefaults}
+              disabled={!canManage || defaultsSaving || !defaultsDirty || !defaults}
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {defaultsSaving ? 'Saving…' : 'Save Defaults'}
+            </button>
+          </div>
+        </div>
+        {defaultsNotice && (
+          <div className={`${defaultsNotice.type === 'error' ? 'text-red-300' : 'text-emerald-300'} text-sm`}>
+            {defaultsNotice.message}
+          </div>
+        )}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">Safety Cushion (days)</label>
+            <input
+              type="number"
+              min={0}
+              max={120}
+              value={defaults?.inventoryBuffer ?? ''}
+              onChange={(e) => {
+                const value = e.target.value
+                setDefaults(prev => prev ? { ...prev, inventoryBuffer: value } : prev)
+                setDefaultsDirty(true)
+              }}
+              className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={!canManage || !defaults}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">Delivery Time to Site (days)</label>
+            <input
+              type="number"
+              min={0}
+              max={120}
+              value={defaults?.deliveryDays ?? ''}
+              onChange={(e) => {
+                const value = e.target.value
+                setDefaults(prev => prev ? { ...prev, deliveryDays: value } : prev)
+                setDefaultsDirty(true)
+              }}
+              className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={!canManage || !defaults}
+            />
+          </div>
+        </div>
+        {defaults?.inventoryBuffer && defaults?.deliveryDays && (
+          <p className="text-xs text-gray-500">
+            Current total cushion = safety ({defaults.inventoryBuffer}d) + delivery ({defaults.deliveryDays}d).
+          </p>
+        )}
+      </div>
       <div className="p-6 border-b border-gray-700 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <h3 className="text-lg font-semibold text-white">Safety Cushion & Delivery</h3>
