@@ -157,8 +157,8 @@ Inline callouts inside Inventory/Forecast offer quick actions (Order Kits, View 
 Settings is only available when a specific study (not "All Studies") is selected.
 
 Use it to:
-- Adjust inventory buffer days and visit window buffer
-- Set kit-specific overrides (min count, custom buffer days)
+- Adjust inventory buffer days, visit-window cushion, and default delivery time to site
+- Set kit-specific overrides (min count, custom buffer days, delivery days)
 - Trigger manual "Recompute Recommendations"
 - Review recent history of changes
 

@@ -42,6 +42,7 @@ Database
   - Example order:
     1) `migrations/20240901_add_ip_fields_migration.sql`
     2) `migrations/20240901_add_return_ip_id_field.sql`
+    3) `migrations/20250917_add_delivery_days_settings.sql`
 
 Run
 

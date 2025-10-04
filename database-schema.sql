@@ -32,6 +32,9 @@ CREATE TABLE studies (
     end_date DATE,
     target_enrollment INTEGER,
     visit_window_days INTEGER DEFAULT 7,
+    inventory_buffer_days INTEGER DEFAULT 14,
+    visit_window_buffer_days INTEGER DEFAULT 0,
+    delivery_days_default INTEGER DEFAULT 5 CHECK (delivery_days_default >= 0 AND delivery_days_default <= 120),
     dosing_frequency TEXT DEFAULT 'QD' CHECK (dosing_frequency IN ('QD', 'BID', 'TID', 'QID', 'weekly', 'custom')),
     compliance_threshold DECIMAL DEFAULT 80.0,
     notes TEXT,
@@ -39,6 +42,26 @@ CREATE TABLE studies (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     
     UNIQUE(user_id, protocol_number)
+);
+
+-- Study-specific lab kit configuration
+CREATE TABLE study_kit_types (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    study_id UUID REFERENCES studies(id) ON DELETE CASCADE NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    buffer_days INTEGER,
+    buffer_count INTEGER,
+    delivery_days INTEGER,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
+    CHECK (buffer_days IS NULL OR (buffer_days >= 0 AND buffer_days <= 120)),
+    CHECK (buffer_count IS NULL OR (buffer_count >= 0 AND buffer_count <= 999)),
+    CHECK (delivery_days IS NULL OR (delivery_days >= 0 AND delivery_days <= 120)),
+
+    UNIQUE(study_id, LOWER(name))
 );
 
 -- Subjects table
