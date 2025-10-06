@@ -200,21 +200,21 @@ Multiple issues need resolution in the lab kit workflow:
   - Add to shipment list display columns ✅
   ```
 
-### 6. **UPS API Integration** (Priority: MEDIUM)
-- **Problem**: UPS tracking not wired up
+### 6. **Carrier Tracking Integration** (Priority: MEDIUM)
+- **Problem**: Real-time tracking across carriers missing
+- **Status**: EasyPost-backed refresh endpoint (`/api/tracking/refresh`) live with UI controls; background webhooks still pending.
 - **Actions**:
   ```typescript
-  // Implement UPS tracking
-  - Set up UPS API credentials in environment variables
-  - Create API route: /api/tracking/ups
-  - Implement webhook for status updates
-  - Add real-time tracking display
+  // Implement multi-carrier tracking
+  - Set up EasyPost API credentials in environment variables ✅
+  - Create API route: /api/tracking/refresh ✅ (manual refresh, stores payload + status)
+  - Implement webhook/scheduled refresh ⬜
+  - Add real-time tracking display ✅ (Refresh Tracking button + last update metadata)
   ```
 - **Environment variables needed**:
   ```env
-  UPS_API_KEY=
-  UPS_API_SECRET=
-  UPS_ACCOUNT_NUMBER=
+  EASYPOST_API_KEY=
+  EASYPOST_API_BASE_URL=https://api.easypost.com # optional override
   ```
 
 ---
@@ -262,7 +262,7 @@ Multiple issues need resolution in the lab kit workflow:
 9. ⬜ Add adjustable buffer configuration
 
 ### **Week 4: Integrations & Polish**
-10. ⬜ Wire up UPS API tracking
+10. ⬜ Automate EasyPost tracking (webhooks / cron)
 11. ⬜ Clean up compliance tracking tab
 12. ⬜ Enhance visit timing analytics
 

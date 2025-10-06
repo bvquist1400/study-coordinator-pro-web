@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import type { VisitSchedule, Study, StudySection, StudyKitType, VisitKitRequirementInsert, VisitKitRequirementUpdate } from '@/types/database'
 
@@ -69,6 +69,17 @@ const defaultProcedures: Omit<Procedure, 'id'>[] = [
   { category: 'Investigational Product', name: 'Medication Dispensing', visits: {} }
 ]
 
+const TIMING_UNIT_MULTIPLIERS: Record<'days' | 'weeks' | 'months', number> = {
+  days: 1,
+  weeks: 7,
+  months: 30
+}
+
+const toVisitDay = (value: number, unit: 'days' | 'weeks' | 'months') => {
+  const multiplier = TIMING_UNIT_MULTIPLIERS[unit] ?? 1
+  return value * multiplier
+}
+
 export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEventsBuilderProps) {
   const [visits, setVisits] = useState<Visit[]>([])
   const [procedures, setProcedures] = useState<Procedure[]>([])
@@ -91,6 +102,40 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
   const [kitModalVisitId, setKitModalVisitId] = useState<string | null>(null)
   const [kitDrafts, setKitDrafts] = useState<VisitKitRequirementDraft[]>([])
   const [kitRemovedIds, setKitRemovedIds] = useState<string[]>([])
+
+  type EditingCellState = { type: string; id: string; field?: string } | null
+  const nextEditingCellRef = useRef<EditingCellState>(null)
+
+  const queueEditingCell = useCallback((cell: EditingCellState) => {
+    nextEditingCellRef.current = cell
+  }, [])
+
+  const commitQueuedEditingCell = useCallback(() => {
+    const next = nextEditingCellRef.current
+    nextEditingCellRef.current = null
+    if (next) {
+      setEditingCell(next)
+    } else {
+      setEditingCell(null)
+    }
+  }, [setEditingCell])
+
+  const focusVisitField = useCallback((visitId: string, field: 'number' | 'name' | 'timing' | 'window') => {
+    queueEditingCell({ type: 'visit', id: visitId, field })
+  }, [queueEditingCell])
+
+  const focusAdjacentVisitField = useCallback((visitId: string, offset: number, field: 'number' | 'name' | 'timing' | 'window') => {
+    const currentIndex = visits.findIndex(v => v.id === visitId)
+    if (currentIndex === -1) {
+      return false
+    }
+    const target = visits[currentIndex + offset]
+    if (!target) {
+      return false
+    }
+    queueEditingCell({ type: 'visit', id: target.id, field })
+    return true
+  }, [queueEditingCell, visits])
 
   const generateTempId = () => {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -204,30 +249,41 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
           return (b.window_before_days || 0) - (a.window_before_days || 0)
         })
         
-        visitsToUse = sortedSchedules.map((schedule: any, i: number) => {
-          const visitDay = schedule.visit_day || 0
-          
-          // Convert visit_day back to timingValue and timingUnit
-          let timingValue: number
-          let timingUnit: 'days' | 'weeks' | 'months'
-          
-          if (visitDay === 0) {
-            timingValue = 0
-            timingUnit = 'days'
-          } else if (visitDay < 0) {
-            // Negative values are always in days
-            timingValue = visitDay // Keep negative
-            timingUnit = 'days'
-          } else if (visitDay % 7 === 0) {
-            // Positive values divisible by 7 are likely weeks
-            timingValue = visitDay / 7
-            timingUnit = 'weeks'
-          } else {
-            // Other positive values are days
-            timingValue = visitDay
-            timingUnit = 'days'
+        const resolveTiming = (schedule: any): { value: number; unit: 'days' | 'weeks' | 'months' } => {
+          const rawUnit = (schedule.timing_unit || '').toLowerCase()
+          const rawValue = typeof schedule.timing_value === 'number' ? schedule.timing_value : Number(schedule.timing_value)
+
+          if ((rawUnit === 'days' || rawUnit === 'weeks' || rawUnit === 'months') && Number.isFinite(rawValue)) {
+            return {
+              value: Math.trunc(rawValue),
+              unit: rawUnit
+            }
           }
-          
+
+          const visitDay = Number(schedule.visit_day) || 0
+
+          if (visitDay === 0) {
+            return { value: 0, unit: 'days' }
+          }
+
+          if (visitDay < 0) {
+            return { value: visitDay, unit: 'days' }
+          }
+
+          if (visitDay % 30 === 0) {
+            return { value: visitDay / 30, unit: 'months' }
+          }
+
+          if (visitDay % 7 === 0) {
+            return { value: visitDay / 7, unit: 'weeks' }
+          }
+
+          return { value: visitDay, unit: 'days' }
+        }
+
+        visitsToUse = sortedSchedules.map((schedule: any, i: number) => {
+          const { value: timingValue, unit: timingUnit } = resolveTiming(schedule)
+
           return {
             id: `visit-${i}`,
             visitNumber: schedule.visit_number, // Use the text visit number directly (OLS, V1, etc.)
@@ -571,18 +627,39 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
 
   // Remove unused functions to keep procedures fixed
 
-  const updateVisit = (visitId: string, field: keyof Visit, value: string | number) => {
+  const updateVisit = <K extends keyof Visit>(visitId: string, field: K, value: Visit[K]) => {
     setVisits(visits.map(v => {
       if (v.id === visitId) {
-        const updatedVisit = { ...v, [field]: value }
-        // If updating visitNumber, also update originalVisitNumber so it saves to database
+        const updatedVisit: Visit = { ...v, [field]: value }
         if (field === 'visitNumber') {
-          updatedVisit.originalVisitNumber = value as string
+          updatedVisit.originalVisitNumber = value as Visit['visitNumber']
         }
         return updatedVisit
       }
       return v
     }))
+  }
+
+  const removeVisit = (visitId: string) => {
+    const visit = visits.find(v => v.id === visitId)
+    if (!visit) return
+
+    const label = visit.visitNumber || visit.visitName
+    const shouldRemove = window.confirm(`Delete visit "${label}"? This will remove associated procedures and kit requirements when you save.`)
+    if (!shouldRemove) return
+
+    setVisits(prev => prev.filter(v => v.id !== visitId))
+    setProcedures(prev => prev.map(proc => {
+      if (!(visitId in proc.visits)) return proc
+      const { [visitId]: _removed, ...remaining } = proc.visits
+      return { ...proc, visits: remaining }
+    }))
+    nextEditingCellRef.current = null
+    setEditingCell(current => (current?.id === visitId ? null : current))
+    if (kitModalVisitId === visitId) {
+      setKitModalVisitId(null)
+      setKitDrafts([])
+    }
   }
 
   const updateProcedure = (procedureId: string, field: keyof Procedure, value: string) => {
@@ -609,11 +686,19 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
           .filter(proc => proc.visits[visit.id] === true || proc.visits[visit.id] === 'X')
           .map(proc => proc.name)
 
+        const candidateUnit = visit.timingUnit
+        const timingUnit: 'days' | 'weeks' | 'months' = candidateUnit === 'weeks' || candidateUnit === 'months' ? candidateUnit : 'days'
+        const rawTimingValue = Number.isFinite(visit.timingValue) ? visit.timingValue : 0
+        const timingValue = Math.trunc(rawTimingValue)
+        const visitDay = toVisitDay(timingValue, timingUnit)
+
         const scheduleToSave = {
           study_id: study.id,
           visit_name: visit.visitName,
           visit_number: visit.originalVisitNumber || visit.visitNumber, // Use original or current visit number (text)
-          visit_day: visit.timingUnit === 'days' ? visit.timingValue : visit.timingValue * 7,
+          visit_day: visitDay,
+          timing_value: timingValue,
+          timing_unit: timingUnit,
           window_before_days: visit.visitWindowBefore,
           window_after_days: visit.visitWindowAfter,
           is_required: true, // Default to required
@@ -630,9 +715,12 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
           displayVisitNumber: visit.visitNumber,
           originalVisitNumber: visit.originalVisitNumber,
           finalVisitNumber: scheduleToSave.visit_number,
-          visitName: visit.visitName
+          visitName: visit.visitName,
+          timingUnit,
+          timingValue,
+          visitDay
         })
-        
+
         return scheduleToSave
       })
 
@@ -954,47 +1042,89 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
                 </tr>
               )}
               
+              {/* Column Actions Row */}
+              <tr className="bg-gray-900/40 border-b border-gray-700">
+                <th colSpan={2} className="px-4 py-2 border-r border-gray-700 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                  Delete Visit
+                </th>
+                {visits.map(visit => (
+                  <th key={`${visit.id}-actions`} className="px-2 py-2 text-center border-r border-gray-600">
+                    <button
+                      type="button"
+                      onClick={() => removeVisit(visit.id)}
+                      className="text-[11px] uppercase tracking-wide text-red-400 hover:text-red-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-red-400"
+                      title={`Delete ${visit.visitNumber}`}
+                    >
+                      Delete
+                    </button>
+                  </th>
+                ))}
+                <th></th>
+              </tr>
+              
               {/* Visit Number Row */}
               <tr className="bg-gray-900/30 border-b border-gray-700">
                 <th colSpan={2} className="text-left px-4 py-2 font-semibold text-gray-300 border-r border-gray-700">
                   Visit Number/Title
                 </th>
                 {visits.map(visit => (
-                  <th key={visit.id} className="px-2 py-2 text-center border-r border-gray-600 min-w-[80px]">
-                    {editingCell?.type === 'visit' && editingCell?.id === visit.id && editingCell?.field === 'number' ? (
-                      <input
-                        type="text"
-                        value={visit.visitNumber}
-                        onChange={(e) => updateVisit(visit.id, 'visitNumber', e.target.value)}
-                        onBlur={() => setEditingCell(null)}
-                        className="w-full bg-gray-700 text-white text-sm px-1 py-0.5 rounded text-center"
-                        autoFocus
-                      />
-                    ) : (
-                      <div 
-                        className="text-white font-semibold cursor-pointer hover:bg-gray-700 rounded px-1 py-0.5"
-                        onClick={() => setEditingCell({ type: 'visit', id: visit.id, field: 'number' })}
-                      >
-                        {visit.visitNumber}
-                      </div>
-                    )}
-                    {editingCell?.type === 'visit' && editingCell?.id === visit.id && editingCell?.field === 'name' ? (
-                      <input
-                        type="text"
-                        value={visit.visitName}
-                        onChange={(e) => updateVisit(visit.id, 'visitName', e.target.value)}
-                        onBlur={() => setEditingCell(null)}
-                        className="w-full mt-1 bg-gray-700 text-gray-200 text-xs px-1 py-0.5 rounded"
-                        autoFocus
-                      />
-                    ) : (
-                      <div 
-                        className="text-gray-400 text-xs mt-1 cursor-pointer hover:text-gray-200"
-                        onClick={() => setEditingCell({ type: 'visit', id: visit.id, field: 'name' })}
-                      >
-                        {visit.visitName}
-                      </div>
-                    )}
+                  <th key={visit.id} className="px-2 py-2 text-center border-r border-gray-600 min-w-[96px] align-top">
+                    <div className="flex flex-col items-center gap-1">
+                      {editingCell?.type === 'visit' && editingCell?.id === visit.id && editingCell?.field === 'number' ? (
+                        <input
+                          type="text"
+                          value={visit.visitNumber}
+                          onChange={(e) => updateVisit(visit.id, 'visitNumber', e.target.value)}
+                          onBlur={commitQueuedEditingCell}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Tab' && !e.shiftKey) {
+                              e.preventDefault()
+                              focusVisitField(visit.id, 'name')
+                              e.currentTarget.blur()
+                            }
+                          }}
+                          className="w-full bg-gray-700 text-white text-sm px-1 py-0.5 rounded text-center"
+                          autoFocus
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          className="text-white font-semibold cursor-pointer hover:bg-gray-700 rounded px-1 py-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-400"
+                          onClick={() => setEditingCell({ type: 'visit', id: visit.id, field: 'number' })}
+                        >
+                          {visit.visitNumber}
+                        </button>
+                      )}
+                      {editingCell?.type === 'visit' && editingCell?.id === visit.id && editingCell?.field === 'name' ? (
+                        <input
+                          type="text"
+                          value={visit.visitName}
+                          onChange={(e) => updateVisit(visit.id, 'visitName', e.target.value)}
+                          onBlur={commitQueuedEditingCell}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Tab') {
+                              e.preventDefault()
+                              if (e.shiftKey) {
+                                focusVisitField(visit.id, 'number')
+                              } else {
+                                focusVisitField(visit.id, 'timing')
+                              }
+                              e.currentTarget.blur()
+                            }
+                          }}
+                          className="w-full bg-gray-700 text-gray-200 text-xs px-1 py-0.5 rounded"
+                          autoFocus
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          className="text-gray-400 text-xs mt-1 cursor-pointer hover:text-gray-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-400"
+                          onClick={() => setEditingCell({ type: 'visit', id: visit.id, field: 'name' })}
+                        >
+                          {visit.visitName}
+                        </button>
+                      )}
+                    </div>
                   </th>
                 ))}
                 <th className="px-2 py-2">
@@ -1018,19 +1148,37 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
                     {editingCell?.type === 'visit' && editingCell?.id === visit.id && editingCell?.field === 'timing' ? (
                       <div 
                         className="space-y-1"
-                        onMouseLeave={() => setEditingCell(null)}
+                        onBlur={(e) => {
+                          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                            commitQueuedEditingCell()
+                          }
+                        }}
                       >
                         <input
                           type="number"
                           value={visit.timingValue}
                           onChange={(e) => updateVisit(visit.id, 'timingValue', parseInt(e.target.value) || 0)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Tab' && e.shiftKey) {
+                              e.preventDefault()
+                              focusVisitField(visit.id, 'name')
+                              e.currentTarget.blur()
+                            }
+                          }}
                           className="w-full bg-gray-700 text-gray-200 text-xs px-1 py-0.5 rounded text-center"
                           placeholder="#"
                           autoFocus
                         />
                         <select
                           value={visit.timingUnit}
-                          onChange={(e) => updateVisit(visit.id, 'timingUnit', e.target.value)}
+                          onChange={(e) => updateVisit(visit.id, 'timingUnit', e.target.value as Visit['timingUnit'])}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Tab' && !e.shiftKey) {
+                              e.preventDefault()
+                              focusVisitField(visit.id, 'window')
+                              e.currentTarget.blur()
+                            }
+                          }}
                           className="w-full bg-gray-700 text-gray-200 text-xs px-1 py-0.5 rounded text-center"
                         >
                           <option value="days">Days</option>
@@ -1039,13 +1187,14 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
                         </select>
                       </div>
                     ) : (
-                      <div 
-                        className="text-gray-300 text-xs cursor-pointer hover:text-gray-100"
+                      <button
+                        type="button"
+                        className="text-gray-300 text-xs cursor-pointer hover:text-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-400 mx-auto flex flex-col items-center"
                         onClick={() => setEditingCell({ type: 'visit', id: visit.id, field: 'timing' })}
                       >
                         <div className="font-semibold">{visit.timingValue}</div>
                         <div className="text-gray-400 capitalize">{visit.timingUnit}</div>
-                      </div>
+                      </button>
                     )}
                   </th>
                 ))}
@@ -1065,7 +1214,7 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
                         onBlur={(e) => {
                           // Only close if clicking outside the entire container
                           if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                            setEditingCell(null)
+                            commitQueuedEditingCell()
                           }
                         }}
                       >
@@ -1075,6 +1224,13 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
                             type="number"
                             value={visit.visitWindowBefore}
                             onChange={(e) => updateVisit(visit.id, 'visitWindowBefore', parseInt(e.target.value) || 0)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Tab' && e.shiftKey) {
+                                e.preventDefault()
+                                focusVisitField(visit.id, 'timing')
+                                e.currentTarget.blur()
+                              }
+                            }}
                             className="w-10 bg-gray-700 text-gray-200 text-xs px-1 py-0.5 rounded text-center"
                             min="0"
                             autoFocus
@@ -1086,18 +1242,28 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
                             type="number"
                             value={visit.visitWindowAfter}
                             onChange={(e) => updateVisit(visit.id, 'visitWindowAfter', parseInt(e.target.value) || 0)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Tab' && !e.shiftKey) {
+                                const moved = focusAdjacentVisitField(visit.id, 1, 'number')
+                                if (moved) {
+                                  e.preventDefault()
+                                  e.currentTarget.blur()
+                                }
+                              }
+                            }}
                             className="w-10 bg-gray-700 text-gray-200 text-xs px-1 py-0.5 rounded text-center"
                             min="0"
                           />
                         </div>
                       </div>
                     ) : (
-                      <div 
-                        className="text-gray-400 text-xs cursor-pointer hover:text-gray-200"
+                      <button
+                        type="button"
+                        className="text-gray-400 text-xs cursor-pointer hover:text-gray-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-400"
                         onClick={() => setEditingCell({ type: 'visit', id: visit.id, field: 'window' })}
                       >
                         {visit.visitWindowBefore === 0 && visit.visitWindowAfter === 0 ? 'N/A' : `-${visit.visitWindowBefore}/+${visit.visitWindowAfter} days`}
-                      </div>
+                      </button>
                     )}
                   </th>
                 ))}
@@ -1162,19 +1328,28 @@ export default function ScheduleOfEventsBuilder({ study, onSave }: ScheduleOfEve
                               autoFocus
                             />
                           ) : (
-                            <div 
-                              className="text-gray-200 cursor-pointer hover:text-white"
+                            <button
+                              type="button"
+                              className="text-gray-200 cursor-pointer hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-400"
                               onClick={() => setEditingCell({ type: 'procedure', id: procedure.id })}
                             >
                               {procedure.name}
-                            </div>
+                            </button>
                           )}
                         </td>
                         {visits.map(visit => (
                           <td 
                             key={visit.id} 
-                            className="text-center border-r border-gray-700/50 hover:bg-gray-600/30 cursor-pointer"
+                            className="text-center border-r border-gray-700/50 hover:bg-gray-600/30 cursor-pointer focus-within:bg-gray-600/40"
                             onClick={() => toggleProcedure(procedure.id, visit.id)}
+                            tabIndex={0}
+                            role="button"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault()
+                                toggleProcedure(procedure.id, visit.id)
+                              }
+                            }}
                           >
                             {procedure.visits[visit.id] && (
                               <span className="text-green-400 text-lg">✓</span>

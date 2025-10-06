@@ -4,6 +4,53 @@ import type { VisitSchedule, VisitScheduleInsert, VisitScheduleUpdate } from '@/
 import logger from '@/lib/logger'
 
 // GET /api/visit-schedules?study_id=xxx - Get visit schedules for a study
+type TimingUnit = 'days' | 'weeks' | 'months'
+
+const toVisitDay = (value: number, unit: TimingUnit) => {
+  if (unit === 'weeks') return value * 7
+  if (unit === 'months') return value * 30
+  return value
+}
+
+const normalizeTiming = (schedule: Partial<VisitScheduleInsert>): { visit_day: number; timing_value: number; timing_unit: TimingUnit } => {
+  const rawUnit = typeof schedule.timing_unit === 'string' ? schedule.timing_unit.toLowerCase() as TimingUnit : undefined
+  const rawValue = schedule.timing_value
+
+  if (rawUnit && typeof rawValue === 'number' && Number.isFinite(rawValue)) {
+    const coercedUnit: TimingUnit = rawUnit === 'weeks' || rawUnit === 'months' ? rawUnit : 'days'
+    const coercedValue = Math.trunc(rawValue)
+    return {
+      visit_day: toVisitDay(coercedValue, coercedUnit),
+      timing_value: coercedValue,
+      timing_unit: coercedUnit
+    }
+  }
+
+  const dayValue = typeof schedule.visit_day === 'number' ? schedule.visit_day : Number(schedule.visit_day) || 0
+
+  if (dayValue > 0 && dayValue % 30 === 0) {
+    return {
+      visit_day: dayValue,
+      timing_value: dayValue / 30,
+      timing_unit: 'months'
+    }
+  }
+
+  if (dayValue > 0 && dayValue % 7 === 0) {
+    return {
+      visit_day: dayValue,
+      timing_value: dayValue / 7,
+      timing_unit: 'weeks'
+    }
+  }
+
+  return {
+    visit_day: dayValue,
+    timing_value: dayValue,
+    timing_unit: 'days'
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { user, error: authError, status: authStatus } = await authenticateUser(request)
@@ -122,6 +169,12 @@ export async function POST(request: NextRequest) {
       const existingSchedule = (existingSchedules as VisitSchedule[])?.find(s => (
         s.visit_number === visitNumber && (((s as any).section_id ?? null) === sectionKey)
       ))
+
+      const timing = normalizeTiming(schedule)
+      const normalizedSchedule = schedule as VisitScheduleInsert
+      normalizedSchedule.visit_day = timing.visit_day
+      normalizedSchedule.timing_value = timing.timing_value
+      normalizedSchedule.timing_unit = timing.timing_unit
       
       logger.debug('Processing visit schedule', { visitNumber, incoming: schedule.visit_name, existing: existingSchedule?.visit_name, existingId: existingSchedule?.id })
       
@@ -129,7 +182,7 @@ export async function POST(request: NextRequest) {
         // Update existing schedule - preserve ID and visit_number to maintain lab kit associations
         const updateSchedule: VisitScheduleUpdate = {
           id: existingSchedule.id,
-          ...schedule,
+          ...normalizedSchedule,
           visit_number: existingSchedule.visit_number, // Keep original visit number (text)
           study_id,
           updated_at: new Date().toISOString()
@@ -140,9 +193,11 @@ export async function POST(request: NextRequest) {
       } else {
         // Insert new schedule - use the provided visit number (or generate one)
         const insertSchedule: VisitScheduleInsert = {
-          ...schedule,
+          ...normalizedSchedule,
           visit_number: visitNumber, // Use the text visit number as provided
-          study_id
+          study_id,
+          timing_value: (schedule as any).timing_value as number,
+          timing_unit: (schedule as any).timing_unit as TimingUnit
         }
         schedulesToInsert.push(insertSchedule)
         logger.debug('Queued schedule insert', { visit_name: insertSchedule.visit_name, visit_number: visitNumber })
@@ -195,6 +250,8 @@ export async function POST(request: NextRequest) {
       const updateData: VisitScheduleUpdate = {
         visit_name: schedule.visit_name,
         visit_day: schedule.visit_day,
+        timing_value: (schedule as any).timing_value,
+        timing_unit: (schedule as any).timing_unit,
         window_before_days: schedule.window_before_days,
         window_after_days: schedule.window_after_days,
         is_required: schedule.is_required,

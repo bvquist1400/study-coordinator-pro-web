@@ -332,6 +332,8 @@ export interface Database {
           visit_name: string
           visit_number: string
           visit_day: number
+          timing_value: number
+          timing_unit: 'days' | 'weeks' | 'months'
           window_before_days: number
           window_after_days: number
           is_required: boolean
@@ -348,6 +350,8 @@ export interface Database {
           visit_name: string
           visit_number: string
           visit_day: number
+          timing_value?: number
+          timing_unit?: 'days' | 'weeks' | 'months'
           window_before_days?: number
           window_after_days?: number
           is_required?: boolean
@@ -364,6 +368,8 @@ export interface Database {
           visit_name?: string
           visit_number?: string
           visit_day?: number
+          timing_value?: number
+          timing_unit?: 'days' | 'weeks' | 'months'
           window_before_days?: number
           window_after_days?: number
           is_required?: boolean

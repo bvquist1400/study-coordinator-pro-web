@@ -37,11 +37,14 @@ export interface EnrichedShipment {
   estimated_delivery: string | null
   actual_delivery: string | null
   tracking_status: string | null
+  ups_tracking_payload: ShipmentPayload
+  last_tracking_update: string | null
   subject_assignment: ShipmentSubjectInfo | null
   kit: ShipmentKitInfo | null
 }
 
 type Supabase = SupabaseClient<Database>
+type ShipmentPayload = Database['public']['Tables']['lab_kit_shipments']['Row']['ups_tracking_payload']
 
 interface ShipmentRow {
   id: string
@@ -54,6 +57,8 @@ interface ShipmentRow {
   estimated_delivery: string | null
   actual_delivery: string | null
   tracking_status: string | null
+  ups_tracking_payload: ShipmentPayload
+  last_tracking_update: string | null
   study_id: string | null
   study_protocol: string | null
   study_title: string | null
@@ -96,6 +101,8 @@ export async function fetchShipmentsForStudies(
         estimated_delivery: row.estimated_delivery as string | null,
         actual_delivery: row.actual_delivery as string | null,
         tracking_status: row.tracking_status as string | null,
+        ups_tracking_payload: (row.ups_tracking_payload ?? null) as ShipmentPayload,
+        last_tracking_update: row.last_tracking_update as string | null,
         study_id: study.id,
         study_protocol: study.protocol ?? null,
         study_title: study.title ?? null
@@ -104,6 +111,12 @@ export async function fetchShipmentsForStudies(
       next.lab_kit_id = next.lab_kit_id ?? (row.lab_kit_id as string | null) ?? ((row.lab_kits as any)?.id ?? null)
       next.subject_visit_id = next.subject_visit_id ?? (row.subject_visit_id as string | null) ?? ((row.subject_visits as any)?.id ?? null)
       next.accession_number = next.accession_number ?? (row.accession_number as string | null) ?? ((row.lab_kits as any)?.accession_number ?? null)
+      if (!next.ups_tracking_payload && row.ups_tracking_payload) {
+        next.ups_tracking_payload = row.ups_tracking_payload as ShipmentPayload
+      }
+      if (!next.last_tracking_update && row.last_tracking_update) {
+        next.last_tracking_update = row.last_tracking_update as string | null
+      }
 
       if (!next.study_id) next.study_id = study.id
       if (!next.study_protocol) next.study_protocol = study.protocol ?? null
@@ -117,7 +130,7 @@ export async function fetchShipmentsForStudies(
       .from('lab_kit_shipments')
       .select(`
         id, lab_kit_id, subject_visit_id, accession_number,
-        airway_bill_number, carrier, shipped_date, estimated_delivery, actual_delivery, tracking_status,
+        airway_bill_number, carrier, shipped_date, estimated_delivery, actual_delivery, tracking_status, ups_tracking_payload, last_tracking_update,
         lab_kits:lab_kits!inner(id, study_id, accession_number,
           status, kit_type, visit_schedule_id,
           studies(protocol_number, study_title)
@@ -136,7 +149,7 @@ export async function fetchShipmentsForStudies(
       .from('lab_kit_shipments')
       .select(`
         id, lab_kit_id, subject_visit_id, accession_number,
-        airway_bill_number, carrier, shipped_date, estimated_delivery, actual_delivery, tracking_status,
+        airway_bill_number, carrier, shipped_date, estimated_delivery, actual_delivery, tracking_status, ups_tracking_payload, last_tracking_update,
         subject_visits:subject_visits!inner(id, study_id,
           accession_number, visit_name, visit_date,
           studies(protocol_number, study_title)
@@ -177,7 +190,7 @@ export async function fetchShipmentsForStudies(
     if (accessionList.length > 0) {
       const { data: orphanRows, error: orphanErr } = await supabase
         .from('lab_kit_shipments')
-        .select('id, lab_kit_id, subject_visit_id, accession_number, airway_bill_number, carrier, shipped_date, estimated_delivery, actual_delivery, tracking_status')
+        .select('id, lab_kit_id, subject_visit_id, accession_number, airway_bill_number, carrier, shipped_date, estimated_delivery, actual_delivery, tracking_status, ups_tracking_payload, last_tracking_update')
         .is('lab_kit_id', null)
         .in('accession_number', accessionList)
 
@@ -407,6 +420,8 @@ export async function fetchShipmentsForStudies(
         estimated_delivery: shipment.estimated_delivery,
         actual_delivery: shipment.actual_delivery,
         tracking_status: shipment.tracking_status,
+        ups_tracking_payload: shipment.ups_tracking_payload,
+        last_tracking_update: shipment.last_tracking_update,
         subject_assignment: subject ? {
           subject_id: subject.subject_id,
           subject_number: subject.subject_number,

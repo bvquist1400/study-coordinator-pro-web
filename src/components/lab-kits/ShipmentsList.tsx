@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
-import { formatDateUSShort } from '@/lib/date-utils'
+import { formatDateUSShort, formatDateTimeUTC } from '@/lib/date-utils'
 import EmptyState from './EmptyState'
 import { EMPTY_STATE_TYPES, ACTION_TYPES } from '@/lib/lab-kits/empty-states'
 
@@ -16,6 +16,19 @@ interface ShipmentsListProps {
   onOpenShipmentsGuide?: () => void
 }
 
+const TRACKABLE_CARRIERS = new Set([
+  'ups',
+  'usps',
+  'fedex',
+  'dhl',
+  'dhl_express',
+  'canada_post',
+  'ontrac',
+  'lasership',
+  'gls_us',
+  'purolator'
+])
+
 type Shipment = {
   id: string
   airway_bill_number: string
@@ -25,6 +38,8 @@ type Shipment = {
   actual_delivery: string | null
   tracking_status: string | null
   accession_number: string | null
+  ups_tracking_payload: unknown
+  last_tracking_update: string | null
   study_id: string | null
   study_protocol?: string | null
   study_title?: string | null
@@ -64,12 +79,14 @@ interface AwbGroup {
   actualDelivery: string | null
   hasPending: boolean
   hasDelivered: boolean
+  lastTrackingUpdate: string | null
 }
 
 export default function ShipmentsList({ studyId, refreshKey, onRefresh, onLocateKit, groupByAwb = false, onCreateShipment, onOpenShipmentsGuide }: ShipmentsListProps) {
   const [loading, setLoading] = useState(true)
   const [shipments, setShipments] = useState<Shipment[]>([])
   const [updating, setUpdating] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState<string | null>(null)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
   const handleMarkDelivered = async (shipmentId: string) => {
@@ -114,6 +131,56 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh, onLocate
       alert('Failed to mark shipment as delivered')
     } finally {
       setUpdating(null)
+    }
+  }
+
+  const handleRefreshTracking = async (options: { shipmentId?: string; airwayBillNumber?: string }) => {
+    const key = options.airwayBillNumber ?? options.shipmentId
+    if (!key) return
+
+    try {
+      setRefreshing(key)
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) {
+        alert('You need to be signed in to refresh tracking')
+        return
+      }
+
+      const resp = await fetch('/api/tracking/refresh', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(options)
+      })
+
+      if (!resp.ok) {
+        const error = await resp.json().catch(() => ({ error: 'Failed to refresh tracking' }))
+        console.error('Tracking refresh failed:', error.error)
+        alert(error.error || 'Failed to refresh tracking')
+        return
+      }
+
+      const json = await resp.json()
+      const updatedShipments: Shipment[] = Array.isArray(json.shipments) ? json.shipments : []
+      if (updatedShipments.length > 0) {
+        setShipments(prev => {
+          const map = new Map(updatedShipments.map(item => [item.id, item]))
+          const existingIds = new Set(prev.map(item => item.id))
+          const merged = prev.map(item => map.get(item.id) ?? item)
+          const extras = updatedShipments.filter(item => !existingIds.has(item.id))
+          return extras.length > 0 ? [...merged, ...extras] : merged
+        })
+      }
+
+      onRefresh()
+    } catch (error) {
+      console.error('Error refreshing tracking:', error)
+      alert('Failed to refresh tracking')
+    } finally {
+      setRefreshing(null)
     }
   }
 
@@ -169,7 +236,8 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh, onLocate
           estimatedDelivery: null,
           actualDelivery: null,
           hasPending: false,
-          hasDelivered: false
+          hasDelivered: false,
+          lastTrackingUpdate: null
         }
         map.set(key, group)
       }
@@ -203,6 +271,11 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh, onLocate
       }
       if (shipment.tracking_status === 'delivered') {
         group.hasDelivered = true
+      }
+      if (shipment.last_tracking_update) {
+        if (!group.lastTrackingUpdate || shipment.last_tracking_update > group.lastTrackingUpdate) {
+          group.lastTrackingUpdate = shipment.last_tracking_update
+        }
       }
     }
 
@@ -288,44 +361,71 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh, onLocate
     const totalDelivered = group.shipments.filter(s => s.tracking_status === 'delivered').length
     const totalInTransit = group.shipments.length - totalDelivered
 
+    const carriers = Array.from(group.carriers)
+    const trackableCarrier = carriers.length === 1 && TRACKABLE_CARRIERS.has((carriers[0] || '').toLowerCase())
+    const carrierSlug = trackableCarrier ? (carriers[0] || '').toLowerCase() : null
+    const lastUpdateLabel = group.lastTrackingUpdate ? formatDateTimeUTC(group.lastTrackingUpdate) : null
+
     return (
       <div key={group.key} className="border border-gray-700 rounded-lg bg-gray-900/40">
-        <button
-          type="button"
-          onClick={() => toggleGroup(group.key)}
-          className="w-full text-left px-4 py-3 flex items-center justify-between gap-4"
-        >
-          <div className="flex-1">
-            <div className="flex items-center gap-3">
-              <span className="text-base font-semibold text-white">
-                {group.airwayBill ? `AWB ${group.airwayBill}` : 'No Airway Bill'}
-              </span>
-              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${badge.className}`}>
-                {badge.label}
-              </span>
-              <span className="text-xs text-gray-400">
-                {group.shipments.length} kit{group.shipments.length === 1 ? '' : 's'}
-              </span>
-            </div>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-400 mt-1">
-              <span>{carrierLabel(group)}</span>
-              <span>{studyLabel(group)}</span>
-              {shippedLabel && <span>{shippedLabel}</span>}
-              {etaLabel && <span>{etaLabel}</span>}
-              {deliveredLabel && <span>{deliveredLabel}</span>}
-              {totalInTransit > 0 && <span>{totalInTransit} in transit</span>}
-              {totalDelivered > 0 && <span>{totalDelivered} delivered</span>}
-            </div>
-          </div>
-          <svg
-            className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between px-4 py-3">
+          <button
+            type="button"
+            onClick={() => toggleGroup(group.key)}
+            className="flex-1 text-left flex items-center justify-between gap-4"
           >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
+            <div className="flex-1">
+              <div className="flex items-center gap-3">
+                <span className="text-base font-semibold text-white">
+                  {group.airwayBill ? `AWB ${group.airwayBill}` : 'No Airway Bill'}
+                </span>
+                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${badge.className}`}>
+                  {badge.label}
+                </span>
+                <span className="text-xs text-gray-400">
+                  {group.shipments.length} kit{group.shipments.length === 1 ? '' : 's'}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-400 mt-1">
+                <span>{carrierLabel(group)}</span>
+                <span>{studyLabel(group)}</span>
+                {shippedLabel && <span>{shippedLabel}</span>}
+                {etaLabel && <span>{etaLabel}</span>}
+                {deliveredLabel && <span>{deliveredLabel}</span>}
+                {totalInTransit > 0 && <span>{totalInTransit} in transit</span>}
+                {totalDelivered > 0 && <span>{totalDelivered} delivered</span>}
+              </div>
+            </div>
+            <svg
+              className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+          <div className="flex items-center gap-3 md:pl-4">
+            {lastUpdateLabel && (
+              <span className="text-xs text-gray-400 whitespace-nowrap">
+                Last update {lastUpdateLabel}
+              </span>
+            )}
+            {trackableCarrier && group.airwayBill && (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  handleRefreshTracking({ airwayBillNumber: group.airwayBill ?? undefined, carrier: carrierSlug || undefined })
+                }}
+                disabled={refreshing === group.airwayBill}
+                className="px-2 py-1 text-xs border border-blue-500 text-blue-200 rounded hover:bg-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {refreshing === group.airwayBill ? 'Refreshing…' : 'Refresh Tracking'}
+              </button>
+            )}
+          </div>
+        </div>
 
         {isExpanded && (
           <div className="border-t border-gray-700 px-4 py-3">
@@ -386,6 +486,11 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh, onLocate
                           }`}>
                             {(shipment.tracking_status || 'pending').replace(/_/g, ' ')}
                           </span>
+                          {TRACKABLE_CARRIERS.has((shipment.carrier || '').toLowerCase()) && shipment.last_tracking_update && (
+                            <div className="text-[11px] text-gray-400 mt-1">
+                              Last update {formatDateTimeUTC(shipment.last_tracking_update)}
+                            </div>
+                          )}
                         </td>
                         <td className="py-2 pr-3 text-xs text-gray-400">
                           <div className="space-y-1">
@@ -396,10 +501,32 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh, onLocate
                             {shipment.actual_delivery && (
                               <div>Delivered {formatDateUSShort(shipment.actual_delivery)}</div>
                             )}
+                            {TRACKABLE_CARRIERS.has((shipment.carrier || '').toLowerCase()) && shipment.last_tracking_update && (
+                              <div className="text-gray-500">Last update {formatDateTimeUTC(shipment.last_tracking_update)}</div>
+                            )}
                           </div>
                         </td>
                         <td className="py-2 text-xs">
                           <div className="flex flex-col gap-2">
+                            {TRACKABLE_CARRIERS.has((shipment.carrier || '').toLowerCase()) && (
+                              <button
+                                onClick={() => handleRefreshTracking(
+                                  shipment.airway_bill_number
+                                    ? {
+                                        airwayBillNumber: shipment.airway_bill_number ?? undefined,
+                                        carrier: (shipment.carrier || '').toLowerCase()
+                                      }
+                                    : {
+                                        shipmentId: shipment.id,
+                                        carrier: (shipment.carrier || '').toLowerCase()
+                                      }
+                                )}
+                                disabled={refreshing === (shipment.airway_bill_number || shipment.id)}
+                                className="px-2 py-1 border border-blue-500 text-blue-200 rounded hover:bg-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {refreshing === (shipment.airway_bill_number || shipment.id) ? 'Refreshing…' : 'Refresh Tracking'}
+                              </button>
+                            )}
                             {onLocateKit && (
                               <button
                                 onClick={() => onLocateKit({ studyId: shipment.study_id, accessionNumber: accession })}
@@ -570,6 +697,9 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh, onLocate
                       {!s.actual_delivery && s.estimated_delivery && (
                         <div className="text-xs text-gray-400">ETA {formatDateUSShort(s.estimated_delivery)}</div>
                       )}
+                      {TRACKABLE_CARRIERS.has((s.carrier || '').toLowerCase()) && s.last_tracking_update && (
+                        <div className="text-xs text-gray-500">Last update {formatDateTimeUTC(s.last_tracking_update)}</div>
+                      )}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       {s.shipped_date ? formatDateUSShort(s.shipped_date) : '-'}
@@ -589,9 +719,33 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh, onLocate
                             ? `Awaiting • ETA ${formatDateUSShort(s.estimated_delivery)}`
                             : 'Awaiting delivery'}
                       </div>
+                      {TRACKABLE_CARRIERS.has((s.carrier || '').toLowerCase()) && s.last_tracking_update && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          Updated {formatDateTimeUTC(s.last_tracking_update)}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-2">
+                        {TRACKABLE_CARRIERS.has((s.carrier || '').toLowerCase()) && (
+                          <button
+                            onClick={() => handleRefreshTracking(
+                              s.airway_bill_number
+                                ? {
+                                    airwayBillNumber: s.airway_bill_number ?? undefined,
+                                    carrier: (s.carrier || '').toLowerCase()
+                                  }
+                                : {
+                                    shipmentId: s.id,
+                                    carrier: (s.carrier || '').toLowerCase()
+                                  }
+                            )}
+                            disabled={refreshing === (s.airway_bill_number || s.id)}
+                            className="px-3 py-1 border border-blue-500 text-blue-200 text-xs rounded transition-colors hover:bg-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {refreshing === (s.airway_bill_number || s.id) ? 'Refreshing…' : 'Refresh Tracking'}
+                          </button>
+                        )}
                         {onLocateKit && (
                           <button
                             onClick={() => onLocateKit({ studyId: s.study_id, accessionNumber: accession })}

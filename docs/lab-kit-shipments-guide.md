@@ -36,6 +36,7 @@ Before creating a shipment, confirm inventory availability in the **Inventory** 
 - Status automatically progresses (`pending_pickup` → `shipped` → `delivered`) when tracking updates run (future UPS webhook) or you manually update
 - Use the **Aging badge** to identify shipments stuck beyond 5/10 days
 - Click **Locate Kit** from a shipment row to jump back to Inventory filtered by the kit's accession number
+- For supported carriers (UPS, FedEx, USPS, DHL, others), use **Refresh Tracking** to pull live status/ETA via EasyPost (`EASYPOST_API_KEY` required)
 
 ### Manual Status Updates
 Until carrier webhooks are enabled, coordinators should:
@@ -64,6 +65,7 @@ When a shipment is marked **Delivered**:
 - **Tracking number missing?** Edit the shipment and add the tracking ID; alerts notify about missing tracking after 24 hours
 - **Shipment delayed?** Pending aging alerts appear in Orders & Shipments and the Alerts tab; follow up with carrier and update status/notes
 - **Kit mismatch?** Use Locate Kit to confirm the accession number and correct the shipment contents; update the shipment record accordingly
+- **Tracking refresh fails?** Confirm the tracking number matches the carrier’s format, and ensure `EASYPOST_API_KEY` is configured
 
 ---
 

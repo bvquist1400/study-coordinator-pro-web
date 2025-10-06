@@ -29,6 +29,8 @@ Environment
   - `LOG_TO_SERVICE`: on|off (default on in prod)
   - `LOG_SAMPLE_RATE`: 0..1 (default 1)
   - Optional: `LOG_MAX_PAYLOAD`, feature flags
+  - `EASYPOST_API_KEY`: EasyPost API token (required for multi-carrier tracking refresh)
+  - `EASYPOST_API_BASE_URL`: Optional override for EasyPost API base URL (default `https://api.easypost.com`)
 
 Install
 

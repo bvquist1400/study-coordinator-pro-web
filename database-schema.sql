@@ -93,6 +93,8 @@ CREATE TABLE visit_schedules (
     visit_name TEXT NOT NULL,
     visit_number INTEGER NOT NULL,
     visit_day INTEGER NOT NULL, -- Day relative to baseline (0 = baseline)
+    timing_value INTEGER NOT NULL DEFAULT 0,
+    timing_unit TEXT NOT NULL DEFAULT 'days' CHECK (timing_unit IN ('days', 'weeks', 'months')),
     window_before_days INTEGER DEFAULT 3,
     window_after_days INTEGER DEFAULT 3,
     is_required BOOLEAN DEFAULT true,
