@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
 
     const supabase = createSupabaseAdmin()
 
-    let query = supabase
+    const baseQuery = supabase
       .from('lab_kit_shipments')
       .select(`
         id,
@@ -115,15 +115,14 @@ export async function POST(request: NextRequest) {
         lab_kits(study_id),
         subject_visits(study_id)
       `)
-      .returns<ShipmentRow[]>()
 
-    if (shipmentId) {
-      query = query.eq('id', shipmentId)
-    } else if (providedAirwayBill) {
-      query = query.eq('airway_bill_number', providedAirwayBill)
-    }
+    const queryWithParams = shipmentId
+      ? baseQuery.eq('id', shipmentId)
+      : providedAirwayBill
+        ? baseQuery.eq('airway_bill_number', providedAirwayBill)
+        : baseQuery
 
-    const { data: shipments, error } = await query
+    const { data: shipments, error } = await queryWithParams.returns<ShipmentRow[]>()
     if (error) {
       logger.error('Tracking refresh fetch shipment error', error as any)
       return NextResponse.json({ error: 'Failed to fetch shipment' }, { status: 500 })
