@@ -134,7 +134,7 @@ export default function ShipmentsList({ studyId, refreshKey, onRefresh, onLocate
     }
   }
 
-  const handleRefreshTracking = async (options: { shipmentId?: string; airwayBillNumber?: string }) => {
+  const handleRefreshTracking = async (options: { shipmentId?: string; airwayBillNumber?: string; carrier?: string }) => {
     const key = options.airwayBillNumber ?? options.shipmentId
     if (!key) return
 
