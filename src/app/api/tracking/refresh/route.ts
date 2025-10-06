@@ -29,9 +29,29 @@ function normalizeCarrier(value: string | null | undefined) {
   return normalized === 'other' ? null : normalized
 }
 
+type ShipmentRow = {
+  id: string
+  lab_kit_id: string | null
+  accession_number: string | null
+  subject_visit_id: string | null
+  airway_bill_number: string | null
+  carrier: string | null
+  tracking_status: string | null
+  estimated_delivery: string | null
+  actual_delivery: string | null
+  lab_kits: { study_id: string | null } | null
+  subject_visits: { study_id: string | null } | null
+  study_id?: string | null
+}
+
 async function resolveStudyIds(supabase: ReturnType<typeof createSupabaseAdmin>, shipments: any[]) {
   const studyIds = new Set<string>()
   const missingAccessions = new Set<string>()
+
+  type LabKitStudyLookup = {
+    accession_number: string | null
+    study_id: string | null
+  }
 
   for (const shipment of shipments) {
     const studyId = shipment?.lab_kits?.study_id || shipment?.subject_visits?.study_id || shipment?.study_id || null
@@ -47,6 +67,7 @@ async function resolveStudyIds(supabase: ReturnType<typeof createSupabaseAdmin>,
       .from('lab_kits')
       .select('accession_number, study_id')
       .in('accession_number', Array.from(missingAccessions))
+      .returns<LabKitStudyLookup[]>()
 
     if (error) {
       logger.error('Tracking refresh unable to resolve accession study', error as any)
@@ -54,7 +75,7 @@ async function resolveStudyIds(supabase: ReturnType<typeof createSupabaseAdmin>,
     }
 
     for (const kit of kits || []) {
-      if (kit?.study_id) studyIds.add(kit.study_id as string)
+      if (kit?.study_id) studyIds.add(kit.study_id)
     }
   }
 
@@ -94,6 +115,7 @@ export async function POST(request: NextRequest) {
         lab_kits(study_id),
         subject_visits(study_id)
       `)
+      .returns<ShipmentRow[]>()
 
     if (shipmentId) {
       query = query.eq('id', shipmentId)
@@ -111,7 +133,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Shipment not found' }, { status: 404 })
     }
 
-    const airtWayBill = providedAirwayBill ?? (shipments[0]?.airway_bill_number as string | undefined)
+    const airtWayBill = providedAirwayBill ?? shipments[0]?.airway_bill_number ?? undefined
     if (!airtWayBill) {
       return NextResponse.json({ error: 'Shipment missing airway bill / tracking number' }, { status: 400 })
     }
@@ -207,4 +229,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-
