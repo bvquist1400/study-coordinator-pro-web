@@ -33,6 +33,11 @@ async function resolveStudyIds(supabase: ReturnType<typeof createSupabaseAdmin>,
   const studyIds = new Set<string>()
   const missingAccessions = new Set<string>()
 
+  type LabKitStudyLookup = {
+    accession_number: string | null
+    study_id: string | null
+  }
+
   for (const shipment of shipments) {
     const studyId = shipment?.lab_kits?.study_id || shipment?.subject_visits?.study_id || shipment?.study_id || null
     if (studyId) {
@@ -47,6 +52,7 @@ async function resolveStudyIds(supabase: ReturnType<typeof createSupabaseAdmin>,
       .from('lab_kits')
       .select('accession_number, study_id')
       .in('accession_number', Array.from(missingAccessions))
+      .returns<LabKitStudyLookup[]>()
 
     if (error) {
       logger.error('Tracking refresh unable to resolve accession study', error as any)
@@ -54,7 +60,7 @@ async function resolveStudyIds(supabase: ReturnType<typeof createSupabaseAdmin>,
     }
 
     for (const kit of kits || []) {
-      if (kit?.study_id) studyIds.add(kit.study_id as string)
+      if (kit?.study_id) studyIds.add(kit.study_id)
     }
   }
 
@@ -207,4 +213,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-
