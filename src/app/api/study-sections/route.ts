@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser, verifyStudyMembership, createSupabaseAdmin } from '@/lib/api/auth'
-import type { StudySection, StudySectionInsert, StudySectionUpdate } from '@/types/database'
+import type { StudySection, StudySectionInsert } from '@/types/database'
 import logger from '@/lib/logger'
 
 // GET /api/study-sections?study_id=xxx
@@ -82,4 +82,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

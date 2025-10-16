@@ -43,7 +43,7 @@ export default function MembersPage() {
     } finally {
       setLoading(false)
     }
-  }, [currentSiteId])
+  }, [currentSiteId, handleError])
 
   useEffect(() => {
     if (currentSiteId) loadMembers()

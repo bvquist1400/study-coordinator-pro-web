@@ -14,12 +14,12 @@ async function getSectionStudyId(supabase: any, id: string): Promise<string | nu
 }
 
 // PUT /api/study-sections/[id]
-export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const { user, error: authError, status: authStatus } = await authenticateUser(request)
     if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
     const supabase = createSupabaseAdmin()
-    const { id } = await params
+    const { id } = params
 
     const studyId = await getSectionStudyId(supabase, id)
     if (!studyId) return NextResponse.json({ error: 'Section not found' }, { status: 404 })
@@ -59,12 +59,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 }
 
 // DELETE /api/study-sections/[id]
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const { user, error: authError, status: authStatus } = await authenticateUser(request)
     if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
     const supabase = createSupabaseAdmin()
-    const { id } = await params
+    const { id } = params
 
     const studyId = await getSectionStudyId(supabase, id)
     if (!studyId) return NextResponse.json({ error: 'Section not found' }, { status: 404 })
@@ -87,4 +87,3 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

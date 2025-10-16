@@ -78,7 +78,7 @@ describe('PUT /api/subject-visits/[id]/ip-accountability', () => {
       json: async () => reqBody,
     }
 
-    const res = await saveIp(req as any, { params: Promise.resolve({ id: 'visit-1' }) } as any)
+    const res = await saveIp(req as any, { params: { id: 'visit-1' } } as any)
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.success).toBe(true)

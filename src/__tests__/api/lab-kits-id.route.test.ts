@@ -4,7 +4,7 @@ jest.mock('next/server', () => ({
   },
 }))
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { GET: getLabKit, DELETE: deleteLabKit, PUT: updateLabKit } = require('@/app/api/lab-kits/[id]/route')
+const { GET: getLabKit, DELETE: deleteLabKit } = require('@/app/api/lab-kits/[id]/route')
 
 function createSupabaseStub(options: {
   authUser?: { id: string; email?: string } | null

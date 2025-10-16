@@ -51,6 +51,13 @@ const eslintConfig = [
       ],
     },
   },
+  // Allow richer console usage in maintenance scripts and ad-hoc diagnostics
+  {
+    files: ["scripts/**", "test-date-calculation.js"],
+    rules: {
+      "no-console": "off",
+    },
+  },
 ];
 
 export default eslintConfig;

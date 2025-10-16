@@ -5,12 +5,12 @@ import logger from '@/lib/logger'
 // GET /api/studies/[id] - Get specific study
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const { user, error: authError, status: authStatus } = await authenticateUser(request)
     if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
-    const resolvedParams = await params
+    const studyId = params.id
     
     // Verify the JWT token
     const supabase = createSupabaseAdmin()
@@ -19,7 +19,7 @@ export async function GET(
     const { data: study, error } = await supabase
       .from('studies')
       .select('*')
-      .eq('id', resolvedParams.id)
+      .eq('id', studyId)
       .single()
 
     if (error) {
@@ -54,12 +54,12 @@ export async function GET(
 // DELETE /api/studies/[id] - Delete specific study
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const { user, error: authError, status: authStatus } = await authenticateUser(request)
     if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
-    const resolvedParams = await params
+    const studyId = params.id
     
     // Verify the JWT token
     const supabase = createSupabaseAdmin()
@@ -68,7 +68,7 @@ export async function DELETE(
     const { data: studyRow, error: studyErr } = await supabase
       .from('studies')
       .select('site_id, user_id')
-      .eq('id', resolvedParams.id)
+      .eq('id', studyId)
       .single()
     if (studyErr || !studyRow) {
       return NextResponse.json({ error: 'Study not found' }, { status: 404 })
@@ -90,7 +90,7 @@ export async function DELETE(
     const { data: study, error } = await supabase
       .from('studies')
       .delete()
-      .eq('id', resolvedParams.id)
+      .eq('id', studyId)
       .select()
       .single()
 

@@ -8,12 +8,12 @@ import type { SubjectVisitInsert, SubjectVisitUpdate, VisitScheduleHistoryInsert
 // GET /api/subject-visits/[id] - Get specific subject visit
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const { user, error: authError, status } = await authenticateUser(request)
     if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: status || 401 })
-    const resolvedParams = await params
+    const visitId = params.id
     
     // Verify the JWT token
     const supabase = createSupabaseAdmin()
@@ -25,7 +25,7 @@ export async function GET(
         *,
         subjects!inner(subject_number, status)
       `)
-      .eq('id', resolvedParams.id)
+      .eq('id', visitId)
       .single()
 
     if (error) {
@@ -77,7 +77,7 @@ export async function GET(
 // PUT /api/subject-visits/[id] - Update or upsert subject visit (for VisitCard)
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const { user, error: authError, status } = await authenticateUser(request)
@@ -87,10 +87,10 @@ export async function PUT(
     const supabase = createSupabaseAdmin()
 
     const rawUpdate = await request.json()
-    const resolvedParams = await params
+    const visitId = params.id
 
     // If this is an upsert (new visit), we need to create it
-    if (rawUpdate.id === resolvedParams.id && rawUpdate.study_id && rawUpdate.visit_name && rawUpdate.visit_date) {
+    if (rawUpdate.id === visitId && rawUpdate.study_id && rawUpdate.visit_name && rawUpdate.visit_date) {
       // Verify user owns the study
       const { data: study, error: studyError } = await supabase
         .from('studies')
@@ -126,7 +126,7 @@ export async function PUT(
       const { data: existing } = await supabase
         .from('subject_visits')
         .select('study_id, visit_date')
-        .eq('id', resolvedParams.id)
+        .eq('id', visitId)
         .single()
       if (!existing) {
         return NextResponse.json({ error: 'Subject visit not found' }, { status: 404 })
@@ -161,7 +161,7 @@ export async function PUT(
         const { data: visitInfo } = await supabase
           .from('subject_visits')
           .select('visit_date, study_id, subject_id, visit_schedule_id, subject_section_id, studies(anchor_day)')
-          .eq('id', resolvedParams.id)
+          .eq('id', visitId)
           .single()
 
         if (visitInfo) {
@@ -250,7 +250,7 @@ export async function PUT(
           ...windowCalculation,
           updated_at: new Date().toISOString()
         } as SubjectVisitUpdate)
-        .eq('id', resolvedParams.id)
+        .eq('id', visitId)
         .select()
         .single()
 
@@ -264,7 +264,7 @@ export async function PUT(
           await (supabase as any)
             .from('visit_schedule_history')
             .insert({
-              visit_id: resolvedParams.id,
+              visit_id: visitId,
               old_date: previousVisitDate,
               new_date: updateFields.visit_date,
               reason: typeof reschedule_reason === 'string' && reschedule_reason.trim() ? reschedule_reason.trim() : null,
@@ -290,12 +290,12 @@ export async function PUT(
 // DELETE /api/subject-visits/[id] - Delete specific subject visit
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const { user, error: authError, status } = await authenticateUser(request)
     if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: status || 401 })
-    const resolvedParams = await params
+    const visitId = params.id
     
     // Verify the JWT token
     const supabase = createSupabaseAdmin()
@@ -305,7 +305,7 @@ export async function DELETE(
     const { data: existing } = await supabase
       .from('subject_visits')
       .select('study_id')
-      .eq('id', resolvedParams.id)
+      .eq('id', visitId)
       .single()
     if (!existing) {
       return NextResponse.json({ error: 'Subject visit not found' }, { status: 404 })
@@ -332,7 +332,7 @@ export async function DELETE(
     const { data: subjectVisit, error } = await supabase
       .from('subject_visits')
       .delete()
-      .eq('id', resolvedParams.id)
+      .eq('id', visitId)
       .select()
       .single()
 

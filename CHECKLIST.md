@@ -47,8 +47,7 @@ Last updated: 2025-09-06
   - Why: Type safety; reduce runtime risk.
 
 - [x] Route param typing consistency (Next 15)
-  - Files: `src/app/api/subject-visits/[id]/ip-accountability/route.ts` (currently uses `params: Promise<{ id: string }>`)
-  - Do: Use `{ params: { id: string } }`; remove `await params` where present.
+  - Scope: All API route handlers use `{ params: { id: string } }`; no `await params` pattern remains.
 
 ## 🟠 High — Next
 - [ ] Enable multi-drug (MVP)
@@ -153,6 +152,7 @@ Note: Re-validated via file presence and references; app now uses per-drug cycle
 - Schema “source of truth” is in `supabase_database_structure/`. Keep migrations in sync.
  - Column added: `ip_compliance_calc_required` on `visit_schedules` and `subject_visits` (backfilled from SOE `procedures` when legacy flag absent). Structure files updated.
 - IP docs (“IP Accountability System Documentation”) moved into this checklist as actionable items; future enhancements tracked in backlog below.
+- Lint hygiene backlog captured in `docs/lint-hygiene-backlog.md`; schedule cleanup pass before the next release hardening cycle.
 
 ## Developer Conventions
 - Route params: use `{ params: { id: string } }` in API handlers; do not `await params`.

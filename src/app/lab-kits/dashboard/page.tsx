@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import DashboardLayout from '@/components/dashboard/DashboardLayout'
 import { supabase } from '@/lib/supabase/client'
-import { formatDateUTC } from '@/lib/date-utils'
 import Link from 'next/link'
 
 type Study = { id: string; protocol_number: string; study_title: string }
@@ -20,7 +19,6 @@ type Kit = {
 export default function LabKitsDashboardPage() {
   const [studies, setStudies] = useState<Study[]>([])
   const [selectedStudyId, setSelectedStudyId] = useState<string>('all')
-  const [loading, setLoading] = useState(true)
   const [kits, setKits] = useState<Kit[]>([])
   const [loadingKits, setLoadingKits] = useState(false)
 
@@ -33,8 +31,8 @@ export default function LabKitsDashboardPage() {
       if (!resp.ok) return
       const json = await resp.json()
       setStudies(json.studies || [])
-    } finally {
-      setLoading(false)
+    } catch (error) {
+      console.error('Failed to load studies for lab kit dashboard', error)
     }
   }, [])
 
@@ -58,12 +56,12 @@ export default function LabKitsDashboardPage() {
   useEffect(() => { loadKits() }, [loadKits])
 
   const now = useMemo(() => { const d = new Date(); d.setHours(0,0,0,0); return d }, [])
-  const within30 = (dateStr: string | null) => {
+  const within30 = useCallback((dateStr: string | null) => {
     if (!dateStr) return false
     const d = new Date(dateStr)
     const lim = new Date(now); lim.setDate(now.getDate() + 30)
     return d >= now && d <= lim
-  }
+  }, [now])
   const ageDays = (dateStr: string | null) => {
     if (!dateStr) return 0
     const d = new Date(dateStr)
@@ -93,7 +91,7 @@ export default function LabKitsDashboardPage() {
       }
     }
     return map
-  }, [kits])
+  }, [kits, within30])
 
   return (
     <DashboardLayout>

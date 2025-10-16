@@ -6,12 +6,12 @@ import type { SubjectVisitUpdate } from '@/types/database'
 // PUT /api/subject-visits/[id]/ip-accountability - Save visit with IP accountability
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const { user, error: authError, status: authStatus } = await authenticateUser(request)
     if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
-    const resolvedParams = await params
+    const visitId = params.id
     
     // DB client
     const supabase = createSupabaseAdmin()
@@ -20,7 +20,7 @@ export async function PUT(
     const { data: visit } = await supabase
       .from('subject_visits')
       .select('subject_id, study_id')
-      .eq('id', resolvedParams.id)
+      .eq('id', visitId)
       .single()
 
     if (!visit) {
@@ -76,7 +76,7 @@ export async function PUT(
         }
         const row = {
           subject_id: vAny.subject_id,
-          visit_id: resolvedParams.id,
+          visit_id: visitId,
           drug_id: drugId,
           dispensing_date: c.start_date,
           last_dose_date: c.last_dose_date || null,
@@ -102,7 +102,7 @@ export async function PUT(
         }
         const delta = Number(a.delta_tablets || 0)
         if (!delta) continue
-        const targetVisitId = a.visit_id || resolvedParams.id || null
+        const targetVisitId = a.visit_id || visitId || null
         const { data: existing } = await supabase
           .from('subject_drug_cycles')
           .select('id, tablets_dispensed, tablets_returned')
@@ -182,7 +182,7 @@ export async function PUT(
       const { error: visitError } = await (supabase
         .from('subject_visits') as any)
         .update(updateData as SubjectVisitUpdate)
-        .eq('id', resolvedParams.id)
+        .eq('id', visitId)
       if (visitError) {
         logger.error('Error updating visit (cycles)', visitError as any)
         return NextResponse.json({ error: 'Failed to update visit record', detail: visitError.message }, { status: 500 })
@@ -196,7 +196,7 @@ export async function PUT(
     const { data: updatedVisit } = await supabase
       .from('subject_visits')
       .select('id, status, accession_number, visit_date')
-      .eq('id', resolvedParams.id)
+      .eq('id', visitId)
       .single()
 
     // Create usage record on completion when accession_number resolves to a known kit
@@ -214,14 +214,14 @@ export async function PUT(
             .from('lab_kit_usage')
             .select('id')
             .eq('lab_kit_id', kitId)
-            .eq('subject_visit_id', resolvedParams.id)
+            .eq('subject_visit_id', visitId)
             .maybeSingle()
           if (!existingUsage) {
             await supabase
               .from('lab_kit_usage')
               .insert({
                 lab_kit_id: kitId,
-                subject_visit_id: resolvedParams.id,
+                subject_visit_id: visitId,
                 used_date: v.visit_date,
                 used_by_user_id: user.id
               } as any)

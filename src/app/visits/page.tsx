@@ -74,7 +74,7 @@ function VisitsContent() {
     } finally {
       setLoading(false)
     }
-  }, [currentSiteId, selectedStudyId])
+  }, [currentSiteId])
 
   useEffect(() => {
     loadStudies()

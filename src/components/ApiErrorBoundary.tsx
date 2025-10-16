@@ -44,9 +44,7 @@ export default class ApiErrorBoundary extends Component<Props, State> {
       timestamp: new Date().toISOString()
     }
 
-    console.warn('🔌 API Error Boundary - API Error Details')
-    console.table(apiErrorData)
-    console.groupEnd()
+    console.warn('🔌 API Error Boundary - API Error Details', apiErrorData)
 
     // TODO: Send to API error tracking service
   }

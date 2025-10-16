@@ -26,8 +26,8 @@ const parseDateISO = (value: unknown) => {
   return trimmed.slice(0, 10)
 }
 
-export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const { id: orderId } = await context.params
+export async function PATCH(request: NextRequest, context: { params: { id: string } }) {
+  const { id: orderId } = context.params
   if (!orderId) {
     return NextResponse.json({ error: 'Order ID is required' }, { status: 400 })
   }

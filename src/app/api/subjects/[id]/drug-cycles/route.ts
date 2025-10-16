@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser, createSupabaseAdmin, verifyStudyMembership } from '@/lib/api/auth'
 
 // GET /api/subjects/[id]/drug-cycles - per-visit per-drug cycles and per-visit averages
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const { user, error: authError, status: authStatus } = await authenticateUser(request)
     if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
     const supabase = createSupabaseAdmin()
-    const { id: subjectId } = await params
+    const { id: subjectId } = params
 
     // Find subject and study for membership
     const { data: subject } = await supabase
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }).sort((a, b) => (a.visit_date || '').localeCompare(b.visit_date || ''))
 
     return NextResponse.json({ per_visit })
-  } catch (e) {
+  } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

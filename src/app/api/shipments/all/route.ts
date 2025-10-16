@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
         .eq('user_id', user.id)
       const rows = (memberships || []) as StudyMemberRow[]
       studyIds = rows.map(r => r.study_id)
-    } catch (_e) {
+    } catch {
       // ignore - fall back below
     }
 

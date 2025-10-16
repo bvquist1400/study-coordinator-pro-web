@@ -47,11 +47,9 @@ export default class ErrorBoundary extends Component<Props, State> {
     }
 
     // Log to console for now (replace with actual service call)
-    console.warn('🚨 Error Boundary - Error Details')
+    console.warn('🚨 Error Boundary - Error Details', errorData)
     console.error('Error:', error)
     console.error('Error Info:', errorInfo)
-    console.table(errorData)
-    console.groupEnd()
 
     // TODO: Send to logging service
     // fetch('/api/errors', {

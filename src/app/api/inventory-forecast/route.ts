@@ -216,7 +216,7 @@ if (studySettingsError) {
     const deliveryDaysDefault = Math.max(0, Math.min(120, (studySettings?.delivery_days_default ?? 5)))
     const effectiveDaysAhead = Math.min(daysAhead + visitWindowBufferDays, 180)
 
-    const { today, todayISO, future, futureISO } = isoDateRange(effectiveDaysAhead)
+    const { today, todayISO, futureISO } = isoDateRange(effectiveDaysAhead)
     const expiryCutoff = new Date(today)
     const expiryWindowDays = Math.max(1, Math.min(effectiveDaysAhead, DEFAULT_WINDOW_DAYS))
     expiryCutoff.setUTCDate(expiryCutoff.getUTCDate() + expiryWindowDays)

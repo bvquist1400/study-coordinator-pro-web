@@ -6,42 +6,6 @@ jest.mock('next/server', () => ({
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { DELETE: deleteSubject } = require('@/app/api/subjects/[id]/route')
 
-function createSupabaseStub(options: {
-  authUser?: { id: string } | null
-  subject?: any | null
-  study?: any | null
-  visitsCount?: number
-  member?: boolean
-  deleteOk?: boolean
-}) {
-  const state: any = { table: null }
-  return {
-    auth: {
-      async getUser(_t: string) {
-        if (options.authUser) return { data: { user: options.authUser }, error: null }
-        return { data: { user: null }, error: new Error('invalid') as any }
-      },
-    },
-    from(table: string) {
-      state.table = table
-      const builder: any = {
-        select() { return builder },
-        eq() { return builder },
-        limit() { return builder },
-        single: async () => {
-          if (table === 'subjects') return { data: options.subject, error: options.subject ? null : ({ code: 'PGRST116' } as any) }
-          if (table === 'studies') return { data: options.study, error: options.study ? null : ({ code: 'PGRST116' } as any) }
-          return { data: null, error: null }
-        },
-        maybeSingle: async () => ({ data: options.member ? { user_id: options.authUser?.id } : null, error: null }),
-        async delete() { return this },
-        async select() { return { data: options.deleteOk ? {} : null, error: options.deleteOk ? null : (new Error('delete failed') as any) } },
-      }
-      return builder
-    },
-  } as any
-}
-
 jest.mock('@/lib/api/auth', () => ({ createSupabaseAdmin: jest.fn(), authenticateUser: jest.fn() }))
 jest.mock('@/lib/logger', () => ({ __esModule: true, default: { error: jest.fn(), info: jest.fn(), warn: jest.fn(), debug: jest.fn() } }))
 

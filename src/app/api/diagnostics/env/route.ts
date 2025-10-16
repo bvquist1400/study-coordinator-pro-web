@@ -47,8 +47,7 @@ export async function GET(request: NextRequest) {
       serviceRoleSet,
       projectRef: ref || null,
     })
-  } catch (_error) {
+  } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

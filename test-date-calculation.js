@@ -55,7 +55,6 @@ function testTimezoneIssue() {
   console.log(`Start UTC: ${start.toISOString()}`)
   console.log(`End UTC: ${end.toISOString()}`)
   
-  const timezoneOffsetMs = start.getTimezoneOffset() * 60 * 1000
   console.log(`Timezone offset: ${start.getTimezoneOffset()} minutes`)
   
   // The issue: if dates cross timezone boundaries during conversion

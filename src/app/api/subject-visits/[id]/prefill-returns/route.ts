@@ -5,13 +5,13 @@ import logger from '@/lib/logger'
 // GET /api/subject-visits/[id]/prefill-returns - Suggest bottles to return for this visit
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const { user, error: authError, status: authStatus } = await authenticateUser(request)
     if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
 
-    const { id } = await params
+    const { id } = params
     const supabase = createSupabaseAdmin()
 
     // Load visit to determine subject and study

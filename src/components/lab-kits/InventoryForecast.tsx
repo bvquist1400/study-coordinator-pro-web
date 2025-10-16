@@ -252,7 +252,6 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
   }, [forecast])
   const totalSuggestedQty = suggestedOrders.reduce((sum, item) => sum + item.recommendedOrderQty, 0)
   const highRiskCount = summary?.highRisk ?? 0
-  const mediumRiskCount = summary?.mediumRisk ?? 0
   const hasSuggestedOrders = suggestedOrders.length > 0
 
   const getStatusIcon = (status: 'ok' | 'warning' | 'critical') => {

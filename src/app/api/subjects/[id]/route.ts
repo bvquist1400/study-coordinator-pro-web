@@ -6,7 +6,7 @@ import logger from '@/lib/logger'
 // GET /api/subjects/[id] - Get specific subject
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const supabase = createSupabaseAdmin()
@@ -17,7 +17,7 @@ export async function GET(
     }
 
     const token = authHeader.split(' ')[1]
-    const resolvedParams = await params
+    const subjectId = params.id
     
     // Verify the JWT token
     const { data: { user }, error: authError } = await supabase.auth.getUser(token)
@@ -29,7 +29,7 @@ export async function GET(
     const { data: subject, error } = await supabase
       .from('subjects')
       .select('*')
-      .eq('id', resolvedParams.id)
+      .eq('id', subjectId)
       .single()
 
     if (error) {
@@ -74,7 +74,7 @@ export async function GET(
 // PUT /api/subjects/[id] - Update subject
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const supabase = createSupabaseAdmin()
@@ -93,7 +93,7 @@ export async function PUT(
     }
 
     const updateData = await request.json()
-    const resolvedParams = await params
+    const subjectId = params.id
 
     // Create update object with allowed fields
     const updateObject = {
@@ -120,7 +120,7 @@ export async function PUT(
     const { data: subRow, error: subErr } = await supabase
       .from('subjects')
       .select('study_id')
-      .eq('id', resolvedParams.id)
+      .eq('id', subjectId)
       .single()
     if (subErr || !subRow) {
       return NextResponse.json({ error: 'Subject not found' }, { status: 404 })
@@ -152,7 +152,7 @@ export async function PUT(
     const { data: currentSubject, error: curErr } = await (supabase as any)
       .from('subjects')
       .select('*')
-      .eq('id', resolvedParams.id)
+      .eq('id', subjectId)
       .single()
     if (curErr || !currentSubject) {
       return NextResponse.json({ error: 'Subject not found' }, { status: 404 })
@@ -165,7 +165,7 @@ export async function PUT(
     const { data: subject, error } = await (supabase as any)
       .from('subjects')
       .update(updateObject as SubjectUpdate)
-      .eq('id', resolvedParams.id)
+      .eq('id', subjectId)
       .select()
       .single()
 
@@ -196,7 +196,7 @@ export async function PUT(
         const { data: subjSections, error: secErr } = await (supabase as any)
           .from('subject_sections')
           .select('id, study_section_id, anchor_date, ended_at, study_sections(order_index)')
-          .eq('subject_id', resolvedParams.id)
+          .eq('subject_id', subjectId)
           .is('ended_at', null)
 
         if (!secErr && subjSections && subjSections.length > 0) {
@@ -268,7 +268,7 @@ export async function PUT(
                 await (supabase as any)
                   .from('subject_visits')
                   .update({ visit_date: newVisitDate, updated_at: new Date().toISOString() })
-                  .eq('subject_id', resolvedParams.id)
+                  .eq('subject_id', subjectId)
                   .eq('subject_section_id', ss.id)
                   .eq('visit_schedule_id', (t as any).id)
                   .eq('status', 'scheduled')
@@ -291,7 +291,7 @@ export async function PUT(
 // DELETE /api/subjects/[id] - Delete subject
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const supabase = createSupabaseAdmin()
@@ -302,7 +302,7 @@ export async function DELETE(
     }
 
     const token = authHeader.split(' ')[1]
-    const resolvedParams = await params
+    const subjectId = params.id
     
     // Verify the JWT token
     const { data: { user }, error: authError } = await supabase.auth.getUser(token)
@@ -316,7 +316,7 @@ export async function DELETE(
     const { data: subRow, error: subErr } = await supabase
       .from('subjects')
       .select('study_id')
-      .eq('id', resolvedParams.id)
+      .eq('id', subjectId)
       .single()
     if (subErr || !subRow) {
       return NextResponse.json({ error: 'Subject not found' }, { status: 404 })
@@ -349,7 +349,7 @@ export async function DELETE(
     const { data: subject, error } = await supabase
       .from('subjects')
       .delete()
-      .eq('id', resolvedParams.id)
+      .eq('id', subjectId)
       .select()
       .single()
 

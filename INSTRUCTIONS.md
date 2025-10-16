@@ -51,7 +51,7 @@ Recent Schema Notes
 - Prefer server endpoints for data that may be blocked by client RLS.
 
 ## Conventions
-- Route params typing: follow the project pattern (`{ params: Promise<{ id: string }> }`).
+- Route params typing: use `{ params: { id: string } }` in route handlers (no `Promise` wrapping).
 - Error responses: `NextResponse.json({ error }, { status })`.
 - Logging: `src/lib/logger.ts`, only `console.warn/error` in client code.
 

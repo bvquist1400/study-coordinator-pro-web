@@ -44,8 +44,7 @@ export async function GET(request: NextRequest) {
     if (error) return NextResponse.json({ error: 'Failed to load study drugs' }, { status: 500 })
 
     return NextResponse.json({ drugs: data || [] })
-  } catch (e) {
+  } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

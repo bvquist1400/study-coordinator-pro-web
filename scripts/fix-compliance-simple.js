@@ -38,7 +38,7 @@ async function fixComplianceRecords() {
     for (const record of complianceRecords) {
       console.log(`\n🔧 Processing bottle ${record.ip_id}...`)
       
-      let updates = {}
+      const updates = {}
       let needsUpdate = false
       
       // Fix missing dispensing_date
