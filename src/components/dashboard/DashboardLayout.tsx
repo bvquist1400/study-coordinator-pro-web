@@ -29,6 +29,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { name: 'Studies', href: '/studies', icon: FolderIcon },
     { name: 'Subjects', href: '/subjects', icon: UsersIcon },
     { name: 'Visits', href: '/visits', icon: CalendarIcon },
+    { name: 'Lab Kit Command Center', href: '/lab-kits/command-center', icon: SparklesIcon },
     { name: 'Lab Kits', href: '/lab-kits/dashboard', icon: BeakerIcon },
     { name: 'Shipments', href: '/shipments', icon: TruckIcon },
     { name: 'Compliance', href: '/compliance', icon: DocumentChartBarIcon },
@@ -261,6 +262,15 @@ function Bars3Icon(props: React.ComponentProps<'svg'>) {
   return (
     <svg {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+  )
+}
+
+function SparklesIcon(props: React.ComponentProps<'svg'>) {
+  return (
+    <svg {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-6.364-.386 1.591-1.591M3 12h2.25m.386-6.364 1.591 1.591" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.5 12a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
     </svg>
   )
 }
