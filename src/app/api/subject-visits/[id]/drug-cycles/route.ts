@@ -4,13 +4,13 @@ import { authenticateUser, createSupabaseAdmin, verifyStudyMembership } from '@/
 // GET /api/subject-visits/[id]/drug-cycles - Per-visit per-drug cycles with compliance fields
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { user, error: authError, status: authStatus } = await authenticateUser(request)
     if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
     const supabase = createSupabaseAdmin()
-    const { id: visitId } = params
+    const { id: visitId } = await params
 
     // Load visit to verify membership
     const { data: visit, error: vErr } = await supabase

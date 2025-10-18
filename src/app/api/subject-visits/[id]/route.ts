@@ -8,12 +8,12 @@ import type { SubjectVisitInsert, SubjectVisitUpdate, VisitScheduleHistoryInsert
 // GET /api/subject-visits/[id] - Get specific subject visit
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { user, error: authError, status } = await authenticateUser(request)
     if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: status || 401 })
-    const visitId = params.id
+    const { id: visitId } = await params
     
     // Verify the JWT token
     const supabase = createSupabaseAdmin()
@@ -77,7 +77,7 @@ export async function GET(
 // PUT /api/subject-visits/[id] - Update or upsert subject visit (for VisitCard)
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { user, error: authError, status } = await authenticateUser(request)
@@ -87,7 +87,7 @@ export async function PUT(
     const supabase = createSupabaseAdmin()
 
     const rawUpdate = await request.json()
-    const visitId = params.id
+    const { id: visitId } = await params
 
     // If this is an upsert (new visit), we need to create it
     if (rawUpdate.id === visitId && rawUpdate.study_id && rawUpdate.visit_name && rawUpdate.visit_date) {
@@ -290,12 +290,12 @@ export async function PUT(
 // DELETE /api/subject-visits/[id] - Delete specific subject visit
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { user, error: authError, status } = await authenticateUser(request)
     if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: status || 401 })
-    const visitId = params.id
+    const { id: visitId } = await params
     
     // Verify the JWT token
     const supabase = createSupabaseAdmin()

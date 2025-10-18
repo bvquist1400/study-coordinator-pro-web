@@ -5,13 +5,13 @@ import logger from '@/lib/logger'
 // PUT /api/shipments/[id] - Update shipment tracking status
 export async function PUT(
   request: NextRequest, 
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { user, error: authError, status: authStatus } = await authenticateUser(request)
     if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
 
-    const { id } = params
+    const { id } = await params
     const body = await request.json()
     const { tracking_status, actual_delivery } = body || {}
 

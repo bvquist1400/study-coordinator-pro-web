@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser, createSupabaseAdmin, verifyStudyMembership } from '@/lib/api/auth'
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { user, error: authError, status: authStatus } = await authenticateUser(request)
   if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
   const supabase = createSupabaseAdmin()
-  const { id } = params
+  const { id } = await params
   const payload = await request.json()
   const { data: drug } = await (supabase.from as any)('study_drugs').select('study_id').eq('id', id).maybeSingle()
   if (!drug) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -22,11 +22,11 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   return NextResponse.json({ success: true })
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { user, error: authError, status: authStatus } = await authenticateUser(request)
   if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
   const supabase = createSupabaseAdmin()
-  const { id } = params
+  const { id } = await params
   const { data: drug } = await (supabase.from as any)('study_drugs').select('study_id').eq('id', id).maybeSingle()
   if (!drug) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   const membership = await verifyStudyMembership((drug as any).study_id, user.id)
