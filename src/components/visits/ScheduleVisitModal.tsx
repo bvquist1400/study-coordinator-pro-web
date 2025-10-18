@@ -242,7 +242,16 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
     } finally {
       setLoading(false)
     }
-  }, [studyId, allowStudySelection, currentStudyId])
+  }, [
+    studyId,
+    allowStudySelection,
+    currentStudyId,
+    preSelectedSubjectId,
+    preSelectedVisitScheduleId,
+    preSelectedDate,
+    selectedSectionId,
+    preSelectedSectionId
+  ])
 
   useEffect(() => {
     loadData()
@@ -490,7 +499,7 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
         // ignore
       }
     })()
-  }, [selectedSectionId])
+  }, [selectedSectionId, allowStudySelection, currentStudyId, studyId])
 
   const getVisitWindow = () => {
     if (isCustomVisit) return null

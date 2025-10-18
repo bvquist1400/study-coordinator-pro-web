@@ -36,7 +36,27 @@ export default function PerDrugEntry({
   priorCompletedVisitDate
 }: PerDrugEntryProps) {
   const [advancedOpen, setAdvancedOpen] = useState<Record<string, boolean>>({})
+  const formatDrugLabel = (drug?: { id: string; code: string; name: string }) =>
+    drug ? (drug.code ? `${drug.code} — ${drug.name}` : drug.name) : ''
+  const selectedDrugIds = new Set(
+    (cycles || [])
+      .map((cycle) => cycle.drug_id)
+      .filter((id): id is string => Boolean(id))
+  )
+  const allDrugsAssigned =
+    !disabled &&
+    drugOptions.length > 0 &&
+    selectedDrugIds.size >= drugOptions.length
+
   const addCycle = () => {
+    if (allDrugsAssigned) return
+
+    const usedIds = new Set(
+      (cycles || [])
+        .map((cycle) => cycle.drug_id)
+        .filter((id): id is string => Boolean(id))
+    )
+    const availableDrug = drugOptions.find((option) => !usedIds.has(option.id))
     const nowId = Date.now().toString()
     const newCycle: DrugCycleEntry = {
       id: nowId,
@@ -48,10 +68,9 @@ export default function PerDrugEntry({
       tablets_returned: 0,
       last_dose_date: defaultLastDoseDate || ''
     }
-    // If there is exactly one study drug, auto-select it
-    if (drugOptions.length === 1) {
-      newCycle.drug_id = drugOptions[0].id
-      newCycle.drug_label = `${drugOptions[0].name}`
+    if (availableDrug) {
+      newCycle.drug_id = availableDrug.id
+      newCycle.drug_label = formatDrugLabel(availableDrug)
     }
     onChange([...(cycles || []), newCycle])
   }
@@ -68,7 +87,7 @@ export default function PerDrugEntry({
     const updated = (cycles || []).map(c => {
       if (!c.drug_id) {
         changed = true
-        return { ...c, drug_id: only.id, drug_label: `${only.name}` }
+        return { ...c, drug_id: only.id, drug_label: formatDrugLabel(only) }
       }
       return c
     })
@@ -110,12 +129,22 @@ export default function PerDrugEntry({
           <button
             type="button"
             onClick={addCycle}
-            className="text-blue-400 hover:text-blue-300 text-sm font-medium transition-colors"
+            disabled={allDrugsAssigned}
+            className={`text-sm font-medium transition-colors ${
+              allDrugsAssigned
+                ? 'text-gray-500 cursor-not-allowed'
+                : 'text-blue-400 hover:text-blue-300'
+            }`}
           >
             + Add another drug
           </button>
         )}
       </div>
+      {allDrugsAssigned && !disabled && (
+        <div className="text-xs text-gray-400 text-right">
+          All configured study drugs already have an entry for this visit.
+        </div>
+      )}
 
       {(cycles || []).length === 0 ? (
         <div className="text-gray-500 text-sm italic">No drug entries</div>
@@ -152,15 +181,27 @@ export default function PerDrugEntry({
                         const selected = drugOptions.find(d => d.id === e.target.value)
                         updateCycleFields(c.id, {
                           drug_id: e.target.value || undefined,
-                          drug_label: selected ? `${selected.name}` : ''
+                          drug_label: formatDrugLabel(selected)
                         })
                       }}
                       className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
                     >
                       <option value="">Select a drug…</option>
-                      {drugOptions.map(d => (
-                        <option key={d.id} value={d.id}>{d.code} — {d.name}</option>
-                      ))}
+                      {drugOptions.map(d => {
+                        const isSelectedElsewhere = (cycles || []).some(
+                          other => other.id !== c.id && other.drug_id === d.id
+                        )
+                        return (
+                          <option
+                            key={d.id}
+                            value={d.id}
+                            disabled={isSelectedElsewhere}
+                          >
+                            {d.code} — {d.name}
+                            {isSelectedElsewhere ? ' (already used)' : ''}
+                          </option>
+                        )
+                      })}
                     </select>
                   )}
                 </div>

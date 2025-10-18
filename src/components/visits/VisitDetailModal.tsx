@@ -297,7 +297,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
 
     // Validate aggregated cycles (dispense and return in same visit supported)
     formData.cycles.forEach((c, index) => {
-      if (!c.drug_label.trim()) warnings.push(`Drug entry ${index + 1}: Drug is required`)
+      if (!c.drug_id) warnings.push(`Drug entry ${index + 1}: Select a study drug`)
       const total = c.tablets_dispensed ?? ((c.bottles || 0) * (c.tablets_per_bottle || 0))
       if (!total || total <= 0) warnings.push(`Drug entry ${index + 1}: Total tablets dispensed must be > 0`)
       if (!c.start_date) warnings.push(`Drug entry ${index + 1}: Start date is required`)
@@ -313,10 +313,12 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
     return warnings
   }
 
-  // Send multi-bottle data to API endpoint instead of direct database insertion
+  // Send per-drug aggregated data to API endpoint instead of direct database insertion
   const saveAggregatedCompliance = async (token: string) => {
     const defaultVisitDate = visit?.visit_date?.split('T')[0] || ''
-    const cyclesPayload = formData.cycles.map(c => ({
+    const cyclesPayload = formData.cycles
+      .filter(c => c.drug_id)
+      .map(c => ({
       drug_label: c.drug_label,
       drug_id: c.drug_id,
       bottles: c.bottles,
@@ -612,7 +614,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
             </div>
           )}
 
-          {/* Multi-Bottle Drug Accountability Section (always available for multi-drug support) */}
+          {/* Drug Accountability Section (per-drug aggregated entries) */}
           {(() => {
             const ipSectionRequired = Boolean(inferredRequirements.drug_dispensing_required || visit.drug_dispensing_required)
           return (
@@ -626,7 +628,7 @@ export default function VisitDetailModal({ visitId, onClose, onUpdate }: VisitDe
 
               {/* Brief blurb explaining the process */}
               <p className="text-sm text-gray-300 bg-gray-800/40 border border-gray-700 rounded-md p-3">
-                Record returns for medication dispensed previously. We will compute expected taken and compliance on save.
+                Track each study drug once per visit—enter the total tablets dispensed and returned, no bottle identifiers needed. Compliance is computed automatically on save.
               </p>
 
               {/* Aggregated per-drug entry */}

@@ -234,7 +234,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
     } finally {
       setLoading(false)
     }
-  }, [studyId, daysAhead])
+  }, [studyId, daysAhead, onCountChange])
 
   useEffect(() => { load() }, [load])
 
@@ -279,12 +279,12 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
     return d >= now && d <= limit
   }
 
-  const ageInDays = (dateStr: string | null) => {
+  const ageInDays = useCallback((dateStr: string | null) => {
     if (!dateStr) return 0
     const d = new Date(dateStr)
     const ms = now.getTime() - d.getTime()
     return Math.floor(ms / (1000*60*60*24))
-  }
+  }, [now])
 
   // Build categories
   const expiringSoon = kits.filter((kit: LabKit) => kit.status === 'available' && withinDays(kit.expiration_date as any, EXPIRING_DAYS))
@@ -403,7 +403,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
       default:
         return {}
     }
-  }, [activeSupplyDeficit, expiringSoon, pendingAging, shippedStuck, lowBuffer, expired])
+  }, [activeSupplyDeficit, expiringSoon, pendingAging, shippedStuck, lowBuffer, expired, ageInDays])
 
   const dismissAlert = useCallback(async (alertId: string, conditions: Record<string, unknown>) => {
     if (studyId === 'all') return false
@@ -426,8 +426,6 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
         const body = await response.json().catch(() => ({}))
         throw new Error(body.error || 'Failed to dismiss alert.')
       }
-
-      const body = await response.json().catch(() => ({}))
 
       setDismissed(prev => {
         const next = new Set(prev)
@@ -580,7 +578,7 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
     } finally {
       setProcessingOrderId(null)
     }
-  }, [load, onOrderReceived])
+  }, [load, onOrderReceived, studyId])
 
   const Section = ({
     id,

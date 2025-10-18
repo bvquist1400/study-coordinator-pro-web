@@ -53,7 +53,7 @@ export default function CreateShipmentModal({ studyId, selectedKitIds = [], onCl
           // Cross-study mode - no kits to display in table
           setKits([])
         }
-      } catch (_e) {
+      } catch {
         setKits([])
       } finally {
         setLoading(false)
@@ -104,7 +104,7 @@ export default function CreateShipmentModal({ studyId, selectedKitIds = [], onCl
       }
       onSuccess()
       onClose()
-    } catch (_e) {
+    } catch {
       setErrorMsg('Failed to create shipments')
     } finally {
       setSubmitting(false)

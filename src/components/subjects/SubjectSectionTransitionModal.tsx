@@ -34,7 +34,7 @@ export default function SubjectSectionTransitionModal({ studyId, subjectId, onCl
           setSections(list)
           setToSectionId(list[0]?.id || '')
         }
-      } catch (e) {
+      } catch {
         // ignore
       } finally {
         setLoading(false)
@@ -123,4 +123,3 @@ export default function SubjectSectionTransitionModal({ studyId, subjectId, onCl
     </div>
   )
 }
-

@@ -137,6 +137,7 @@ export default function SubjectVisitTimelineTable({
   const [showScheduleModal, setShowScheduleModal] = useState(false)
   const [preSchedule, setPreSchedule] = useState<{ scheduleId: string | null; date: string | null; sectionId: string | null }>({ scheduleId: null, date: null, sectionId: null })
   const [rescheduleVisit, setRescheduleVisit] = useState<TimelineVisit | null>(null)
+  const ipDispensingHistory = metrics?.ip_dispensing_history
 
   const loadTimelineData = useCallback(async () => {
     try {
@@ -161,7 +162,7 @@ export default function SubjectVisitTimelineTable({
         if (studyMeta && typeof (studyMeta as any).anchor_day === 'number') {
           resolvedAnchorDay = (studyMeta as any).anchor_day
         }
-      } catch (_studyErr) {
+      } catch {
         resolvedAnchorDay = 0
       }
 
@@ -179,7 +180,7 @@ export default function SubjectVisitTimelineTable({
           schedules = data.visitSchedules
         }
       } catch (apiError) {
-        console.log('API error:', apiError)
+        console.warn('Failed to load visit schedules', apiError)
       }
 
       // Fetch subject section assignments (to get per-section anchor dates)
@@ -283,9 +284,9 @@ export default function SubjectVisitTimelineTable({
       }
 
       // Also overlay server-computed compliance from metrics (already fetched via API with admin privileges)
-      if (metrics?.ip_dispensing_history && Array.isArray(metrics.ip_dispensing_history)) {
+      if (Array.isArray(ipDispensingHistory)) {
         const fromMetrics = new Map<string, { compliance_percentage: number | null; is_compliant: boolean | null }>()
-        for (const h of metrics.ip_dispensing_history as any[]) {
+        for (const h of ipDispensingHistory as any[]) {
           if (h.visit_id && (h.compliance_percentage !== null && h.compliance_percentage !== undefined)) {
             fromMetrics.set(h.visit_id as string, {
               compliance_percentage: Number(h.compliance_percentage),
@@ -354,19 +355,19 @@ export default function SubjectVisitTimelineTable({
     } finally {
       setLoading(false)
     }
-  }, [subjectId, studyId, anchorDate])
+  }, [subjectId, studyId, anchorDate, buildCompleteTimeline, ipDispensingHistory])
 
   useEffect(() => {
     loadTimelineData()
   }, [loadTimelineData])
 
-  const buildCompleteTimeline = (
+  const buildCompleteTimeline = useCallback((
     schedules: VisitSchedule[], 
     visits: SubjectVisit[], 
     anchorDate: string,
     anchorDay: number
   ): TimelineVisit[] => {
-    let timeline: TimelineVisit[] = []
+    const timeline: TimelineVisit[] = []
     const anchorDateObj = parseDateUTC(anchorDate) || new Date(anchorDate)
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -507,7 +508,7 @@ export default function SubjectVisitTimelineTable({
     timeline.sort((a, b) => new Date(a.scheduled_date).getTime() - new Date(b.scheduled_date).getTime())
 
     return timeline
-  }
+  }, [sectionAnchors])
 
   const toggleRowExpansion = (visitId: string) => {
     const newExpanded = new Set(expandedRows)
@@ -610,8 +611,6 @@ export default function SubjectVisitTimelineTable({
       }
       
       if (data) {
-        console.log('Successfully updated visit_not_needed:', data)
-        // Soft refresh state from DB for accuracy, but not required
         await loadTimelineData()
       }
     } catch (error) {
@@ -676,7 +675,6 @@ export default function SubjectVisitTimelineTable({
       }
 
       if (data) {
-        console.log('Successfully created visit as not needed:', data)
         // Reload the timeline data to reflect new record
         await loadTimelineData()
       }

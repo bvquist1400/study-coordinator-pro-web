@@ -3,8 +3,8 @@
 Last updated: October 2025
 
 ## What This Covers
-- Recording multiple drugs/bottles for a single visit using the `subject_drug_cycles` table
-- How the UI maps to the cycles model (dispense + return in one save)
+- Recording multiple study drugs for a single visit (one aggregated row per drug) using the `subject_drug_cycles` table
+- How the UI maps to the cycles model (dispense + return captured in one save)
 - How expected vs actual doses are computed with per-drug metadata
 
 ## Before You Start
@@ -13,12 +13,15 @@ Last updated: October 2025
 
 ## Recording IP Actions (Visit Detail Modal)
 1. Open a subject visit and choose **Edit Visit**.
-2. In **IP/Drug Compliance**, add rows under:
-   - **Dispense**: one row per drug/bottle. Provide `Drug`, `Bottle/Kit ID`, `Tablets Dispensed`, `Dispensing Date`.
-   - **Returns**: one row per bottle being returned. Provide `Drug`, `Bottle/Kit ID`, `Tablets Returned`, `Last Dose Date`.
-3. Save once. The UI sends a `cycles` payload (per drug/bottle) to `PUT /api/subject-visits/:id/ip-accountability`.
+2. In **IP/Drug Compliance**, add a row for each study drug that applies to the visit. For each row capture:
+   - `Drug` (required) — selected from the configured study drugs.
+   - `Tablets Dispensed` (required) — aggregate count handed to the subject since the prior visit.
+   - `Dispensing Date` (required) — usually the current visit date or the prior completed visit date.
+   - `Tablets Returned` — total tablets received back at this visit (defaults to 0).
+   - `Last Dose Date` — last day the subject took the drug, used for expected dose math.
+3. Save once. The UI sends a `cycles` payload (per drug) to `PUT /api/subject-visits/:id/ip-accountability`.
 
-The server writes/updates rows in `subject_drug_cycles`, ensuring atomic updates for all bottles.
+The server writes/updates rows in `subject_drug_cycles`, ensuring atomic updates for every drug recorded in the visit.
 
 ## Data Model (Recap)
 - `subject_drug_cycles`: primary table storing dispensed/returned counts, dosing, last dose date, computed compliance metrics.

@@ -9,7 +9,6 @@ import EmptyState from './EmptyState'
 import { EMPTY_STATE_TYPES, ACTION_TYPES } from '@/lib/lab-kits/empty-states'
 
 interface LabKitInventoryProps {
-  studyId: string
   refreshKey?: number
   onRefresh: () => void
   showExpiringOnly?: boolean
@@ -1053,7 +1052,6 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
           searchTerm={searchTerm}
           statusFilter={statusFilter}
           showExpiringOnly={showExpiringOnly}
-          studyId={studyId}
           onClearFilters={() => {
             setSearchTerm('')
             setStatusFilter('available')
@@ -1198,7 +1196,6 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
 }
 
 interface BulkPendingShipmentModalProps {
-  studyId: string
   selectedIds: string[]
   onClose: () => void
   onDone: () => void
@@ -1238,7 +1235,7 @@ function BulkPendingShipmentModal({ studyId, selectedIds, onClose, onDone }: Bul
         return
       }
       setResult(json)
-    } catch (_e) {
+    } catch {
       setErrorMsg('Failed to mark pending shipment')
     } finally {
       setSubmitting(false)
@@ -1681,7 +1678,6 @@ function EmptyStateHandler({
   searchTerm,
   statusFilter,
   showExpiringOnly,
-  studyId,
   onClearFilters,
   onOpenAddKit,
   onOpenBulkImport,

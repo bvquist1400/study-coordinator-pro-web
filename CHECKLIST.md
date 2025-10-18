@@ -51,7 +51,7 @@ Last updated: 2025-09-06
 
 ## 🟠 High — Next
 - [ ] Enable multi-drug (MVP)
-  - Do: Always show multi-bottle IP section in visit modal; use existing batch RPC to record multiple bottles per visit; set study dosing to BID for your test study.
+  - Do: Keep the per-drug IP section in the visit modal, ensure one row per study drug with aggregate tablet counts, and route saves through a single transactional call to persist `subject_drug_cycles`; set study dosing to BID for your test study.
   - Docs: `docs/multi-drug-mvp.md`
   - Status: MVP supported; section-level dosing override now respected.
 - [ ] Standardize error handling (no alert/console only)

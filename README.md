@@ -95,7 +95,7 @@ Auth
 
 IP Compliance
 
-- UI: Visit Details shows "IP Compliance Calculation" with per-drug entry (Start date, total dispensed, returned, last dose date) with a prior-visit date suggestion.
+- UI: Visit Details shows "IP Compliance Calculation" with one row per study drug (totals for tablets dispensed/returned, start date, last dose date) and auto-suggested prior visit dates—no bottle IDs required.
 - Writes: `PUT /api/subject-visits/[id]/ip-accountability` requires `cycles` (per-drug) and updates `subject_drug_cycles`. Legacy single-bottle formats are removed.
 - Reads:
   - Per-visit, per-drug cycles: `GET /api/subject-visits/[id]/drug-cycles`

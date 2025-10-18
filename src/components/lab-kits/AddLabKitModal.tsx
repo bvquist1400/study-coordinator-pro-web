@@ -161,7 +161,10 @@ export default function AddLabKitModal({ studyId, onClose, onAdd, prefill }: Add
   const kitTypeMap = useMemo(() => new Map(kitTypes.map(type => [type.id, type])), [kitTypes])
   const selectedKitType = formData.kit_type_id ? kitTypeMap.get(formData.kit_type_id) || null : null
   const visitScheduleMap = useMemo(() => new Map(visitSchedules.map(schedule => [schedule.id, schedule])), [visitSchedules])
-  const recommendedRequirements = formData.kit_type_id ? (requirementsByKitType[formData.kit_type_id] || []) : []
+  const recommendedRequirements = useMemo(
+    () => (formData.kit_type_id ? (requirementsByKitType[formData.kit_type_id] || []) : []),
+    [formData.kit_type_id, requirementsByKitType]
+  )
   const recommendedVisitIds = useMemo(() => new Set(recommendedRequirements.map(req => req.visit_schedule_id).filter(Boolean) as string[]), [recommendedRequirements])
   const recommendedVisits = visitSchedules.filter(schedule => recommendedVisitIds.has(schedule.id))
   const otherVisits = visitSchedules.filter(schedule => !recommendedVisitIds.has(schedule.id))

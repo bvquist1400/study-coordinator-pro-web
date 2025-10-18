@@ -26,7 +26,7 @@ export default function OrdersAndShipmentsView({
   studyId,
   ordersRefreshKey,
   shipmentsRefreshKey,
-  onOrdersRefresh,
+  onOrdersRefresh: _onOrdersRefresh,
   onShipmentsRefresh,
   onOrderReceived,
   onLocateKit,

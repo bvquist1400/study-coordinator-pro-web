@@ -89,7 +89,7 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
           const { sections } = await resp.json()
           setSections(sections || [])
         }
-      } catch (e) {
+      } catch {
         // ignore
       } finally {
         setSecLoading(false)
@@ -225,7 +225,7 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
         const err = await resp.json().catch(() => ({}))
         setErrors({ general: err.error || 'Failed to close out study' })
       }
-    } catch (_e) {
+    } catch {
       setErrors({ general: 'Unexpected error closing out study' })
     } finally {
       setIsSubmitting(false)
@@ -249,7 +249,7 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
         const err = await resp.json().catch(() => ({}))
         setErrors({ general: err.error || 'Failed to delete study' })
       }
-    } catch (_e) {
+    } catch {
       setErrors({ general: 'Unexpected error deleting study' })
     } finally {
       setIsSubmitting(false)
