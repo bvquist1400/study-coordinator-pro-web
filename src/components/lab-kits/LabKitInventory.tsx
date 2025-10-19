@@ -1197,6 +1197,7 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
 }
 
 interface BulkPendingShipmentModalProps {
+  studyId: string
   selectedIds: string[]
   onClose: () => void
   onDone: () => void
