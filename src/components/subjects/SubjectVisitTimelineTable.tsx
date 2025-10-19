@@ -139,6 +139,146 @@ export default function SubjectVisitTimelineTable({
   const [rescheduleVisit, setRescheduleVisit] = useState<TimelineVisit | null>(null)
   const ipDispensingHistory = metrics?.ip_dispensing_history
 
+  const buildCompleteTimeline = useCallback((
+    schedules: VisitSchedule[], 
+    visits: SubjectVisit[], 
+    anchorDate: string,
+    anchorDay: number
+  ): TimelineVisit[] => {
+    const timeline: TimelineVisit[] = []
+    const anchorDateObj = parseDateUTC(anchorDate) || new Date(anchorDate)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    
+    if (!anchorDate) {
+      console.warn('⚠️ No anchor date provided for timeline calculations!')
+      return []
+    }
+
+    const visitsByScheduleId = new Map<string, SubjectVisit>()
+    visits.forEach(visit => {
+      if (visit.visit_schedule_id) {
+        visitsByScheduleId.set(visit.visit_schedule_id, visit)
+      }
+    })
+
+    schedules.forEach((schedule) => {
+      const baseline = anchorDateObj
+      const windowBefore = typeof schedule.window_before_days === 'number' ? schedule.window_before_days : 0
+      const windowAfter = typeof schedule.window_after_days === 'number' ? schedule.window_after_days : 0
+      const scheduleDayRaw = typeof schedule.visit_day === 'number' ? schedule.visit_day : 0
+      const normalizedVisitDay = anchorDay === 1 ? Math.max(scheduleDayRaw - 1, 0) : scheduleDayRaw
+
+      const calc = calculateVisitDate(
+        baseline,
+        normalizedVisitDay,
+        'days',
+        0,
+        windowBefore,
+        windowAfter
+      )
+      const scheduledCalcDate = calc.scheduledDate
+      const windowStart = calc.windowStart
+      const windowEnd = calc.windowEnd
+
+      const actualVisit = visitsByScheduleId.get(schedule.id)
+      
+      let status: TimelineVisit['status'] = 'not_scheduled'
+      let isOverdue = false
+      let isWithinWindow = true
+      const actualVisitDate = actualVisit ? actualVisit.visit_date : null
+
+      if (actualVisit) {
+        status = actualVisit.status
+        const visitDate = parseDateUTC(actualVisit.visit_date) || new Date(actualVisit.visit_date)
+        isWithinWindow = visitDate >= windowStart && visitDate <= windowEnd
+        if (actualVisit.status === 'scheduled' && visitDate < today) {
+          isOverdue = true
+        }
+      } else {
+        if (scheduledCalcDate < today) {
+          status = 'not_scheduled'
+          isOverdue = true
+        } else {
+          status = 'upcoming'
+        }
+      }
+
+      timeline.push({
+        id: actualVisit?.id || `schedule-${schedule.id}`,
+        visit_name: schedule.visit_name,
+        visit_number: schedule.visit_number,
+        visit_day: schedule.visit_day,
+        scheduled_date: scheduledCalcDate.toISOString(),
+        actual_date: actualVisitDate,
+        status,
+        window_start: windowStart.toISOString(),
+        window_end: windowEnd.toISOString(),
+        procedures: schedule.procedures,
+        procedures_completed: actualVisit?.procedures_completed || null,
+        notes: actualVisit?.notes || null,
+        is_overdue: isOverdue,
+        is_within_window: isWithinWindow,
+        ip_dispensed: actualVisit?.ip_dispensed || null,
+        ip_returned: actualVisit?.ip_returned || null,
+        ip_id: actualVisit?.ip_id || null,
+        return_ip_id: (actualVisit as any)?.return_ip_id || null,
+        compliance_percentage: null,
+        is_compliant: null,
+        visit_not_needed: actualVisit?.visit_not_needed || null,
+        is_unscheduled: (actualVisit as any)?.is_unscheduled ?? null,
+        unscheduled_reason: (actualVisit as any)?.unscheduled_reason || null,
+        visit_schedule_id: schedule.id,
+        subject_section_id: (actualVisit as any)?.subject_section_id || null,
+        reschedule_history: []
+      })
+    })
+
+    const unscheduledVisits = (visits || []).filter((visit: any) => !visit.visit_schedule_id)
+    for (const visit of unscheduledVisits as any[]) {
+      const visitDate = parseDateUTC(visit.visit_date) || new Date(visit.visit_date)
+      const visitIso = visitDate.toISOString()
+      const status = visit.status as TimelineVisit['status']
+      const isOverdue = status === 'scheduled' && visitDate < today
+      const sectionMeta = sectionAnchors.find(s => s.id === visit.subject_section_id) || null
+
+      timeline.push({
+        id: visit.id,
+        visit_name: visit.visit_name,
+        visit_number: null,
+        visit_day: null,
+        scheduled_date: visitIso,
+        actual_date: visit.status === 'scheduled' || visit.status === 'completed' ? visit.visit_date : null,
+        status,
+        window_start: visitIso,
+        window_end: visitIso,
+        procedures: [],
+        procedures_completed: visit.procedures_completed || null,
+        notes: visit.notes || null,
+        is_overdue: isOverdue,
+        is_within_window: visit.is_within_window ?? true,
+        ip_dispensed: visit.ip_dispensed || null,
+        ip_returned: visit.ip_returned || null,
+        ip_id: visit.ip_id || null,
+        return_ip_id: visit.return_ip_id || null,
+        compliance_percentage: null,
+        is_compliant: null,
+        visit_not_needed: visit.visit_not_needed || null,
+        is_unscheduled: visit.is_unscheduled ?? true,
+        unscheduled_reason: visit.unscheduled_reason || null,
+        visit_schedule_id: null,
+        subject_section_id: visit.subject_section_id || null,
+        reschedule_history: [],
+        section_code: sectionMeta?.section_code || null,
+        section_order: sectionMeta?.section_order ?? null
+      })
+    }
+
+    timeline.sort((a, b) => new Date(a.scheduled_date).getTime() - new Date(b.scheduled_date).getTime())
+
+    return timeline
+  }, [sectionAnchors])
+
   const loadTimelineData = useCallback(async () => {
     try {
       setLoading(true)
@@ -360,155 +500,6 @@ export default function SubjectVisitTimelineTable({
   useEffect(() => {
     loadTimelineData()
   }, [loadTimelineData])
-
-  const buildCompleteTimeline = useCallback((
-    schedules: VisitSchedule[], 
-    visits: SubjectVisit[], 
-    anchorDate: string,
-    anchorDay: number
-  ): TimelineVisit[] => {
-    const timeline: TimelineVisit[] = []
-    const anchorDateObj = parseDateUTC(anchorDate) || new Date(anchorDate)
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    
-    if (!anchorDate) {
-      console.warn('⚠️ No anchor date provided for timeline calculations!')
-      return []
-    }
-
-    // Create a map of actual visits by schedule ID
-    const visitsByScheduleId = new Map<string, SubjectVisit>()
-    visits.forEach(visit => {
-      if (visit.visit_schedule_id) {
-        visitsByScheduleId.set(visit.visit_schedule_id, visit)
-      }
-    })
-
-    // Process each scheduled visit
-    schedules.forEach((schedule, _index) => {
-      const baseline = anchorDateObj
-      const windowBefore = typeof schedule.window_before_days === 'number' ? schedule.window_before_days : 0
-      const windowAfter = typeof schedule.window_after_days === 'number' ? schedule.window_after_days : 0
-      const scheduleDayRaw = typeof schedule.visit_day === 'number' ? schedule.visit_day : 0
-      const normalizedVisitDay = anchorDay === 1 ? Math.max(scheduleDayRaw - 1, 0) : scheduleDayRaw
-
-      const calc = calculateVisitDate(
-        baseline,
-        normalizedVisitDay,
-        'days',
-        0,
-        windowBefore,
-        windowAfter
-      )
-      const scheduledCalcDate = calc.scheduledDate
-      const windowStart = calc.windowStart
-      const windowEnd = calc.windowEnd
-
-      // Check if there's an actual visit for this schedule
-      const actualVisit = visitsByScheduleId.get(schedule.id)
-      
-      let status: TimelineVisit['status'] = 'not_scheduled'
-      let isOverdue = false
-      let isWithinWindow = true
-      const actualVisitDate = actualVisit ? actualVisit.visit_date : null
-
-      if (actualVisit) {
-        status = actualVisit.status
-        const visitDate = parseDateUTC(actualVisit.visit_date) || new Date(actualVisit.visit_date)
-
-        // Check if within window using the adjusted bounds
-        isWithinWindow = visitDate >= windowStart && visitDate <= windowEnd
-
-        // Check if overdue
-        if (actualVisit.status === 'scheduled' && visitDate < today) {
-          isOverdue = true
-        }
-      } else {
-        // No actual visit scheduled yet
-        if (scheduledCalcDate < today) {
-          status = 'not_scheduled'
-          isOverdue = true
-        } else {
-          status = 'upcoming'
-        }
-      }
-
-      timeline.push({
-        id: actualVisit?.id || `schedule-${schedule.id}`,
-        visit_name: schedule.visit_name,
-        visit_number: schedule.visit_number,
-        visit_day: schedule.visit_day,
-        scheduled_date: scheduledCalcDate.toISOString(),
-        actual_date: actualVisitDate,
-        status,
-        window_start: windowStart.toISOString(),
-        window_end: windowEnd.toISOString(),
-        procedures: schedule.procedures,
-        procedures_completed: actualVisit?.procedures_completed || null,
-        notes: actualVisit?.notes || null,
-        is_overdue: isOverdue,
-        is_within_window: isWithinWindow,
-        ip_dispensed: actualVisit?.ip_dispensed || null,
-        ip_returned: actualVisit?.ip_returned || null,
-        ip_id: actualVisit?.ip_id || null,
-        return_ip_id: (actualVisit as any)?.return_ip_id || null,
-        compliance_percentage: null, // Will be calculated from drug_compliance table
-        is_compliant: null,
-        visit_not_needed: actualVisit?.visit_not_needed || null,
-        is_unscheduled: (actualVisit as any)?.is_unscheduled ?? null,
-        unscheduled_reason: (actualVisit as any)?.unscheduled_reason || null,
-        visit_schedule_id: schedule.id,
-        subject_section_id: (actualVisit as any)?.subject_section_id || null,
-        reschedule_history: []
-      })
-    })
-
-    const unscheduledVisits = (visits || []).filter((visit: any) => !visit.visit_schedule_id)
-    for (const visit of unscheduledVisits as any[]) {
-      const visitDate = parseDateUTC(visit.visit_date) || new Date(visit.visit_date)
-      const visitIso = visitDate.toISOString()
-      const status = visit.status as TimelineVisit['status']
-      const isOverdue = status === 'scheduled' && visitDate < today
-      const sectionMeta = sectionAnchors.find(s => s.id === visit.subject_section_id) || null
-
-      timeline.push({
-        id: visit.id,
-        visit_name: visit.visit_name,
-        visit_number: null,
-        visit_day: null,
-        scheduled_date: visitIso,
-        actual_date: visit.status === 'scheduled' || visit.status === 'completed' ? visit.visit_date : null,
-        status,
-        window_start: visitIso,
-        window_end: visitIso,
-        procedures: [],
-        procedures_completed: visit.procedures_completed || null,
-        notes: visit.notes || null,
-        is_overdue: isOverdue,
-        is_within_window: visit.is_within_window ?? true,
-        ip_dispensed: visit.ip_dispensed || null,
-        ip_returned: visit.ip_returned || null,
-        ip_id: visit.ip_id || null,
-        return_ip_id: visit.return_ip_id || null,
-        compliance_percentage: null,
-        is_compliant: null,
-        visit_not_needed: visit.visit_not_needed || null,
-        is_unscheduled: visit.is_unscheduled ?? true,
-        unscheduled_reason: visit.unscheduled_reason || null,
-        visit_schedule_id: null,
-        subject_section_id: visit.subject_section_id || null,
-        reschedule_history: [],
-        section_code: sectionMeta?.section_code || null,
-        section_order: sectionMeta?.section_order ?? null
-      })
-    }
-
-    // Sort by scheduled date
-    timeline.sort((a, b) => new Date(a.scheduled_date).getTime() - new Date(b.scheduled_date).getTime())
-
-    return timeline
-  }, [sectionAnchors])
 
   const toggleRowExpansion = (visitId: string) => {
     const newExpanded = new Set(expandedRows)
