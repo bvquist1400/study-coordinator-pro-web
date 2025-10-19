@@ -1053,6 +1053,7 @@ export default function LabKitInventory({ studyId, refreshKey, onRefresh, showEx
           searchTerm={searchTerm}
           statusFilter={statusFilter}
           showExpiringOnly={showExpiringOnly}
+          studyId={studyId}
           onClearFilters={() => {
             setSearchTerm('')
             setStatusFilter('available')
