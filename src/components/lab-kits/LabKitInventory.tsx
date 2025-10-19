@@ -9,6 +9,7 @@ import EmptyState from './EmptyState'
 import { EMPTY_STATE_TYPES, ACTION_TYPES } from '@/lib/lab-kits/empty-states'
 
 interface LabKitInventoryProps {
+  studyId: string
   refreshKey?: number
   onRefresh: () => void
   showExpiringOnly?: boolean
