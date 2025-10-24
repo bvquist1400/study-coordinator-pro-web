@@ -73,7 +73,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to resolve memberships' }, { status: 500 })
     }
 
-    const siteIds = (memberships || [])
+    const memberRows = (memberships || []) as Array<{ site_id: string | null }>
+
+    const siteIds = memberRows
       .map((row) => row.site_id)
       .filter((id): id is string => !!id)
 
