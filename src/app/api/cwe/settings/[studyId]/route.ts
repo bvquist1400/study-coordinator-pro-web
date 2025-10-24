@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/api/auth'
 import logger from '@/lib/logger'
+import type { Database } from '@/types/database'
 
 const LIFECYCLE_STAGES = ['start_up', 'active', 'follow_up', 'close_out'] as const
 const RECRUITMENT_STATUSES = ['enrolling', 'paused', 'closed_to_accrual', 'on_hold'] as const
@@ -265,7 +266,8 @@ export async function PATCH(
       visitWeights?: Array<{ id?: string; visitType: string; weight: number }>
     }
 
-    const updates: Record<string, unknown> = {}
+    type StudyUpdatePayload = Database['public']['Tables']['studies']['Update']
+    const updates: StudyUpdatePayload = {}
 
     if (lifecycle) {
       if (!LIFECYCLE_STAGES.includes(lifecycle)) {
@@ -320,14 +322,14 @@ export async function PATCH(
         const missingColumn = message.includes('column') && message.includes('does not exist')
 
         if (missingColumn) {
-          const fallbackUpdates = { ...updates }
-          delete (fallbackUpdates as any).meeting_admin_points
-          delete (fallbackUpdates as any).rubric_trial_type
-          delete (fallbackUpdates as any).rubric_phase
-          delete (fallbackUpdates as any).rubric_sponsor_type
-          delete (fallbackUpdates as any).rubric_visit_volume
-          delete (fallbackUpdates as any).rubric_procedural_intensity
-          delete (fallbackUpdates as any).rubric_notes
+          const fallbackUpdates: StudyUpdatePayload = { ...updates }
+          delete fallbackUpdates.meeting_admin_points
+          delete fallbackUpdates.rubric_trial_type
+          delete fallbackUpdates.rubric_phase
+          delete fallbackUpdates.rubric_sponsor_type
+          delete fallbackUpdates.rubric_visit_volume
+          delete fallbackUpdates.rubric_procedural_intensity
+          delete fallbackUpdates.rubric_notes
 
           if (Object.keys(fallbackUpdates).length > 0) {
             const { error: fallbackError } = await supabase
