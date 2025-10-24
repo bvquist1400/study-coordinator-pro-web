@@ -185,3 +185,10 @@ Note: Re-validated via file presence and references; app now uses per-drug cycle
 - Integration APIs to external EDC
 - Advanced reporting/dashboards; alerts
 - Mobile-friendly data entry flows
+
+## Workload Forecasting — Planned
+- Add coordinator management (capacity, leave windows, study focus) with admin-only UI.
+- Store per-visit effort estimates in SOE templates and monthly operational overhead entries.
+- Build a forecasting service that aggregates visit plans, overhead, and availability into multi-month load projections.
+- Deliver long-horizon dashboards (capacity timeline, study outlook, alert grid) sourced from the forecasting data.
+- Provide a feasibility scenario builder to simulate new study impact before assignment.

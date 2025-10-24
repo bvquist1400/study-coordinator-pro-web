@@ -91,12 +91,25 @@ export interface Database {
           phase: string | null
           indication: string | null
           status: 'enrolling' | 'active' | 'closed_to_enrollment' | 'completed'
+          lifecycle: 'start_up' | 'active' | 'follow_up' | 'close_out'
+          recruitment: 'enrolling' | 'paused' | 'closed_to_accrual' | 'on_hold'
+          protocol_score: number
+          screening_multiplier: number
+          query_multiplier: number
+          meeting_admin_points: number
+          rubric_trial_type: string | null
+          rubric_phase: string | null
+          rubric_sponsor_type: string | null
+          rubric_visit_volume: string | null
+          rubric_procedural_intensity: string | null
+          rubric_notes: string | null
           start_date: string | null
           end_date: string | null
           target_enrollment: number | null
           visit_window_days: number
           inventory_buffer_days: number
           visit_window_buffer_days: number
+          inventory_buffer_kits: number
           delivery_days_default: number
           anchor_day: number
           dosing_frequency: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom'
@@ -118,12 +131,25 @@ export interface Database {
           phase?: string | null
           indication?: string | null
           status?: 'enrolling' | 'active' | 'closed_to_enrollment' | 'completed'
+          lifecycle?: 'start_up' | 'active' | 'follow_up' | 'close_out'
+          recruitment?: 'enrolling' | 'paused' | 'closed_to_accrual' | 'on_hold'
+          protocol_score?: number
+          screening_multiplier?: number
+          query_multiplier?: number
+          meeting_admin_points?: number
+          rubric_trial_type?: string | null
+          rubric_phase?: string | null
+          rubric_sponsor_type?: string | null
+          rubric_visit_volume?: string | null
+          rubric_procedural_intensity?: string | null
+          rubric_notes?: string | null
           start_date?: string | null
           end_date?: string | null
           target_enrollment?: number | null
           visit_window_days?: number
           inventory_buffer_days?: number
           visit_window_buffer_days?: number
+          inventory_buffer_kits?: number
           delivery_days_default?: number
           anchor_day?: number
           dosing_frequency?: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom'
@@ -145,12 +171,25 @@ export interface Database {
           phase?: string | null
           indication?: string | null
           status?: 'enrolling' | 'active' | 'closed_to_enrollment' | 'completed'
+          lifecycle?: 'start_up' | 'active' | 'follow_up' | 'close_out'
+          recruitment?: 'enrolling' | 'paused' | 'closed_to_accrual' | 'on_hold'
+          protocol_score?: number
+          screening_multiplier?: number
+          query_multiplier?: number
+          meeting_admin_points?: number
+          rubric_trial_type?: string | null
+          rubric_phase?: string | null
+          rubric_sponsor_type?: string | null
+          rubric_visit_volume?: string | null
+          rubric_procedural_intensity?: string | null
+          rubric_notes?: string | null
           start_date?: string | null
           end_date?: string | null
           target_enrollment?: number | null
           visit_window_days?: number
           inventory_buffer_days?: number
           visit_window_buffer_days?: number
+          inventory_buffer_kits?: number
           delivery_days_default?: number
           anchor_day?: number
           dosing_frequency?: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom'
@@ -172,7 +211,8 @@ export interface Database {
           enrollment_date: string
           randomization_date: string | null
           treatment_arm: string | null
-          status: 'screening' | 'active' | 'completed' | 'discontinued' | 'withdrawn'
+          status: 'screening' | 'enrolled' | 'active' | 'completed' | 'discontinued' | 'withdrawn'
+          phase: 'active_treatment' | 'follow_up' | 'screen_fail'
           discontinuation_reason: string | null
           discontinuation_date: string | null
           notes: string | null
@@ -188,7 +228,8 @@ export interface Database {
           enrollment_date?: string
           randomization_date?: string | null
           treatment_arm?: string | null
-          status?: 'screening' | 'active' | 'completed' | 'discontinued' | 'withdrawn'
+          status?: 'screening' | 'enrolled' | 'active' | 'completed' | 'discontinued' | 'withdrawn'
+          phase?: 'active_treatment' | 'follow_up' | 'screen_fail'
           discontinuation_reason?: string | null
           discontinuation_date?: string | null
           notes?: string | null
@@ -204,7 +245,8 @@ export interface Database {
           enrollment_date?: string
           randomization_date?: string | null
           treatment_arm?: string | null
-          status?: 'screening' | 'active' | 'completed' | 'discontinued' | 'withdrawn'
+          status?: 'screening' | 'enrolled' | 'active' | 'completed' | 'discontinued' | 'withdrawn'
+          phase?: 'active_treatment' | 'follow_up' | 'screen_fail'
           discontinuation_reason?: string | null
           discontinuation_date?: string | null
           notes?: string | null
@@ -378,6 +420,26 @@ export interface Database {
           notes?: string | null
           created_at?: string
           updated_at?: string
+        }
+      }
+      visit_weights: {
+        Row: {
+          id: string
+          study_id: string | null
+          visit_type: 'screening' | 'baseline' | 'regular' | 'unscheduled' | 'early_termination' | string
+          weight: number
+        }
+        Insert: {
+          id?: string
+          study_id?: string | null
+          visit_type: 'screening' | 'baseline' | 'regular' | 'unscheduled' | 'early_termination' | string
+          weight?: number
+        }
+        Update: {
+          id?: string
+          study_id?: string | null
+          visit_type?: 'screening' | 'baseline' | 'regular' | 'unscheduled' | 'early_termination' | string
+          weight?: number
         }
       }
       subject_visits: {
@@ -997,13 +1059,50 @@ export interface Database {
       }
     }
     Views: {
-      [_ in never]: never
+      cwe_weights: {
+        Row: {
+          study_id: string | null
+          lifecycle_w: number | null
+          recruitment_w: number | null
+          ps: number | null
+          sm: number | null
+          qm: number | null
+        }
+        Insert: never
+        Update: never
+      }
+      cwe_now: {
+        Row: {
+          study_id: string | null
+          raw_now: number | null
+        }
+        Insert: never
+        Update: never
+      }
+      cwe_actuals: {
+        Row: {
+          study_id: string | null
+          raw_actuals: number | null
+        }
+        Insert: never
+        Update: never
+      }
+      cwe_forecast_4w: {
+        Row: {
+          study_id: string | null
+          raw_forecast: number | null
+        }
+        Insert: never
+        Update: never
+      }
     }
     Functions: {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      lifecycle_stage: 'start_up' | 'active' | 'follow_up' | 'close_out'
+      recruitment_status: 'enrolling' | 'paused' | 'closed_to_accrual' | 'on_hold'
+      subject_phase: 'active_treatment' | 'follow_up' | 'screen_fail'
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1039,6 +1138,10 @@ export type VisitScheduleUpdate = Database['public']['Tables']['visit_schedules'
 export type SubjectVisit = Database['public']['Tables']['subject_visits']['Row']
 export type SubjectVisitInsert = Database['public']['Tables']['subject_visits']['Insert']
 export type SubjectVisitUpdate = Database['public']['Tables']['subject_visits']['Update']
+
+export type VisitWeight = Database['public']['Tables']['visit_weights']['Row']
+export type VisitWeightInsert = Database['public']['Tables']['visit_weights']['Insert']
+export type VisitWeightUpdate = Database['public']['Tables']['visit_weights']['Update']
 
 export type StudySection = Database['public']['Tables']['study_sections']['Row']
 export type StudySectionInsert = Database['public']['Tables']['study_sections']['Insert']

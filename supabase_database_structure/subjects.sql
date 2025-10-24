@@ -10,6 +10,7 @@ create table public.subjects (
   randomization_date date null,
   treatment_arm text null,
   status text null default 'active'::text,
+  phase subject_phase not null default 'active_treatment'::subject_phase,
   discontinuation_reason text null,
   discontinuation_date date null,
   notes text null,

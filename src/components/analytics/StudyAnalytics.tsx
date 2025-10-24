@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ScatterChart, Scatter } from 'recharts'
 import { formatDateUTC } from '@/lib/date-utils'
+import WorkloadAnalytics from '@/components/analytics/WorkloadAnalytics'
 
 interface StudyComparison {
   study_id: string
@@ -173,6 +174,8 @@ export default function StudyAnalytics({ className }: StudyAnalyticsProps) {
         <h2 className="text-2xl font-bold text-white">Study Comparisons</h2>
         <p className="text-gray-400">Cross-study performance analysis and benchmarking</p>
       </div>
+
+      <WorkloadAnalytics />
 
       {/* Summary Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

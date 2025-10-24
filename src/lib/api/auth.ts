@@ -4,21 +4,40 @@ import { Database } from '@/types/database'
 import logger from '@/lib/logger'
 
 // Server-side Supabase client factory
-export function createSupabaseAdmin(): SupabaseClient<Database> {
+export function createSupabaseAdmin(token?: string): SupabaseClient<Database> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-  
-  if (!url || !key) {
-    const missing: string[] = []
-    if (!url) missing.push('NEXT_PUBLIC_SUPABASE_URL')
-    if (!key) missing.push('SUPABASE_SERVICE_ROLE_KEY')
-    throw new Error(`Missing Supabase environment variable(s): ${missing.join(', ')}`)
+  if (!url) {
+    throw new Error('Missing Supabase environment variable(s): NEXT_PUBLIC_SUPABASE_URL')
   }
-  
-  return createClient<Database>(url, key, {
+
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (key) {
+    return createClient<Database>(url, key, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    })
+  }
+
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!anon) {
+    throw new Error('Missing Supabase environment variable(s): SUPABASE_SERVICE_ROLE_KEY, NEXT_PUBLIC_SUPABASE_ANON_KEY')
+  }
+
+  if (!token) {
+    throw new Error('Supabase service role key missing and no user token provided for fallback client')
+  }
+
+  return createClient<Database>(url, anon, {
     auth: {
       autoRefreshToken: false,
       persistSession: false
+    },
+    global: {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
     }
   })
 }
@@ -46,7 +65,7 @@ export async function authenticateUser(request: NextRequest): Promise<AuthResult
   const token = authHeader.split(' ')[1]
   
   try {
-    const supabase = createSupabaseAdmin()
+    const supabase = createSupabaseAdmin(token)
     const { data: { user }, error } = await supabase.auth.getUser(token)
     
     if (error || !user) {
