@@ -152,7 +152,11 @@ export async function GET(request: NextRequest) {
     }
 
     if (weightsError || nowError || actualError || forecastError) {
-      logger.error('Error loading CWE workload metrics', [weightsError, nowError, actualError, forecastError].filter(Boolean).map(err => ({ code: err?.code, message: err?.message })))
+      logger.error('Error loading CWE workload metrics', undefined, {
+        errors: [weightsError, nowError, actualError, forecastError]
+          .filter(Boolean)
+          .map(err => ({ code: err?.code, message: err?.message }))
+      })
       return NextResponse.json({ error: 'Failed to load workload metrics' }, { status: 500 })
     }
 
