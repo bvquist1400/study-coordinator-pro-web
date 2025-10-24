@@ -184,16 +184,20 @@ async function loadVisitWeights(
   return { weights: weights as VisitWeightRow[] }
 }
 
-export async function GET(request: NextRequest, { params }: { params: { studyId: string } }) {
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ studyId: string }> }
+) {
   try {
+    const { studyId } = await context.params
     const auth = await authorize(request)
     if ('error' in auth) return auth.error
 
     const { supabase, user } = auth
-    const access = await verifyStudyAccess(supabase, params.studyId, user.id)
+    const access = await verifyStudyAccess(supabase, studyId, user.id)
     if ('error' in access) return access.error
 
-    const weightResult = await loadVisitWeights(supabase, params.studyId)
+    const weightResult = await loadVisitWeights(supabase, studyId)
     if ('error' in weightResult) return weightResult.error
 
     return NextResponse.json(
@@ -205,13 +209,17 @@ export async function GET(request: NextRequest, { params }: { params: { studyId:
   }
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: { studyId: string } }) {
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ studyId: string }> }
+) {
   try {
+    const { studyId } = await context.params
     const auth = await authorize(request)
     if ('error' in auth) return auth.error
 
     const { supabase, user } = auth
-    const access = await verifyStudyAccess(supabase, params.studyId, user.id)
+    const access = await verifyStudyAccess(supabase, studyId, user.id)
     if ('error' in access) return access.error
     const studyRow = access.study as Record<string, unknown>
     const supportsMeeting = Object.prototype.hasOwnProperty.call(studyRow, 'meeting_admin_points')
@@ -305,7 +313,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { studyI
       const { error: updateError } = await supabase
         .from('studies')
         .update(updates)
-        .eq('id', params.studyId)
+        .eq('id', studyId)
 
       if (updateError) {
         const message = (updateError as { message?: string }).message ?? ''
@@ -325,7 +333,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { studyI
             const { error: fallbackError } = await supabase
               .from('studies')
               .update(fallbackUpdates)
-              .eq('id', params.studyId)
+              .eq('id', studyId)
 
             if (fallbackError) {
               logger.error('Failed updating study CWE settings (fallback)', fallbackError)
@@ -344,7 +352,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { studyI
         .filter((row) => typeof row.visitType === 'string')
         .map((row) => ({
           id: row.id,
-          study_id: params.studyId,
+          study_id: studyId,
           visit_type: row.visitType,
           weight: Number(row.weight ?? 1) || 1
         }))
@@ -367,10 +375,10 @@ export async function PATCH(request: NextRequest, { params }: { params: { studyI
 
     }
 
-    const refreshedAccess = await verifyStudyAccess(supabase, params.studyId, user.id)
+    const refreshedAccess = await verifyStudyAccess(supabase, studyId, user.id)
     if ('error' in refreshedAccess) return refreshedAccess.error
 
-    const refreshedWeights = await loadVisitWeights(supabase, params.studyId)
+    const refreshedWeights = await loadVisitWeights(supabase, studyId)
     if ('error' in refreshedWeights) return refreshedWeights.error
 
     return NextResponse.json(

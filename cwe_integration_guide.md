@@ -18,6 +18,20 @@ The CWE module introduces:
   - **Actuals:** Completed visits  
   - **Forecast:** Upcoming 4-week projection
 
+### Implementation Status (Oct 2024)
+- ✅ Schema migration (`20251022_cwe_enhanced.sql`) adds lifecycle/recruitment columns, rubric fields, meeting/admin load, visit weights table, and `cwe_*` views.  
+- ✅ API routes (`/api/analytics/workload`, `/api/cwe/[studyId]`) support service-role client and gracefully fall back to anon tokens or return empty payloads if the migration has not yet run.  
+- ✅ UI: Portfolio workload dashboard (`/workload`) and guided Study Workload Setup page (`/studies/[id]/workload`).  
+- ⚙️ Optional: coordinator metrics capture and automatic refresh hooks to be delivered in a follow-on release.
+
+### Before You Start
+1. Ensure environment variables are set in `.env.local` (and production):  
+   - `NEXT_PUBLIC_SUPABASE_URL`  
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`  
+   - `SUPABASE_SERVICE_ROLE_KEY` (required for write operations; APIs fall back to anon key but lose elevated privileges).  
+2. Apply `migrations/20251022_cwe_enhanced.sql` to your Supabase instance (see “Database Migration” below).  
+3. Restart `next dev` after updating env vars so the runtime picks them up.
+
 ---
 
 ## ⚙️ 1. Database Migration (Supabase SQL)
@@ -120,6 +134,8 @@ group by sv.study_id;
 
 ## 🧱 2. API Routes
 
+> **Note:** Both routes automatically return empty results instead of throwing if the migration has not yet been applied. Once the SQL runs, responses populate with real data.
+
 Add `src/app/api/cwe/[studyId]/route.ts`:
 
 ```ts
@@ -183,6 +199,15 @@ export async function GET(request: NextRequest, { params }: { params: { studyId:
 - Portfolio summary cards with lifecycle, recruitment, meeting load, and forecast status
 - Checklist describing the setup steps before diving into each protocol
 - “Configure Study Workload” button on every card linking to the guided page
+
+---
+
+## 🚀 Deployment Checklist
+
+1. [ ] Set Supabase env vars (`URL`, `ANON`, `SERVICE_ROLE`) for the target environment.  
+2. [ ] Run `migrations/20251022_cwe_enhanced.sql` against Supabase (`supabase db push` or SQL editor).  
+3. [ ] Redeploy the Next.js app so updated API/React components are live.  
+4. [ ] Open `/workload` and `/studies/<id>/workload` to complete the rubric + load configuration for each protocol.
 
 ---
 

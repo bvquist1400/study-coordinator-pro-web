@@ -14,6 +14,19 @@ To replace static feasibility scoring with a dynamic workload system that predic
 - Added **Visit-Level Weighting** to account for differences in visit intensity.  
 - Lifecycle remains the macro-phase driver (`start_up → active → follow_up → close_out`).  
 - Three key measures calculated: **Now (baseline)**, **Actuals (completed visits)**, and **Forecast (upcoming visits)**.
+- Implemented **protocol complexity rubric**, **meeting/admin load**, and guided workload configuration UI in the Study Coordinator Pro web app.
+
+---
+
+## Current Implementation Snapshot
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Schema | ✅ | `studies` table includes lifecycle, recruitment, rubric fields, and meeting/admin load. `visit_weights`, `cwe_*` views active when migration applied. |
+| API | ✅ | `/api/analytics/workload` and `/api/cwe/[studyId]` deliver workload totals, auto-fallback when new tables/views are absent, and support anon-key fallback if service role is missing. |
+| UI | ✅ | `/workload` dashboard surfaces portfolio summary; `/studies/[id]/workload` guides rubric scoring, lifecycle selection, multipliers, meeting load, and visit weights. |
+| Coordinator Metrics Loop | 🚧 Planned | Weekly hours capture not yet wired into the model. |
+| Automation | 🚧 Planned | Automatic refresh hooks (e.g., post-visit completion) to be added after validating manual workflow. |
 
 ---
 
