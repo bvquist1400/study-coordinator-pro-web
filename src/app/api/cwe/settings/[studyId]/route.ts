@@ -221,15 +221,15 @@ export async function PATCH(
     const { supabase, user } = auth
     const access = await verifyStudyAccess(supabase, studyId, user.id)
     if ('error' in access) return access.error
-    const studyRow = access.study as Record<string, unknown>
-    const supportsMeeting = Object.prototype.hasOwnProperty.call(studyRow, 'meeting_admin_points')
+    const studyRow = access.study
+    const supportsMeeting = 'meeting_admin_points' in studyRow
     const supportsRubric = {
-      trialType: Object.prototype.hasOwnProperty.call(studyRow, 'rubric_trial_type'),
-      phase: Object.prototype.hasOwnProperty.call(studyRow, 'rubric_phase'),
-      sponsor: Object.prototype.hasOwnProperty.call(studyRow, 'rubric_sponsor_type'),
-      visitVolume: Object.prototype.hasOwnProperty.call(studyRow, 'rubric_visit_volume'),
-      procedural: Object.prototype.hasOwnProperty.call(studyRow, 'rubric_procedural_intensity'),
-      notes: Object.prototype.hasOwnProperty.call(studyRow, 'rubric_notes')
+      trialType: 'rubric_trial_type' in studyRow,
+      phase: 'rubric_phase' in studyRow,
+      sponsor: 'rubric_sponsor_type' in studyRow,
+      visitVolume: 'rubric_visit_volume' in studyRow,
+      procedural: 'rubric_procedural_intensity' in studyRow,
+      notes: 'rubric_notes' in studyRow
     }
 
     const payload = await request.json().catch(() => null)
