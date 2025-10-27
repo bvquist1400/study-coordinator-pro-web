@@ -187,6 +187,7 @@ Note: Re-validated via file presence and references; app now uses per-drug cycle
 - Mobile-friendly data entry flows
 
 ## Workload Forecasting — Planned
+- CWE_integration_guide.md is a larger overview of the vision
 - Add coordinator management (capacity, leave windows, study focus) with admin-only UI.
 - Store per-visit effort estimates in SOE templates and monthly operational overhead entries.
 - Build a forecasting service that aggregates visit plans, overhead, and availability into multi-month load projections.
