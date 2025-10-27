@@ -12,6 +12,7 @@ interface StudyMeta {
   site_id: string | null
   user_id: string
   created_at: string
+  meeting_admin_points?: number | null
 }
 
 interface WorkloadResponse {
@@ -79,32 +80,28 @@ export async function GET(request: NextRequest) {
       .map((row) => row.site_id)
       .filter((id): id is string => !!id)
 
-    let studiesQuery = supabase
+    const baseQuery = supabase
       .from('studies')
       .select('id, protocol_number, study_title, lifecycle, recruitment, status, site_id, user_id, created_at, meeting_admin_points')
       .order('created_at', { ascending: false })
 
-    if (siteIds.length > 0) {
-      studiesQuery = studiesQuery.in('site_id', siteIds)
-    } else {
-      studiesQuery = studiesQuery.eq('user_id', user.id)
-    }
+    const filteredQuery = siteIds.length > 0
+      ? baseQuery.in('site_id', siteIds)
+      : baseQuery.eq('user_id', user.id)
 
-    let { data: studies, error: studiesError } = await studiesQuery
+    let { data: studies, error: studiesError } = await filteredQuery
 
     if (studiesError?.code === '42703') {
-      studiesQuery = supabase
+      const fallbackQuery = supabase
         .from('studies')
         .select('id, protocol_number, study_title, lifecycle, recruitment, status, site_id, user_id, created_at')
         .order('created_at', { ascending: false })
 
-      if (siteIds.length > 0) {
-        studiesQuery = studiesQuery.in('site_id', siteIds)
-      } else {
-        studiesQuery = studiesQuery.eq('user_id', user.id)
-      }
+      const retryQuery = siteIds.length > 0
+        ? fallbackQuery.in('site_id', siteIds)
+        : fallbackQuery.eq('user_id', user.id)
 
-      const retry = await studiesQuery
+      const retry = await retryQuery
       studies = retry.data
       studiesError = retry.error
     }
