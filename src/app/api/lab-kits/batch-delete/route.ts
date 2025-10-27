@@ -7,6 +7,18 @@ type StudyAccessRow = { id: string; site_id: string | null; user_id: string }
 type LabKitWithStudy = LabKit & { studies: StudyAccessRow }
 type SiteMembershipRow = { site_id: string | null }
 
+function isLabKitWithStudyRow(row: unknown): row is LabKitWithStudy {
+  if (!row || typeof row !== 'object') return false
+  const candidate = row as Partial<LabKitWithStudy> & { studies?: unknown }
+  if (typeof candidate.id !== 'string' || typeof candidate.study_id !== 'string') return false
+  const study = candidate.studies
+  if (!study || typeof study !== 'object') return false
+  const studyCandidate = study as Partial<StudyAccessRow>
+  if (typeof studyCandidate.id !== 'string' || typeof studyCandidate.user_id !== 'string') return false
+  if (!(studyCandidate.site_id === null || typeof studyCandidate.site_id === 'string')) return false
+  return true
+}
+
 function normalizeId(value: unknown): string | null {
   if (typeof value === 'string') {
     const trimmed = value.trim()
@@ -49,20 +61,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to load lab kits' }, { status: 500 })
     }
 
-    const kits = (kitsRaw || []).filter((row): row is LabKitWithStudy => {
-      const candidate = row as Partial<LabKitWithStudy> | null
-      const study = candidate?.studies
-      return (
-        !!candidate &&
-        typeof candidate.id === 'string' &&
-        typeof candidate.study_id === 'string' &&
-        typeof candidate.status === 'string' &&
-        !!study &&
-        typeof study.id === 'string' &&
-        typeof study.user_id === 'string' &&
-        (study.site_id === null || typeof study.site_id === 'string')
-      )
-    })
+    const kits = (kitsRaw || []).reduce<LabKitWithStudy[]>((acc, row) => {
+      if (isLabKitWithStudyRow(row)) acc.push(row)
+      return acc
+    }, [])
 
     if (kits.length === 0) {
       return NextResponse.json({ error: 'Lab kits not found' }, { status: 404 })
