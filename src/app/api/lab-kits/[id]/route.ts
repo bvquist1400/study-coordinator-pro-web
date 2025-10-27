@@ -4,7 +4,17 @@ import type { LabKitUpdate } from '@/types/database'
 import logger from '@/lib/logger'
 
 type StudyAccessRow = { id: string; site_id: string | null; user_id: string }
-type LabKitWithStudy = Record<string, unknown> & { studies: StudyAccessRow; study_kit_types?: { id: string; name: string } | null }
+type JoinedStudyKitType = {
+  id: string
+  name: string | null
+  description?: string | null
+  is_active?: boolean | null
+}
+
+type LabKitWithStudy = Record<string, unknown> & {
+  studies: StudyAccessRow
+  study_kit_types?: JoinedStudyKitType | null
+}
 
 function hasStudyAccess(row: unknown): row is { studies: StudyAccessRow } {
   const candidate = row as { studies?: unknown } | null | undefined
@@ -15,6 +25,16 @@ function hasStudyAccess(row: unknown): row is { studies: StudyAccessRow } {
   const siteId = (study as { site_id?: unknown }).site_id
   const siteValid = siteId === null || typeof siteId === 'string'
   return typeof id === 'string' && typeof userId === 'string' && siteValid
+}
+
+function isLabKitWithStudy(row: unknown): row is LabKitWithStudy {
+  if (!hasStudyAccess(row)) return false
+  const candidate = row as { study_kit_types?: unknown }
+  const kitType = candidate.study_kit_types
+  if (kitType == null) return true
+  if (typeof kitType !== 'object') return false
+  const typed = kitType as { id?: unknown; name?: unknown }
+  return typeof typed.id === 'string'
 }
 
 // GET /api/lab-kits/[id] - Get specific lab kit details
@@ -48,12 +68,12 @@ export async function GET(
     }
 
     // Verify user access to this lab kit's study
-    if (!hasStudyAccess(labKit)) {
+    if (!isLabKitWithStudy(labKit)) {
       logger.error('lab kit missing study join', undefined, { kitId })
       return NextResponse.json({ error: 'Lab kit not found' }, { status: 404 })
     }
 
-    const lk = labKit as LabKitWithStudy
+    const lk = labKit
     const study = lk.studies
     if (study.site_id) {
       const { data: member } = await supabase
