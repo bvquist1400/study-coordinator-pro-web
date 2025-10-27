@@ -1,0 +1,13 @@
+# Supabase CLI project configuration
+# Keeps local commands (db push, gen types) pointed at the same project reference.
+
+[project]
+id = "leszzfzjloftinknohen"
+name = "study-coordinator-pro-web"
+
+[db]
+schema = "public"
+shadow_schema = "supabase_shadow"
+port = 54322
+password = "postgres"
+

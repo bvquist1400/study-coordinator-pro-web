@@ -49,7 +49,7 @@ export async function GET(
 
     // Verify user access to this lab kit's study
     if (!hasStudyAccess(labKit)) {
-      logger.error('lab kit missing study join', { kitId })
+      logger.error('lab kit missing study join', undefined, { kitId })
       return NextResponse.json({ error: 'Lab kit not found' }, { status: 404 })
     }
 
