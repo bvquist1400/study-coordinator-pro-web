@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser, createSupabaseAdmin } from '@/lib/api/auth'
 import logger from '@/lib/logger'
+import type { LabKit } from '@/types/database'
 
 type StudyAccessRow = { id: string; site_id: string | null; user_id: string }
-type LabKitWithStudy = {
-  id: string
-  study_id: string
-  status: string
-  studies: StudyAccessRow
-}
+type LabKitWithStudy = LabKit & { studies: StudyAccessRow }
 type SiteMembershipRow = { site_id: string | null }
 
 function normalizeId(value: unknown): string | null {
@@ -53,7 +49,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to load lab kits' }, { status: 500 })
     }
 
-    const kits = (kitsRaw || []) as LabKitWithStudy[]
+    const kits = (kitsRaw || []).filter((row): row is LabKitWithStudy => {
+      const candidate = row as Partial<LabKitWithStudy> | null
+      const study = candidate?.studies
+      return (
+        !!candidate &&
+        typeof candidate.id === 'string' &&
+        typeof candidate.study_id === 'string' &&
+        typeof candidate.status === 'string' &&
+        !!study &&
+        typeof study.id === 'string' &&
+        typeof study.user_id === 'string' &&
+        (study.site_id === null || typeof study.site_id === 'string')
+      )
+    })
+
+    if (kits.length === 0) {
+      return NextResponse.json({ error: 'Lab kits not found' }, { status: 404 })
+    }
     const kitsById = new Map(kits.map(kit => [kit.id, kit]))
     const missing = kitIds.filter(id => !kitsById.has(id))
 

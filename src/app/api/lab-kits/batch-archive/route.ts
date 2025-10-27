@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser, createSupabaseAdmin } from '@/lib/api/auth'
 import logger from '@/lib/logger'
+import type { LabKit } from '@/types/database'
 
 type StudyAccessRow = { id: string; site_id: string | null; user_id: string }
-type LabKitWithStudy = {
-  id: string
-  study_id: string
-  status: string
-  studies: StudyAccessRow
-}
+type LabKitWithStudy = LabKit & { studies: StudyAccessRow }
 type SiteMembershipRow = { site_id: string | null }
 
 const ARCHIVE_STATUS = 'archived'
