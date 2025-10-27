@@ -6,6 +6,17 @@ import logger from '@/lib/logger'
 type StudyAccessRow = { id: string; site_id: string | null; user_id: string }
 type LabKitWithStudy = Record<string, unknown> & { studies: StudyAccessRow; study_kit_types?: { id: string; name: string } | null }
 
+function hasStudyAccess(row: unknown): row is { studies: StudyAccessRow } {
+  const candidate = row as { studies?: unknown } | null | undefined
+  const study = candidate?.studies as Record<string, unknown> | undefined
+  if (!study || typeof study !== 'object') return false
+  const id = (study as { id?: unknown }).id
+  const userId = (study as { user_id?: unknown }).user_id
+  const siteId = (study as { site_id?: unknown }).site_id
+  const siteValid = siteId === null || typeof siteId === 'string'
+  return typeof id === 'string' && typeof userId === 'string' && siteValid
+}
+
 // GET /api/lab-kits/[id] - Get specific lab kit details
 export async function GET(
   request: NextRequest,
@@ -37,6 +48,11 @@ export async function GET(
     }
 
     // Verify user access to this lab kit's study
+    if (!hasStudyAccess(labKit)) {
+      logger.error('lab kit missing study join', { kitId })
+      return NextResponse.json({ error: 'Lab kit not found' }, { status: 404 })
+    }
+
     const lk = labKit as LabKitWithStudy
     const study = lk.studies
     if (study.site_id) {
@@ -92,7 +108,7 @@ export async function PUT(
       .eq('id', kitId)
       .single()
 
-    if (fetchError || !existingKit) {
+    if (fetchError || !existingKit || !hasStudyAccess(existingKit)) {
       return NextResponse.json({ error: 'Lab kit not found' }, { status: 404 })
     }
 
@@ -209,7 +225,7 @@ export async function DELETE(
       .eq('id', kitId)
       .single()
 
-    if (fetchError || !existingKit) {
+    if (fetchError || !existingKit || !hasStudyAccess(existingKit)) {
       return NextResponse.json({ error: 'Lab kit not found' }, { status: 404 })
     }
 
