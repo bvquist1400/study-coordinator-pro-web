@@ -1059,6 +1059,26 @@ export interface Database {
       }
     }
     Views: {
+      v_subject_drug_compliance: {
+        Row: {
+          id: string
+          subject_id: string
+          visit_id: string | null
+          drug_id: string
+          dispensing_date: string | null
+          ip_last_dose_date: string | null
+          dispensed_count: number
+          returned_count: number
+          expected_taken: number | null
+          actual_taken: number
+          compliance_percentage: number | null
+          is_compliant: boolean | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: never
+        Update: never
+      }
       cwe_weights: {
         Row: {
           study_id: string | null
