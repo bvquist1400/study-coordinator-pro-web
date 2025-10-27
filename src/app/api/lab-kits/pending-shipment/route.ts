@@ -106,10 +106,10 @@ export async function POST(request: NextRequest) {
     // Perform update if any
     let updated = 0
     if (updatableIds.length > 0) {
+      const updatePayload = { status: 'pending_shipment' as KitRow['status'] }
       const { data: updatedRows, error: updErr } = await supabase
         .from('lab_kits')
-        // @ts-expect-error update object
-        .update({ status: 'pending_shipment' })
+        .update(updatePayload)
         .in('id', updatableIds)
         .select('id, accession_number')
       if (updErr) {
