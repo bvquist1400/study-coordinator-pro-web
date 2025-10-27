@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser, createSupabaseAdmin } from '@/lib/api/auth'
 import logger from '@/lib/logger'
+import type { LabKitShipmentUpdate, LabKitUpdate } from '@/types/database'
 
 // PUT /api/shipments/[id] - Update shipment tracking status
 export async function PUT(
@@ -75,7 +76,7 @@ export async function PUT(
     }
 
     // Prepare update data
-    const updateData: any = {
+    const updateData: Partial<LabKitShipmentUpdate> = {
       tracking_status,
       updated_at: new Date().toISOString()
     }
@@ -88,7 +89,6 @@ export async function PUT(
     // Update the shipment
     const { data: updated, error: updateError } = await supabase
       .from('lab_kit_shipments')
-      // @ts-expect-error - dynamic update object
       .update(updateData)
       .eq('id', id)
       .select('id, tracking_status, actual_delivery')
@@ -102,14 +102,13 @@ export async function PUT(
     // Keep related lab kit state in sync when marking delivered.
     if (tracking_status === 'delivered') {
       try {
-        const kitUpdate = { status: 'delivered', updated_at: new Date().toISOString() }
+        const kitUpdate: Partial<LabKitUpdate> = { status: 'delivered', updated_at: new Date().toISOString() }
         const shipmentLabKitId = (shipment as any).lab_kit_id as string | null
         const shipmentAccession = (shipment as any).accession_number as string | null
 
         if (shipmentLabKitId) {
           const { error: kitUpdateError } = await supabase
             .from('lab_kits')
-            // @ts-expect-error dynamic update object
             .update(kitUpdate)
             .eq('id', shipmentLabKitId)
           if (kitUpdateError) {
@@ -118,7 +117,6 @@ export async function PUT(
         } else if (shipmentAccession) {
           const { error: kitUpdateError } = await supabase
             .from('lab_kits')
-            // @ts-expect-error dynamic update object
             .update(kitUpdate)
             .eq('accession_number', shipmentAccession)
           if (kitUpdateError) {

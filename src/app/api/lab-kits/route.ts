@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser, verifyStudyMembership, createSupabaseAdmin } from '@/lib/api/auth'
-import type { LabKitInsert } from '@/types/database'
+import type { LabKit, LabKitInsert } from '@/types/database'
 
 // GET /api/lab-kits?studyId=xxx&status=xxx&summary=true - Get lab kits
 export async function GET(request: NextRequest) {
@@ -12,6 +12,17 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const studyId = searchParams.get('studyId')
     const statusParam = searchParams.get('status')
+    const allowedStatuses: LabKit['status'][] = [
+      'available',
+      'assigned',
+      'used',
+      'pending_shipment',
+      'shipped',
+      'delivered',
+      'expired',
+      'destroyed',
+      'archived'
+    ]
     // 'summary' parameter is accepted but not used in this endpoint
     
     if (!studyId) {
@@ -51,7 +62,6 @@ export async function GET(request: NextRequest) {
       const todayISO = today.toISOString().slice(0,10)
       await supabase
         .from('lab_kits')
-        // @ts-expect-error string[] for in filter
         .update({ status: 'expired' })
         .lt('expiration_date', todayISO)
         .in('status', ['available','assigned','used','pending_shipment'])
@@ -71,7 +81,10 @@ export async function GET(request: NextRequest) {
 
     // Filter by status if provided
     if (statusParam) {
-      query = query.eq('status', statusParam)
+      if (!allowedStatuses.includes(statusParam as LabKit['status'])) {
+        return NextResponse.json({ error: 'Invalid status parameter' }, { status: 400 })
+      }
+      query = query.eq('status', statusParam as LabKit['status'])
     }
 
     const { data: labKits, error } = await query
@@ -86,9 +99,27 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ labKits: [] })
     }
 
-    const kitIds = Array.from(new Set(kits.map((kit: any) => kit.id).filter(Boolean)))
-    const accessionNumbers = Array.from(new Set(kits.map((kit: any) => kit.accession_number).filter(Boolean)))
-    const kitTypeIds = Array.from(new Set(kits.map((kit: any) => kit.kit_type_id as string | null).filter(Boolean)))
+    const kitIds = Array.from(
+      new Set(
+        kits
+          .map((kit: any) => kit.id as string | null)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0)
+      )
+    )
+    const accessionNumbers = Array.from(
+      new Set(
+        kits
+          .map((kit: any) => kit.accession_number as string | null)
+          .filter((acc): acc is string => typeof acc === 'string' && acc.length > 0)
+      )
+    )
+    const kitTypeIds = Array.from(
+      new Set(
+        kits
+          .map((kit: any) => kit.kit_type_id as string | null)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0)
+      )
+    )
 
     const kitTypeInfoById = new Map<string, { id: string; name: string | null; description: string | null; is_active: boolean | null }>()
     if (kitTypeIds.length > 0) {

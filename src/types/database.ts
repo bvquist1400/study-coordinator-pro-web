@@ -1208,6 +1208,7 @@ export type LabKitUsage = Database['public']['Tables']['lab_kit_usage']['Row']
 export type LabKitUsageInsert = Database['public']['Tables']['lab_kit_usage']['Insert']
 export type LabKitUsageUpdate = Database['public']['Tables']['lab_kit_usage']['Update']
 
+
 export type VisitScheduleHistory = Database['public']['Tables']['visit_schedule_history']['Row']
 export type VisitScheduleHistoryInsert = Database['public']['Tables']['visit_schedule_history']['Insert']
 export type VisitScheduleHistoryUpdate = Database['public']['Tables']['visit_schedule_history']['Update']

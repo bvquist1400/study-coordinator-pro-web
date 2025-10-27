@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await supabase
       .from('site_members')
-      .select('site_id, role, sites:site_id ( id, name, created_at, updated_at )')
+      .select('site_id, role, sites:sites ( id, name, created_at, updated_at )')
       .eq('user_id', user.id)
 
     if (error) {
@@ -33,14 +33,29 @@ export async function GET(request: NextRequest) {
       role: 'owner' | 'coordinator' | 'pi' | 'monitor'
       sites?: { id: string; name: string; created_at: string; updated_at: string } | null
     }
-    const rows = (data || []) as MemberRow[]
-    const sites = rows.map(row => ({
-      id: row.sites?.id || row.site_id,
-      name: row.sites?.name || 'Site',
-      role: row.role,
-      created_at: row.sites?.created_at || null,
-      updated_at: row.sites?.updated_at || null
-    }))
+    const sites = (data || []).map(row => {
+      const siteIdValue = (row as { site_id?: unknown }).site_id
+      const roleValue = (row as { role?: unknown }).role
+      const siteMeta = (row as { sites?: unknown }).sites as
+        | { id?: string | null; name?: string | null; created_at?: string | null; updated_at?: string | null }
+        | null
+        | undefined
+
+      const id = typeof siteMeta?.id === 'string' && siteMeta.id ? siteMeta.id : (typeof siteIdValue === 'string' ? siteIdValue : '')
+      const name = typeof siteMeta?.name === 'string' && siteMeta.name ? siteMeta.name : 'Site'
+      const role: MemberRow['role'] =
+        roleValue === 'owner' || roleValue === 'coordinator' || roleValue === 'pi' || roleValue === 'monitor'
+          ? roleValue
+          : 'coordinator'
+
+      return {
+        id,
+        name,
+        role,
+        created_at: typeof siteMeta?.created_at === 'string' ? siteMeta.created_at : null,
+        updated_at: typeof siteMeta?.updated_at === 'string' ? siteMeta.updated_at : null
+      }
+    })
 
     return NextResponse.json({ sites })
   } catch (error) {
