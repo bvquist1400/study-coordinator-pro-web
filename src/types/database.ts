@@ -1110,6 +1110,24 @@ export interface Database {
   }
 }
 
+type WithRelationships<T> = T extends { Relationships: unknown } ? T : T & { Relationships: [] }
+
+type PublicSchema = Database['public']
+
+export type SupabaseDatabase = Omit<Database, 'public'> & {
+  public: {
+    Tables: {
+      [K in keyof PublicSchema['Tables']]: WithRelationships<PublicSchema['Tables'][K]>
+    }
+    Views: {
+      [K in keyof PublicSchema['Views']]: WithRelationships<PublicSchema['Views'][K]>
+    }
+    Functions: PublicSchema['Functions']
+    Enums: PublicSchema['Enums']
+    CompositeTypes: PublicSchema['CompositeTypes']
+  }
+}
+
 // Helper types for commonly used database operations
 export type Study = Database['public']['Tables']['studies']['Row']
 export type StudyInsert = Database['public']['Tables']['studies']['Insert']

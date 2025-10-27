@@ -1,10 +1,10 @@
 import { NextRequest } from 'next/server'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { Database } from '@/types/database'
+import { SupabaseDatabase } from '@/types/database'
 import logger from '@/lib/logger'
 
 // Server-side Supabase client factory
-export function createSupabaseAdmin(token?: string): SupabaseClient<Database> {
+export function createSupabaseAdmin(token?: string): SupabaseClient<SupabaseDatabase> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   if (!url) {
     throw new Error('Missing Supabase environment variable(s): NEXT_PUBLIC_SUPABASE_URL')
@@ -12,7 +12,7 @@ export function createSupabaseAdmin(token?: string): SupabaseClient<Database> {
 
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (key) {
-    return createClient<Database>(url, key, {
+    return createClient<SupabaseDatabase>(url, key, {
       auth: {
         autoRefreshToken: false,
         persistSession: false
@@ -29,7 +29,7 @@ export function createSupabaseAdmin(token?: string): SupabaseClient<Database> {
     throw new Error('Supabase service role key missing and no user token provided for fallback client')
   }
 
-  return createClient<Database>(url, anon, {
+  return createClient<SupabaseDatabase>(url, anon, {
     auth: {
       autoRefreshToken: false,
       persistSession: false
