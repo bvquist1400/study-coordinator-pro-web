@@ -573,6 +573,85 @@ export interface Database {
           updated_at?: string
         }
       }
+      subject_drug_cycles: {
+        Row: {
+          id: string
+          subject_id: string
+          visit_id: string | null
+          drug_id: string
+          dispensing_date: string | null
+          last_dose_date: string | null
+          tablets_dispensed: number
+          tablets_returned: number
+          expected_taken: number | null
+          actual_taken: number | null
+          compliance_percentage: number | null
+          is_compliant: boolean | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          subject_id: string
+          visit_id?: string | null
+          drug_id: string
+          dispensing_date?: string | null
+          last_dose_date?: string | null
+          tablets_dispensed?: number
+          tablets_returned?: number
+          expected_taken?: number | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          subject_id?: string
+          visit_id?: string | null
+          drug_id?: string
+          dispensing_date?: string | null
+          last_dose_date?: string | null
+          tablets_dispensed?: number
+          tablets_returned?: number
+          expected_taken?: number | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      drug_cycle_adjustments: {
+        Row: {
+          id: string
+          cycle_id: string
+          event_type: 'dispense' | 'return' | 'correction'
+          delta_tablets: number
+          event_date: string
+          reason: string | null
+          user_id: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          cycle_id: string
+          event_type: 'dispense' | 'return' | 'correction'
+          delta_tablets: number
+          event_date: string
+          reason?: string | null
+          user_id: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          cycle_id?: string
+          event_type?: 'dispense' | 'return' | 'correction'
+          delta_tablets?: number
+          event_date?: string
+          reason?: string | null
+          user_id?: string
+          created_at?: string
+        }
+      }
       study_sections: {
         Row: {
           id: string
@@ -724,6 +803,41 @@ export interface Database {
           buffer_count?: number | null
           delivery_days?: number | null
           is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      study_drugs: {
+        Row: {
+          id: string
+          study_id: string
+          code: string
+          name: string
+          dosing_frequency: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom'
+          dose_per_day: number | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          study_id: string
+          code: string
+          name: string
+          dosing_frequency: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom'
+          dose_per_day?: number | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          study_id?: string
+          code?: string
+          name?: string
+          dosing_frequency?: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom'
+          dose_per_day?: number | null
+          notes?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -1177,6 +1291,14 @@ export type SubjectVisit = Database['public']['Tables']['subject_visits']['Row']
 export type SubjectVisitInsert = Database['public']['Tables']['subject_visits']['Insert']
 export type SubjectVisitUpdate = Database['public']['Tables']['subject_visits']['Update']
 
+export type SubjectDrugCycle = Database['public']['Tables']['subject_drug_cycles']['Row']
+export type SubjectDrugCycleInsert = Database['public']['Tables']['subject_drug_cycles']['Insert']
+export type SubjectDrugCycleUpdate = Database['public']['Tables']['subject_drug_cycles']['Update']
+
+export type DrugCycleAdjustment = Database['public']['Tables']['drug_cycle_adjustments']['Row']
+export type DrugCycleAdjustmentInsert = Database['public']['Tables']['drug_cycle_adjustments']['Insert']
+export type DrugCycleAdjustmentUpdate = Database['public']['Tables']['drug_cycle_adjustments']['Update']
+
 export type VisitWeight = Database['public']['Tables']['visit_weights']['Row']
 export type VisitWeightInsert = Database['public']['Tables']['visit_weights']['Insert']
 export type VisitWeightUpdate = Database['public']['Tables']['visit_weights']['Update']
@@ -1192,6 +1314,10 @@ export type SubjectSectionUpdate = Database['public']['Tables']['subject_section
 export type LabKit = Database['public']['Tables']['lab_kits']['Row']
 export type LabKitInsert = Database['public']['Tables']['lab_kits']['Insert']
 export type LabKitUpdate = Database['public']['Tables']['lab_kits']['Update']
+
+export type StudyDrug = Database['public']['Tables']['study_drugs']['Row']
+export type StudyDrugInsert = Database['public']['Tables']['study_drugs']['Insert']
+export type StudyDrugUpdate = Database['public']['Tables']['study_drugs']['Update']
 
 export type LabKitOrder = Database['public']['Tables']['lab_kit_orders']['Row']
 export type LabKitOrderInsert = Database['public']['Tables']['lab_kit_orders']['Insert']
