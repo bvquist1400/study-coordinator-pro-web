@@ -314,7 +314,7 @@ export async function PATCH(
     if (Object.keys(updates).length > 0) {
       const { error: updateError } = await supabase
         .from('studies')
-        .update(updates)
+        .update<StudyUpdatePayload>(updates)
         .eq('id', studyId)
 
       if (updateError) {
@@ -334,7 +334,7 @@ export async function PATCH(
           if (Object.keys(fallbackUpdates).length > 0) {
             const { error: fallbackError } = await supabase
               .from('studies')
-              .update(fallbackUpdates)
+              .update<StudyUpdatePayload>(fallbackUpdates)
               .eq('id', studyId)
 
             if (fallbackError) {
