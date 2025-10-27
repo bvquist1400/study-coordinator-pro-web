@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
         : fallbackQuery.eq('user_id', user.id)
 
       const retry = await retryQuery
-      studies = retry.data
+      studies = retry.data as any
       studiesError = retry.error
     }
 
