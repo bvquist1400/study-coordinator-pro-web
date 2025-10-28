@@ -1,10 +1,13 @@
 'use client'
 
+import { useState } from 'react'
 import DashboardLayout from '@/components/dashboard/DashboardLayout'
 import WorkloadAnalytics from '@/components/analytics/WorkloadAnalytics'
 import WorkloadConfigurator from '@/components/workload/WorkloadConfigurator'
 
 export default function WorkloadPage() {
+  const [refreshKey, setRefreshKey] = useState(0)
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -15,9 +18,9 @@ export default function WorkloadPage() {
           </p>
         </div>
 
-        <WorkloadAnalytics />
+        <WorkloadAnalytics refreshToken={refreshKey} />
 
-        <WorkloadConfigurator />
+        <WorkloadConfigurator onMetricsRefresh={() => setRefreshKey((prev) => prev + 1)} />
       </div>
     </DashboardLayout>
   )

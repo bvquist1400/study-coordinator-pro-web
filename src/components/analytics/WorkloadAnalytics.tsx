@@ -13,8 +13,11 @@ interface WorkloadEntry {
   lifecycleWeight: number
   recruitmentWeight: number
   screeningMultiplier: number
+  screeningMultiplierEffective: number
   queryMultiplier: number
+  queryMultiplierEffective: number
   meetingAdminPoints: number
+  meetingAdminPointsAdjusted: number
   protocolScore: number
   now: {
     raw: number
@@ -27,6 +30,19 @@ interface WorkloadEntry {
   forecast: {
     raw: number
     weighted: number
+  }
+  metrics: {
+    contributors: number
+    avgMeetingHours: number
+    avgScreeningHours: number
+    avgScreeningStudyCount: number
+    avgQueryHours: number
+    avgQueryStudyCount: number
+    screeningScale: number
+    queryScale: number
+    meetingPointsAdjustment: number
+    entries: number
+    lastWeekStart: string | null
   }
 }
 
@@ -59,7 +75,25 @@ export default function WorkloadAnalytics({ className, refreshToken }: WorkloadA
       const payload = await response.json()
       const normalized = (payload.workloads || []).map((entry: any) => ({
         ...entry,
-        meetingAdminPoints: Number(entry.meetingAdminPoints ?? 0)
+        meetingAdminPoints: Number(entry.meetingAdminPoints ?? 0),
+        meetingAdminPointsAdjusted: Number(entry.meetingAdminPointsAdjusted ?? entry.meetingAdminPoints ?? 0),
+        screeningMultiplier: Number(entry.screeningMultiplier ?? 1),
+        screeningMultiplierEffective: Number(entry.screeningMultiplierEffective ?? entry.screeningMultiplier ?? 1),
+        queryMultiplier: Number(entry.queryMultiplier ?? 1),
+        queryMultiplierEffective: Number(entry.queryMultiplierEffective ?? entry.queryMultiplier ?? 1),
+        metrics: {
+          contributors: Number(entry?.metrics?.contributors ?? 0),
+          avgMeetingHours: Number(entry?.metrics?.avgMeetingHours ?? 0),
+          avgScreeningHours: Number(entry?.metrics?.avgScreeningHours ?? 0),
+          avgScreeningStudyCount: Number(entry?.metrics?.avgScreeningStudyCount ?? 0),
+          avgQueryHours: Number(entry?.metrics?.avgQueryHours ?? 0),
+          avgQueryStudyCount: Number(entry?.metrics?.avgQueryStudyCount ?? 0),
+          screeningScale: Number(entry?.metrics?.screeningScale ?? 1),
+          queryScale: Number(entry?.metrics?.queryScale ?? 1),
+          meetingPointsAdjustment: Number(entry?.metrics?.meetingPointsAdjustment ?? 0),
+          entries: Number(entry?.metrics?.entries ?? 0),
+          lastWeekStart: entry?.metrics?.lastWeekStart ?? null
+        }
       }))
       setWorkloads(normalized)
     } catch (err) {
@@ -184,7 +218,7 @@ export default function WorkloadAnalytics({ className, refreshToken }: WorkloadA
           <div>
             <h3 className="text-lg font-semibold text-white">Coordinator Workload Outlook</h3>
             <p className="text-sm text-gray-400">
-              Weighted workload points by study lifecycle, recruitment status, and visit intensity
+              Weighted workload points with lifecycle, recruitment, visit intensity, and coordinator metrics adjustments
             </p>
           </div>
           {summary.topStudy && (
@@ -237,6 +271,12 @@ export default function WorkloadAnalytics({ className, refreshToken }: WorkloadA
                 <th className="px-4 py-3 text-left font-medium text-gray-300">Study</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-300">Lifecycle</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-300">Study Status</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-300">Meetings (hrs)</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-300">Screening (hrs/studies)</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-300">Queries (hrs/studies)</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-300">Screening ×</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-300">Query ×</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-300">Meeting pts</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-300">Now</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-300">Actuals</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-300">4-Week Forecast</th>
@@ -255,6 +295,40 @@ export default function WorkloadAnalytics({ className, refreshToken }: WorkloadA
                   </td>
                   <td className="px-4 py-3 text-gray-300">
                     {formatStatus(entry.recruitment ?? entry.status)}
+                  </td>
+                  <td className="px-4 py-3 text-right text-gray-200">
+                    <div>{entry.metrics.avgMeetingHours.toFixed(1)} h</div>
+                    <div className="text-[11px] text-gray-500">
+                      {entry.metrics.entries > 0
+                        ? `${entry.metrics.entries} submission${entry.metrics.entries === 1 ? '' : 's'} · ${entry.metrics.contributors} contributor${entry.metrics.contributors === 1 ? '' : 's'}${entry.metrics.lastWeekStart ? ` · latest ${entry.metrics.lastWeekStart}` : ''}`
+                        : 'No coordinator submissions'}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-right text-gray-200">
+                    <div>{entry.metrics.avgScreeningHours.toFixed(1)} h</div>
+                    <div className="text-[11px] text-gray-500">{entry.metrics.avgScreeningStudyCount.toFixed(1)} studies</div>
+                  </td>
+                  <td className="px-4 py-3 text-right text-gray-200">
+                    <div>{entry.metrics.avgQueryHours.toFixed(1)} h</div>
+                    <div className="text-[11px] text-gray-500">{entry.metrics.avgQueryStudyCount.toFixed(1)} studies</div>
+                  </td>
+                  <td className="px-4 py-3 text-right text-gray-200">
+                    <div>{entry.screeningMultiplierEffective.toFixed(2)}</div>
+                    {entry.screeningMultiplierEffective !== entry.screeningMultiplier && (
+                      <div className="text-[11px] text-gray-500">base {entry.screeningMultiplier.toFixed(2)}</div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right text-gray-200">
+                    <div>{entry.queryMultiplierEffective.toFixed(2)}</div>
+                    {entry.queryMultiplierEffective !== entry.queryMultiplier && (
+                      <div className="text-[11px] text-gray-500">base {entry.queryMultiplier.toFixed(2)}</div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right text-gray-200">
+                    <div>{entry.meetingAdminPointsAdjusted.toFixed(1)}</div>
+                    {entry.meetingAdminPointsAdjusted !== entry.meetingAdminPoints && (
+                      <div className="text-[11px] text-gray-500">base {entry.meetingAdminPoints.toFixed(1)}</div>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-right text-white">
                     {formatPoints(entry.now.weighted)}

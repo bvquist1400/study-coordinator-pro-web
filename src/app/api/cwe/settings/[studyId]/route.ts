@@ -62,6 +62,14 @@ interface StudySettingsResponse {
     visitType: string
     weight: number
   }>
+  coordinators: Array<{
+    id: string
+    coordinatorId: string
+    name: string
+    email: string | null
+    role: string | null
+    joinedAt: string
+  }>
 }
 
 async function authorize(request: NextRequest) {
@@ -127,7 +135,8 @@ async function verifyStudyAccess(
 
 function toResponse(
   study: StudySettingsRow,
-  weights: VisitWeightRow[]
+  weights: VisitWeightRow[],
+  coordinators: Array<{ id: string; coordinator_id: string; role: string | null; joined_at: string; full_name: string | null; email: string | null }>
 ): StudySettingsResponse {
   const meetingPoints = Object.prototype.hasOwnProperty.call(study, 'meeting_admin_points')
     ? Number((study as any).meeting_admin_points ?? 0)
@@ -159,8 +168,87 @@ function toResponse(
       id: row.id,
       visitType: row.visit_type,
       weight: Number(row.weight ?? 1)
+    })),
+    coordinators: coordinators.map((row) => ({
+      id: row.id,
+      coordinatorId: row.coordinator_id,
+      name: row.full_name ?? row.email ?? 'Unknown coordinator',
+      email: row.email ?? null,
+      role: row.role ?? null,
+      joinedAt: row.joined_at
     }))
   }
+}
+
+async function loadCoordinatorDetails(
+  supabase: ReturnType<typeof createSupabaseAdmin>,
+  studyId: string
+):
+  Promise<
+    | { error: NextResponse }
+    | {
+        coordinators: Array<{
+          id: string
+          coordinator_id: string
+          role: string | null
+          joined_at: string
+          full_name: string | null
+          email: string | null
+        }>
+      }
+  > {
+  const { data: coordinatorAssignments, error: assignmentError } = await supabase
+    .from('study_coordinators')
+    .select('id, coordinator_id, role, joined_at')
+    .eq('study_id', studyId)
+
+  if (assignmentError && assignmentError.code !== '42P01') {
+    logger.error('Failed to load coordinators for study settings', assignmentError, { studyId })
+    return { error: NextResponse.json({ error: 'Failed to load coordinators' }, { status: 500 }) }
+  }
+
+  const coordinatorIds = Array.from(
+    new Set(
+      ((coordinatorAssignments ?? []) as Array<Record<string, any>>)
+        .map((row) => row.coordinator_id)
+        .filter(Boolean)
+    )
+  )
+
+  let profileMap = new Map<string, { full_name: string | null; email: string | null }>()
+
+  if (coordinatorIds.length > 0) {
+    const { data: profiles, error: profilesError } = await supabase
+      .from('user_profiles')
+      .select('id, full_name, email')
+      .in('id', coordinatorIds)
+
+    if (profilesError) {
+      logger.error('Failed to load coordinator profiles', profilesError, { coordinatorIds })
+      return { error: NextResponse.json({ error: 'Failed to load coordinators' }, { status: 500 }) }
+    }
+
+    profileMap = new Map(
+      ((profiles ?? []) as Array<Record<string, any>>).map((profile) => [
+        profile.id,
+        { full_name: profile.full_name ?? null, email: profile.email ?? null }
+      ])
+    )
+  }
+
+  const coordinatorDetails = ((coordinatorAssignments ?? []) as Array<Record<string, any>>).map((row) => {
+    const profile = profileMap.get(row.coordinator_id) ?? { full_name: null, email: null }
+    return {
+      id: row.id,
+      coordinator_id: row.coordinator_id,
+      role: row.role ?? null,
+      joined_at: row.joined_at,
+      full_name: profile.full_name,
+      email: profile.email
+    }
+  })
+
+  return { coordinators: coordinatorDetails }
 }
 
 async function loadVisitWeights(
@@ -201,8 +289,12 @@ export async function GET(
     const weightResult = await loadVisitWeights(supabase, studyId)
     if ('error' in weightResult) return weightResult.error
 
+    const coordinatorResult = await loadCoordinatorDetails(supabase, studyId)
+    if ('error' in coordinatorResult) return coordinatorResult.error
+    const { coordinators: coordinatorDetails } = coordinatorResult
+
     return NextResponse.json(
-      toResponse(access.study, weightResult.weights)
+      toResponse(access.study, weightResult.weights, coordinatorDetails)
     )
   } catch (error) {
     logger.error('Error loading CWE study settings', error as any)
@@ -382,9 +474,11 @@ export async function PATCH(
 
     const refreshedWeights = await loadVisitWeights(supabase, studyId)
     if ('error' in refreshedWeights) return refreshedWeights.error
+    const refreshedCoordinators = await loadCoordinatorDetails(supabase, studyId)
+    if ('error' in refreshedCoordinators) return refreshedCoordinators.error
 
     return NextResponse.json(
-      toResponse(refreshedAccess.study, refreshedWeights.weights)
+      toResponse(refreshedAccess.study, refreshedWeights.weights, refreshedCoordinators.coordinators)
     )
   } catch (error) {
     logger.error('Error updating CWE study settings', error as any)

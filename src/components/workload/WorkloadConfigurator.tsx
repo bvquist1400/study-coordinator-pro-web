@@ -1,8 +1,9 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import CoordinatorMetricsPanel from './CoordinatorMetricsPanel'
 
 interface WorkloadEntry {
   studyId: string
@@ -12,9 +13,32 @@ interface WorkloadEntry {
   recruitment: string | null
   status: string | null
   meetingAdminPoints: number
+  meetingAdminPointsAdjusted: number
+  screeningMultiplier: number
+  screeningMultiplierEffective: number
+  queryMultiplier: number
+  queryMultiplierEffective: number
   now: number
   actuals: number
   forecast: number
+  metrics: {
+    contributors: number
+    avgMeetingHours: number
+    avgScreeningHours: number
+    avgScreeningStudyCount: number
+    avgQueryHours: number
+    avgQueryStudyCount: number
+    entries: number
+    lastWeekStart: string | null
+  }
+}
+
+interface CoordinatorOption {
+  id: string
+  name: string
+  email: string | null
+  organization: string | null
+  assignments: Array<{ id: string; studyTitle: string; protocolNumber: string; role: string | null; joinedAt: string }>
 }
 
 const formatStatus = (value: string | null | undefined) => {
@@ -25,10 +49,10 @@ const formatStatus = (value: string | null | undefined) => {
     .join(' ')
 }
 
-const formatPoints = (value: number) =>
-  Math.round(value).toLocaleString('en-US')
-
+const formatPoints = (value: number) => Math.round(value).toLocaleString('en-US')
 const formatMeeting = (value: number) => value.toFixed(1)
+const formatHours = (value: number) => value.toFixed(1)
+const formatCount = (value: number) => value.toFixed(1)
 
 const loadLabel = (points: number) => {
   if (points >= 300) return { label: 'Critical', className: 'bg-red-500/15 text-red-300 border border-red-500/30' }
@@ -37,62 +61,143 @@ const loadLabel = (points: number) => {
   return { label: 'Balanced', className: 'bg-emerald-500/15 text-emerald-200 border border-emerald-500/30' }
 }
 
-export default function WorkloadConfigurator() {
+interface WorkloadConfiguratorProps {
+  onMetricsRefresh?: () => void
+}
+
+export default function WorkloadConfigurator({ onMetricsRefresh }: WorkloadConfiguratorProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [workloads, setWorkloads] = useState<WorkloadEntry[]>([])
+  const [coordinators, setCoordinators] = useState<CoordinatorOption[]>([])
+
+  const loadWorkloads = useCallback(async (): Promise<WorkloadEntry[]> => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+    if (!token) {
+      throw new Error('You must be signed in to view workload data')
+    }
+
+    const response = await fetch('/api/analytics/workload', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to load workload analytics')
+    }
+
+    const payload = await response.json()
+    return (payload.workloads || []).map((row: any) => ({
+      studyId: row.studyId,
+      studyTitle: row.studyTitle,
+      protocolNumber: row.protocolNumber,
+      lifecycle: row.lifecycle,
+      recruitment: row.recruitment,
+      status: row.status,
+      meetingAdminPoints: Number(row.meetingAdminPoints ?? 0),
+      meetingAdminPointsAdjusted: Number(row.meetingAdminPointsAdjusted ?? row.meetingAdminPoints ?? 0),
+      screeningMultiplier: Number(row.screeningMultiplier ?? 1),
+      screeningMultiplierEffective: Number(row.screeningMultiplierEffective ?? row.screeningMultiplier ?? 1),
+      queryMultiplier: Number(row.queryMultiplier ?? 1),
+      queryMultiplierEffective: Number(row.queryMultiplierEffective ?? row.queryMultiplier ?? 1),
+      now: Number(row?.now?.weighted ?? 0),
+      actuals: Number(row?.actuals?.weighted ?? 0),
+      forecast: Number(row?.forecast?.weighted ?? 0),
+      metrics: {
+        contributors: Number(row?.metrics?.contributors ?? 0),
+        avgMeetingHours: Number(row?.metrics?.avgMeetingHours ?? 0),
+        avgScreeningHours: Number(row?.metrics?.avgScreeningHours ?? 0),
+        avgScreeningStudyCount: Number(row?.metrics?.avgScreeningStudyCount ?? 0),
+        avgQueryHours: Number(row?.metrics?.avgQueryHours ?? 0),
+        avgQueryStudyCount: Number(row?.metrics?.avgQueryStudyCount ?? 0),
+        entries: Number(row?.metrics?.entries ?? 0),
+        lastWeekStart: row?.metrics?.lastWeekStart ?? null
+      }
+    })) as WorkloadEntry[]
+  }, [])
+
+  const refreshWorkloads = useCallback(async () => {
+    try {
+      const entries = await loadWorkloads()
+      setWorkloads(entries)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load workload analytics')
+    }
+  }, [loadWorkloads])
+
+  const loadCoordinators = useCallback(async (): Promise<CoordinatorOption[]> => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+    if (!token) {
+      throw new Error('You must be signed in to view coordinator data')
+    }
+
+    const response = await fetch('/api/coordinators', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to load coordinators')
+    }
+
+    const payload = await response.json()
+    return (payload.coordinators || []).map((entry: any) => ({
+      id: entry.id,
+      name: entry.name,
+      email: entry.email ?? null,
+      organization: entry.organization ?? null,
+      assignments: (entry.assignments || []).map((assignment: any) => ({
+        id: assignment.id,
+        studyTitle: assignment.studyTitle,
+        protocolNumber: assignment.protocolNumber,
+        role: assignment.role ?? null,
+        joinedAt: assignment.joinedAt
+      }))
+    })) as CoordinatorOption[]
+  }, [])
+
+  const refreshCoordinators = useCallback(async () => {
+    try {
+      const list = await loadCoordinators()
+      setCoordinators(list)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load coordinator data')
+    }
+  }, [loadCoordinators])
+
+  const handleMetricsSaved = useCallback(async () => {
+    await Promise.all([refreshWorkloads(), refreshCoordinators()])
+    onMetricsRefresh?.()
+  }, [onMetricsRefresh, refreshCoordinators, refreshWorkloads])
 
   useEffect(() => {
     let mounted = true
 
-    const load = async () => {
+    const bootstrap = async () => {
       try {
         setLoading(true)
         setError(null)
-
-        const { data: { session } } = await supabase.auth.getSession()
-        const token = session?.access_token
-        if (!token) {
-          throw new Error('You must be signed in to view workload data')
+        const [entries, coordinatorList] = await Promise.all([loadWorkloads(), loadCoordinators()])
+        if (mounted) {
+          setWorkloads(entries)
+          setCoordinators(coordinatorList)
         }
-
-        const response = await fetch('/api/analytics/workload', {
-          headers: { Authorization: `Bearer ${token}` }
-        })
-
-        if (!response.ok) {
-          throw new Error('Failed to load workload analytics')
-        }
-
-        const payload = await response.json()
-        const entries = (payload.workloads || []).map((row: any) => ({
-          studyId: row.studyId,
-          studyTitle: row.studyTitle,
-          protocolNumber: row.protocolNumber,
-          lifecycle: row.lifecycle,
-          recruitment: row.recruitment,
-          status: row.status,
-          meetingAdminPoints: Number(row.meetingAdminPoints ?? 0),
-          now: Number(row?.now?.weighted ?? 0),
-          actuals: Number(row?.actuals?.weighted ?? 0),
-          forecast: Number(row?.forecast?.weighted ?? 0)
-        })) as WorkloadEntry[]
-
-        if (!mounted) return
-        setWorkloads(entries)
       } catch (err) {
-        if (!mounted) return
-        setError(err instanceof Error ? err.message : 'Failed to load workload analytics')
+        if (mounted) {
+          setError(err instanceof Error ? err.message : 'Failed to load workload analytics')
+        }
       } finally {
-        if (mounted) setLoading(false)
+        if (mounted) {
+          setLoading(false)
+        }
       }
     }
 
-    load()
+    bootstrap()
     return () => {
       mounted = false
     }
-  }, [])
+  }, [loadCoordinators, loadWorkloads])
 
   const summary = useMemo(() => {
     if (workloads.length === 0) {
@@ -224,7 +329,12 @@ export default function WorkloadConfigurator() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-gray-400 text-xs uppercase tracking-wide">Meeting load</p>
-                  <p className="text-white">{formatMeeting(entry.meetingAdminPoints)} pts/mo</p>
+                  <p className="text-white">{formatMeeting(entry.meetingAdminPointsAdjusted)} pts/mo</p>
+                  {entry.meetingAdminPointsAdjusted !== entry.meetingAdminPoints && (
+                    <p className="text-xs text-gray-500">
+                      Baseline {formatMeeting(entry.meetingAdminPoints)} pts/mo
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <p className="text-gray-400 text-xs uppercase tracking-wide">Current load</p>
@@ -233,6 +343,42 @@ export default function WorkloadConfigurator() {
                 <div className="space-y-1">
                   <p className="text-gray-400 text-xs uppercase tracking-wide">4-week forecast</p>
                   <p className="text-amber-300 font-semibold">{formatPoints(entry.forecast)} pts</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs bg-gray-900/40 border border-gray-800 rounded-lg p-3">
+                <div>
+                  <p className="text-gray-400 uppercase tracking-wide">Screening multiplier</p>
+                  <p className="text-gray-200">
+                    {entry.screeningMultiplierEffective.toFixed(2)}
+                    {entry.screeningMultiplierEffective !== entry.screeningMultiplier && (
+                      <span className="text-gray-500 text-[11px] ml-2">
+                        base {entry.screeningMultiplier.toFixed(2)}
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-400 uppercase tracking-wide">Query multiplier</p>
+                  <p className="text-gray-200">
+                    {entry.queryMultiplierEffective.toFixed(2)}
+                    {entry.queryMultiplierEffective !== entry.queryMultiplier && (
+                      <span className="text-gray-500 text-[11px] ml-2">
+                        base {entry.queryMultiplier.toFixed(2)}
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-400 uppercase tracking-wide">Avg coordinator hrs (4w)</p>
+                  <p className="text-gray-200 leading-relaxed">
+                    Mt {formatHours(entry.metrics.avgMeetingHours)}h · Scr {formatHours(entry.metrics.avgScreeningHours)}h / {formatCount(entry.metrics.avgScreeningStudyCount)} studies · Q {formatHours(entry.metrics.avgQueryHours)}h / {formatCount(entry.metrics.avgQueryStudyCount)} studies
+                  </p>
+                  <p className="text-gray-500 text-[11px]">
+                    {entry.metrics.entries > 0
+                      ? `${entry.metrics.entries} submission${entry.metrics.entries === 1 ? '' : 's'} · ${entry.metrics.contributors} contributor${entry.metrics.contributors === 1 ? '' : 's'}${entry.metrics.lastWeekStart ? ` · latest week ${entry.metrics.lastWeekStart}` : ''}`
+                      : 'No coordinator metrics submitted yet'}
+                  </p>
                 </div>
               </div>
 
@@ -251,6 +397,8 @@ export default function WorkloadConfigurator() {
           )
         })}
       </div>
+
+      <CoordinatorMetricsPanel coordinators={coordinators} onMetricsSaved={handleMetricsSaved} />
     </div>
   )
 }

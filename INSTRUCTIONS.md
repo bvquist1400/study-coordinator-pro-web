@@ -8,6 +8,7 @@ This document is the concise, always-current guide for working on this repo. It 
 - Node 20+, npm 10+
 - Next.js 15 (App Router)
 - Supabase (Auth + Postgres)
+- Supabase CLI uses `supabase/studio-config.toml` for project ref/ports—update this file (not `.temp`) when the shared project changes.
 
 ## Commands
 - Dev: `npm run dev`
@@ -27,7 +28,11 @@ Examples:
 - Trigger hooks: ensure trigger creation is represented either in table DDL or a dedicated function file when appropriate.
 
 Recent Schema Notes
+- Baseline migration: `migrations/20240801_initial_core_schema.sql` provisions the core tables, triggers, and helper functions expected by downstream migrations. Run this first in any new environment.
+- Studies metadata: `migrations/20251021_add_studies_site_metadata.sql` adds `site_id`, `created_by`, `protocol_version`, `anchor_day`, and `inventory_buffer_kits` to `studies`; ensure `supabase_database_structure/studies.sql` stays in sync.
 - Lab kits: `lab_kits.status` allows `delivered`. Migration: `migrations/20250911_add_delivered_status_lab_kits.sql` drops/recreates the check constraint idempotently. Keep `supabase_database_structure/lab_kits.sql` in parity.
+- Supabase RPCs/Tables: When adding new tables or functions, declare them in `supabase_database_structure/` and extend `src/types/database.ts` so API handlers can use typed `.insert()`/`.update()` payloads without `as any`.
+- Coordinator workload: `migrations/20251025_add_coordinator_metrics.sql` seeds the metrics table; `migrations/20251026_restructure_coordinator_metrics.sql` drops `study_id`, adds `recorded_by`, and creates `study_coordinators`. Keep `supabase_database_structure/coordinator_metrics.sql` and `study_coordinators.sql` aligned with these migrations.
 
 ## Sections (Multi‑part Studies)
 - Studies can have multiple sections (e.g., Part A Open Label, Part B Double‑Blind) with their own anchor dates and templates.

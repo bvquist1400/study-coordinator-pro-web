@@ -4,6 +4,8 @@
 alter table if exists public.sites enable row level security;
 alter table if exists public.site_members enable row level security;
 alter table if exists public.studies enable row level security;
+alter table if exists public.coordinator_metrics enable row level security;
+alter table if exists public.study_coordinators enable row level security;
 
 do $$
 begin
@@ -19,6 +21,38 @@ begin
           select site_id from public.site_members sm2 where sm2.user_id = auth.uid()
         )
       );
+  end if;
+end;
+$$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'coordinator_metrics'
+      and policyname = 'coordinator_metrics_service_role'
+  ) then
+    create policy coordinator_metrics_service_role on public.coordinator_metrics
+      for all
+      using (auth.role() = 'service_role')
+      with check (auth.role() = 'service_role');
+  end if;
+end;
+$$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'study_coordinators'
+      and policyname = 'study_coordinators_service_role'
+  ) then
+    create policy study_coordinators_service_role on public.study_coordinators
+      for all
+      using (auth.role() = 'service_role')
+      with check (auth.role() = 'service_role');
   end if;
 end;
 $$;

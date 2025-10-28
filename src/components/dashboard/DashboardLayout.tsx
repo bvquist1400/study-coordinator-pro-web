@@ -27,6 +27,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
     { name: 'Analytics', href: '/analytics', icon: ChartBarIcon },
     { name: 'Workload Engine', href: '/workload', icon: WrenchScrewdriverIcon },
+    { name: 'Coordinators', href: '/coordinators', icon: UsersIcon },
     { name: 'Studies', href: '/studies', icon: FolderIcon },
     { name: 'Subjects', href: '/subjects', icon: UsersIcon },
     { name: 'Visits', href: '/visits', icon: CalendarIcon },

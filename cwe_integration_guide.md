@@ -22,7 +22,7 @@ The CWE module introduces:
 - ✅ Schema migration (`20251022_cwe_enhanced.sql`) adds lifecycle/recruitment columns, rubric fields, meeting/admin load, visit weights table, and `cwe_*` views.  
 - ✅ API routes (`/api/analytics/workload`, `/api/cwe/[studyId]`) support service-role client and gracefully fall back to anon tokens or return empty payloads if the migration has not yet run.  
 - ✅ UI: Portfolio workload dashboard (`/workload`) and guided Study Workload Setup page (`/studies/[id]/workload`).  
-- ⚙️ Optional: coordinator metrics capture and automatic refresh hooks to be delivered in a follow-on release.
+- ✅ Coordinator metrics capture (weekly screening/query/admin hours) feeds multiplier adjustments and meeting load boosts; automatic refresh hooks still planned for a later release.
 
 ### Before You Start
 1. Ensure environment variables are set in `.env.local` (and production):  
@@ -130,6 +130,12 @@ where sv.status = 'scheduled'
 group by sv.study_id;
 ```
 
+### Oct 2025 Update — Coordinator Metrics Table
+
+Run `migrations/20251025_add_coordinator_metrics.sql` after the core CWE migration to create the `coordinator_metrics` table (weekly per-coordinator totals), indexes, and service-role RLS policy. The migration wires an `updated_at` trigger so analytics see the latest submissions immediately and backfills existing installs by renaming `admin_hours` ➜ `meeting_hours` plus adding the new study-count columns (`screening_study_count`, `query_study_count`).
+
+Run `migrations/20251026_restructure_coordinator_metrics.sql` to drop the legacy `study_id` column, add `recorded_by`, and introduce the `study_coordinators` table used to link coordinators with studies.
+
 ---
 
 ## 🧱 2. API Routes
@@ -187,6 +193,17 @@ export async function GET(request: NextRequest, { params }: { params: { studyId:
 
 ---
 
+Add `src/app/api/cwe/metrics/route.ts` for coordinator-level workload capture:
+
+- `GET /api/cwe/metrics?coordinatorId=<uuid>` returns `{ coordinatorId, metrics: [...], assignments: [...] }`. If no coordinator is supplied, the logged-in user is assumed. Results include weekly hours plus the studies linked through `study_coordinators`.
+- `POST /api/cwe/metrics` accepts `{ coordinatorId?, weekStart, meetingHours, screeningHours, screeningStudyCount, queryHours, queryStudyCount, notes? }` and records the entry with `recorded_by` set to the caller. Legacy columns are handled automatically for environments that have not yet run the restructuring migration.
+
+This service powers the coordinator-facing submission panel and feeds analytics adjustments.
+
+Add `src/app/api/study-coordinators/route.ts` (GET + POST) and `src/app/api/study-coordinators/[id]/route.ts` (DELETE) to manage assignments, along with `src/app/api/coordinators/route.ts` to surface coordinator profiles and linked studies for the dashboard and directory.
+
+---
+
 ## 💻 3. UI Components
 
 ### A) Study Workload Setup Page (`/studies/[studyId]/workload`)
@@ -199,6 +216,14 @@ export async function GET(request: NextRequest, { params }: { params: { studyId:
 - Portfolio summary cards with lifecycle, recruitment, meeting load, and forecast status
 - Checklist describing the setup steps before diving into each protocol
 - “Configure Study Workload” button on every card linking to the guided page
+- Coordinator Weekly Workload Log captures coordinator-level meeting hours, screening hours/study counts, and query hours/study counts, displays recent submissions, and triggers analytics refresh. Admins can select any active coordinator while beta testing.
+- Coordinator Directory (`/coordinators`) lists every active coordinator with contact info and linked studies for quick QA or reassignment.
+  - Prompts: hours spent in meetings, screening hours, number of studies screened, query hours resolved, and number of studies with queries that week.
+
+### C) Analytics Enhancements
+- `/api/analytics/workload` now ingests the 4-week rolling coordinator metrics to adjust screening/query multipliers (clamped between 0.6×–1.8×), distributing hours across studies via `study_coordinators` assignments when available.
+- Admin/meeting load incorporates hour deltas (±40 pts window) so baseline dashboards reflect current coordination effort.
+- Workload tables expose effective multipliers, average hours, contributor counts, and adjusted meeting points for transparency.
 
 ---
 
@@ -206,8 +231,10 @@ export async function GET(request: NextRequest, { params }: { params: { studyId:
 
 1. [ ] Set Supabase env vars (`URL`, `ANON`, `SERVICE_ROLE`) for the target environment.  
 2. [ ] Run `migrations/20251022_cwe_enhanced.sql` against Supabase (`supabase db push` or SQL editor).  
-3. [ ] Redeploy the Next.js app so updated API/React components are live.  
-4. [ ] Open `/workload` and `/studies/<id>/workload` to complete the rubric + load configuration for each protocol.
+3. [ ] Run `migrations/20251025_add_coordinator_metrics.sql` to provision the initial metrics table and policies.  
+4. [ ] Run `migrations/20251026_restructure_coordinator_metrics.sql` to enable coordinator-level logging and the `study_coordinators` table.  
+5. [ ] Redeploy the Next.js app so updated API/React components are live.  
+6. [ ] Open `/coordinators` to confirm assignments, then `/workload` and `/studies/<id>/workload` to complete the rubric + load configuration for each protocol.
 
 ---
 

@@ -696,6 +696,79 @@ export interface Database {
           updated_at?: string
         }
       }
+      coordinator_metrics: {
+        Row: {
+          id: string
+          coordinator_id: string
+          recorded_by: string | null
+          week_start: string
+          meeting_hours: number
+          screening_hours: number
+          screening_study_count: number
+          query_hours: number
+          query_study_count: number
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          coordinator_id: string
+          recorded_by?: string | null
+          week_start: string
+          meeting_hours?: number
+          screening_hours?: number
+          screening_study_count?: number
+          query_hours?: number
+          query_study_count?: number
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          coordinator_id?: string
+          recorded_by?: string | null
+          week_start?: string
+          meeting_hours?: number
+          screening_hours?: number
+          screening_study_count?: number
+          query_hours?: number
+          query_study_count?: number
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      study_coordinators: {
+        Row: {
+          id: string
+          study_id: string
+          coordinator_id: string
+          role: string | null
+          joined_at: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          study_id: string
+          coordinator_id: string
+          role?: string | null
+          joined_at?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          study_id?: string
+          coordinator_id?: string
+          role?: string | null
+          joined_at?: string
+          created_at?: string
+          updated_at?: string
+        }
+      }
       subject_sections: {
         Row: {
           id: string
@@ -1302,6 +1375,14 @@ export type DrugCycleAdjustmentUpdate = Database['public']['Tables']['drug_cycle
 export type VisitWeight = Database['public']['Tables']['visit_weights']['Row']
 export type VisitWeightInsert = Database['public']['Tables']['visit_weights']['Insert']
 export type VisitWeightUpdate = Database['public']['Tables']['visit_weights']['Update']
+
+export type CoordinatorMetric = Database['public']['Tables']['coordinator_metrics']['Row']
+export type CoordinatorMetricInsert = Database['public']['Tables']['coordinator_metrics']['Insert']
+export type CoordinatorMetricUpdate = Database['public']['Tables']['coordinator_metrics']['Update']
+
+export type StudyCoordinator = Database['public']['Tables']['study_coordinators']['Row']
+export type StudyCoordinatorInsert = Database['public']['Tables']['study_coordinators']['Insert']
+export type StudyCoordinatorUpdate = Database['public']['Tables']['study_coordinators']['Update']
 
 export type StudySection = Database['public']['Tables']['study_sections']['Row']
 export type StudySectionInsert = Database['public']['Tables']['study_sections']['Insert']

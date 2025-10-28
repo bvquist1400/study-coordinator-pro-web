@@ -95,6 +95,14 @@ interface StudyWorkloadState {
   rubricProceduralIntensity: string | null
   rubricNotes: string | null
   visitWeights: VisitWeightFormRow[]
+  coordinators: Array<{
+    id: string
+    coordinatorId: string
+    name: string
+    email: string | null
+    role: string | null
+    joinedAt: string
+  }>
 }
 
 interface StudyWorkloadSetupProps {
@@ -173,7 +181,15 @@ export default function StudyWorkloadSetup({ studyId }: StudyWorkloadSetupProps)
         rubricVisitVolume: payload.study.rubric?.visitVolume ?? VISIT_VOLUME_OPTIONS[0].value,
         rubricProceduralIntensity: payload.study.rubric?.proceduralIntensity ?? PROCEDURAL_INTENSITY_OPTIONS[0].value,
         rubricNotes: payload.study.rubric?.notes ?? null,
-        visitWeights: mergedWeights
+        visitWeights: mergedWeights,
+        coordinators: (payload.coordinators || []).map((entry: any) => ({
+          id: entry.id,
+          coordinatorId: entry.coordinatorId ?? entry.coordinator_id,
+          name: entry.name,
+          email: entry.email ?? null,
+          role: entry.role ?? null,
+          joinedAt: entry.joinedAt ?? entry.joined_at
+        }))
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load workload settings.')
@@ -345,12 +361,33 @@ export default function StudyWorkloadSetup({ studyId }: StudyWorkloadSetupProps)
             Work through the guided steps below—each section explains what the field controls and how it impacts coordinator load.
           </p>
         </div>
-        <Link
-          href="/studies"
-          className="inline-flex items-center justify-center rounded-lg border border-gray-700 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-800 transition-colors"
-        >
-          Back to Studies
-        </Link>
+        <div className="w-full md:w-72 space-y-3">
+          <div className="bg-gray-900/60 border border-gray-700 rounded-lg p-4 text-sm text-gray-200">
+            <div className="text-xs uppercase tracking-wide text-gray-400 mb-2">Assigned coordinators</div>
+            {formState?.coordinators && formState.coordinators.length > 0 ? (
+              <ul className="space-y-1">
+                {formState.coordinators.map((coordinator) => (
+                  <li key={coordinator.id}>
+                    <span className="font-medium text-white">{coordinator.name}</span>
+                    {coordinator.role ? ` — ${coordinator.role}` : ''}
+                    <div className="text-xs text-gray-500">{coordinator.email ?? 'No email on file'}</div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-gray-500">No coordinators linked yet.</p>
+            )}
+            <Link href="/coordinators" className="mt-3 inline-flex items-center text-xs text-blue-400 hover:text-blue-300">
+              View coordinator directory
+            </Link>
+          </div>
+          <Link
+            href="/studies"
+            className="inline-flex items-center justify-center rounded-lg border border-gray-700 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-800 transition-colors w-full"
+          >
+            Back to Studies
+          </Link>
+        </div>
       </div>
 
       {error && (
