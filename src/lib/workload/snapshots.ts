@@ -51,8 +51,8 @@ export async function loadWorkloadSnapshots(
   const staleStudies = new Set<string>()
   const now = Date.now()
 
-  for (const row of data ?? []) {
-    snapshots.set(row.study_id, row as WorkloadSnapshotRow)
+  for (const row of (data ?? []) as WorkloadSnapshotRow[]) {
+    snapshots.set(row.study_id, row)
     if (!row.expires_at || Date.parse(row.expires_at) <= now) {
       staleStudies.add(row.study_id)
     }
