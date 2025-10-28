@@ -15,6 +15,7 @@ To replace static feasibility scoring with a dynamic workload system that predic
 - Lifecycle remains the macro-phase driver (`start_up → active → follow_up → close_out`).  
 - Three key measures calculated: **Now (baseline)**, **Actuals (completed visits)**, and **Forecast (upcoming visits)**.
 - Implemented **protocol complexity rubric**, **meeting/admin load**, and guided workload configuration UI in the Study Coordinator Pro web app.
+- Introduced **study coordinator assignments + weekly metrics loop** so recorded hours and study counts dynamically adjust screening/query multipliers and meeting load.
 
 ---
 
@@ -25,7 +26,7 @@ To replace static feasibility scoring with a dynamic workload system that predic
 | Schema | ✅ | `studies` table includes lifecycle, recruitment, rubric fields, and meeting/admin load. `visit_weights`, `cwe_*` views active when migration applied. |
 | API | ✅ | `/api/analytics/workload` and `/api/cwe/[studyId]` deliver workload totals, auto-fallback when new tables/views are absent, and support anon-key fallback if service role is missing. |
 | UI | ✅ | `/workload` dashboard surfaces portfolio summary; `/studies/[id]/workload` guides rubric scoring, lifecycle selection, multipliers, meeting load, and visit weights. |
-| Coordinator Metrics Loop | 🚧 Planned | Weekly hours capture not yet wired into the model. |
+| Coordinator Metrics Loop | ✅ | Weekly metrics logging via `/api/cwe/metrics` and study assignments power adaptive multipliers in workload analytics. |
 | Automation | 🚧 Planned | Automatic refresh hooks (e.g., post-visit completion) to be added after validating manual workflow. |
 
 ---
@@ -126,5 +127,7 @@ LW × (Σ scheduled visits × PS × visit_weight) × QM × (SM × RW)
 - Add **Recruitment Status** and **Visit Weights** to each study’s data model.  
 - Lifecycle defines the macro phase; Recruitment determines screening activity.  
 - Visit weighting refines accuracy for forecasting and reporting.  
-- Weekly coordinator metrics feed into calibration for Screening/Query multipliers.  
+- Weekly coordinator metrics (meeting/screening/query hours + study counts) feed adaptive Screening/Query multipliers and meeting load adjustments.  
+- Study coordinator assignments distribute recorded effort across linked protocols before multiplier scaling.  
+- Workload dashboards serve cached 5-minute snapshots, automatically refreshed after key events or via nightly automation.  
 - Dashboards show three states — **Now**, **Actuals**, and **Forecast** — for proactive workload management.

@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/cwe-backfill",
+      "schedule": "0 3 * * *"
+    }
+  ]
+}
