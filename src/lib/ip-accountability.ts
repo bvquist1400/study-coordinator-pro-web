@@ -43,7 +43,7 @@ export async function saveVisitWithIP(
   const supabase = createSupabaseAdmin()
   
   try {
-    const result = await supabase.rpc('save_visit_with_ip_transaction', {
+    const result = await (supabase as any).rpc('save_visit_with_ip_transaction', {
       p_subject_id: subjectId,
       p_user_id: userId,
       p_visit_data: visitData

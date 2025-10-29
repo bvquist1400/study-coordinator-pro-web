@@ -13,3 +13,5 @@ Files
 
 - 20240901_add_ip_fields_migration.sql: Adds IP accountability fields to subject_visits and indexes.
 - 20240901_add_return_ip_id_field.sql: Adds return_ip_id column and index to subject_visits.
+- 20251025_add_coordinator_metrics.sql: Creates coordinator metrics table, indexes, trigger, and RLS policy used by the CWE workload engine.
+- 20251026_restructure_coordinator_metrics.sql: Converts coordinator metrics to coordinator-level rows, adds `recorded_by`, and introduces the `study_coordinators` table.

@@ -3,6 +3,7 @@ import { authenticateUser, verifyStudyMembership, createSupabaseAdmin } from '@/
 import logger from '@/lib/logger'
 import { fetchShipmentsForStudies } from '@/lib/lab-kits/fetch-shipments'
 import { fetchEasyPostTrackingSummary, EasyPostError } from '@/lib/lab-kits/easypost'
+import type { LabKitShipmentUpdate, LabKitUpdate } from '@/types/database'
 
 interface TrackingRefreshRequest {
   shipmentId?: string
@@ -160,9 +161,9 @@ export async function POST(request: NextRequest) {
 
     const summary = await fetchEasyPostTrackingSummary(carrier, airtWayBill)
 
-    const updateData: Record<string, any> = {
+    const updateData: Partial<LabKitShipmentUpdate> = {
       tracking_status: summary.status,
-      ups_tracking_payload: summary.rawResponse,
+      ups_tracking_payload: summary.rawResponse as any,
       last_tracking_update: summary.lastEventAt ?? new Date().toISOString()
     }
 
@@ -175,7 +176,6 @@ export async function POST(request: NextRequest) {
 
     const { error: updateError } = await supabase
       .from('lab_kit_shipments')
-      // @ts-expect-error dynamic update object
       .update(updateData)
       .eq('airway_bill_number', airtWayBill)
 
@@ -192,12 +192,11 @@ export async function POST(request: NextRequest) {
         .map(s => s?.accession_number as string | null)
         .filter((value): value is string => Boolean(value))
 
-      const kitUpdate = { status: 'delivered', updated_at: new Date().toISOString() }
+      const kitUpdate: Partial<LabKitUpdate> = { status: 'delivered', updated_at: new Date().toISOString() }
 
       if (kitIds.length > 0) {
         const { error: kitErr } = await supabase
           .from('lab_kits')
-          // @ts-expect-error dynamic update object
           .update(kitUpdate)
           .in('id', kitIds)
         if (kitErr) logger.warn?.('Failed to sync lab kit ids after tracking refresh', kitErr as any)
@@ -206,7 +205,6 @@ export async function POST(request: NextRequest) {
       if (accessionNumbers.length > 0) {
         const { error: accErr } = await supabase
           .from('lab_kits')
-          // @ts-expect-error dynamic update object
           .update(kitUpdate)
           .in('accession_number', accessionNumbers)
         if (accErr) logger.warn?.('Failed to sync lab kits by accession after tracking refresh', accErr as any)

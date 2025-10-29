@@ -91,12 +91,25 @@ export interface Database {
           phase: string | null
           indication: string | null
           status: 'enrolling' | 'active' | 'closed_to_enrollment' | 'completed'
+          lifecycle: 'start_up' | 'active' | 'follow_up' | 'close_out'
+          recruitment: 'enrolling' | 'paused' | 'closed_to_accrual' | 'on_hold'
+          protocol_score: number
+          screening_multiplier: number
+          query_multiplier: number
+          meeting_admin_points: number
+          rubric_trial_type: string | null
+          rubric_phase: string | null
+          rubric_sponsor_type: string | null
+          rubric_visit_volume: string | null
+          rubric_procedural_intensity: string | null
+          rubric_notes: string | null
           start_date: string | null
           end_date: string | null
           target_enrollment: number | null
           visit_window_days: number
           inventory_buffer_days: number
           visit_window_buffer_days: number
+          inventory_buffer_kits: number
           delivery_days_default: number
           anchor_day: number
           dosing_frequency: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom'
@@ -118,12 +131,25 @@ export interface Database {
           phase?: string | null
           indication?: string | null
           status?: 'enrolling' | 'active' | 'closed_to_enrollment' | 'completed'
+          lifecycle?: 'start_up' | 'active' | 'follow_up' | 'close_out'
+          recruitment?: 'enrolling' | 'paused' | 'closed_to_accrual' | 'on_hold'
+          protocol_score?: number
+          screening_multiplier?: number
+          query_multiplier?: number
+          meeting_admin_points?: number
+          rubric_trial_type?: string | null
+          rubric_phase?: string | null
+          rubric_sponsor_type?: string | null
+          rubric_visit_volume?: string | null
+          rubric_procedural_intensity?: string | null
+          rubric_notes?: string | null
           start_date?: string | null
           end_date?: string | null
           target_enrollment?: number | null
           visit_window_days?: number
           inventory_buffer_days?: number
           visit_window_buffer_days?: number
+          inventory_buffer_kits?: number
           delivery_days_default?: number
           anchor_day?: number
           dosing_frequency?: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom'
@@ -145,12 +171,25 @@ export interface Database {
           phase?: string | null
           indication?: string | null
           status?: 'enrolling' | 'active' | 'closed_to_enrollment' | 'completed'
+          lifecycle?: 'start_up' | 'active' | 'follow_up' | 'close_out'
+          recruitment?: 'enrolling' | 'paused' | 'closed_to_accrual' | 'on_hold'
+          protocol_score?: number
+          screening_multiplier?: number
+          query_multiplier?: number
+          meeting_admin_points?: number
+          rubric_trial_type?: string | null
+          rubric_phase?: string | null
+          rubric_sponsor_type?: string | null
+          rubric_visit_volume?: string | null
+          rubric_procedural_intensity?: string | null
+          rubric_notes?: string | null
           start_date?: string | null
           end_date?: string | null
           target_enrollment?: number | null
           visit_window_days?: number
           inventory_buffer_days?: number
           visit_window_buffer_days?: number
+          inventory_buffer_kits?: number
           delivery_days_default?: number
           anchor_day?: number
           dosing_frequency?: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom'
@@ -172,7 +211,8 @@ export interface Database {
           enrollment_date: string
           randomization_date: string | null
           treatment_arm: string | null
-          status: 'screening' | 'active' | 'completed' | 'discontinued' | 'withdrawn'
+          status: 'screening' | 'enrolled' | 'active' | 'completed' | 'discontinued' | 'withdrawn'
+          phase: 'active_treatment' | 'follow_up' | 'screen_fail'
           discontinuation_reason: string | null
           discontinuation_date: string | null
           notes: string | null
@@ -188,7 +228,8 @@ export interface Database {
           enrollment_date?: string
           randomization_date?: string | null
           treatment_arm?: string | null
-          status?: 'screening' | 'active' | 'completed' | 'discontinued' | 'withdrawn'
+          status?: 'screening' | 'enrolled' | 'active' | 'completed' | 'discontinued' | 'withdrawn'
+          phase?: 'active_treatment' | 'follow_up' | 'screen_fail'
           discontinuation_reason?: string | null
           discontinuation_date?: string | null
           notes?: string | null
@@ -204,7 +245,8 @@ export interface Database {
           enrollment_date?: string
           randomization_date?: string | null
           treatment_arm?: string | null
-          status?: 'screening' | 'active' | 'completed' | 'discontinued' | 'withdrawn'
+          status?: 'screening' | 'enrolled' | 'active' | 'completed' | 'discontinued' | 'withdrawn'
+          phase?: 'active_treatment' | 'follow_up' | 'screen_fail'
           discontinuation_reason?: string | null
           discontinuation_date?: string | null
           notes?: string | null
@@ -380,6 +422,26 @@ export interface Database {
           updated_at?: string
         }
       }
+      visit_weights: {
+        Row: {
+          id: string
+          study_id: string | null
+          visit_type: 'screening' | 'baseline' | 'regular' | 'unscheduled' | 'early_termination' | string
+          weight: number
+        }
+        Insert: {
+          id?: string
+          study_id?: string | null
+          visit_type: 'screening' | 'baseline' | 'regular' | 'unscheduled' | 'early_termination' | string
+          weight?: number
+        }
+        Update: {
+          id?: string
+          study_id?: string | null
+          visit_type?: 'screening' | 'baseline' | 'regular' | 'unscheduled' | 'early_termination' | string
+          weight?: number
+        }
+      }
       subject_visits: {
         Row: {
           id: string
@@ -511,6 +573,85 @@ export interface Database {
           updated_at?: string
         }
       }
+      subject_drug_cycles: {
+        Row: {
+          id: string
+          subject_id: string
+          visit_id: string | null
+          drug_id: string
+          dispensing_date: string | null
+          last_dose_date: string | null
+          tablets_dispensed: number
+          tablets_returned: number
+          expected_taken: number | null
+          actual_taken: number | null
+          compliance_percentage: number | null
+          is_compliant: boolean | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          subject_id: string
+          visit_id?: string | null
+          drug_id: string
+          dispensing_date?: string | null
+          last_dose_date?: string | null
+          tablets_dispensed?: number
+          tablets_returned?: number
+          expected_taken?: number | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          subject_id?: string
+          visit_id?: string | null
+          drug_id?: string
+          dispensing_date?: string | null
+          last_dose_date?: string | null
+          tablets_dispensed?: number
+          tablets_returned?: number
+          expected_taken?: number | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      drug_cycle_adjustments: {
+        Row: {
+          id: string
+          cycle_id: string
+          event_type: 'dispense' | 'return' | 'correction'
+          delta_tablets: number
+          event_date: string
+          reason: string | null
+          user_id: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          cycle_id: string
+          event_type: 'dispense' | 'return' | 'correction'
+          delta_tablets: number
+          event_date: string
+          reason?: string | null
+          user_id: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          cycle_id?: string
+          event_type?: 'dispense' | 'return' | 'correction'
+          delta_tablets?: number
+          event_date?: string
+          reason?: string | null
+          user_id?: string
+          created_at?: string
+        }
+      }
       study_sections: {
         Row: {
           id: string
@@ -551,6 +692,79 @@ export interface Database {
           dosing_frequency?: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom' | null
           compliance_threshold?: number | null
           is_active?: boolean | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      coordinator_metrics: {
+        Row: {
+          id: string
+          coordinator_id: string
+          recorded_by: string | null
+          week_start: string
+          meeting_hours: number
+          screening_hours: number
+          screening_study_count: number
+          query_hours: number
+          query_study_count: number
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          coordinator_id: string
+          recorded_by?: string | null
+          week_start: string
+          meeting_hours?: number
+          screening_hours?: number
+          screening_study_count?: number
+          query_hours?: number
+          query_study_count?: number
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          coordinator_id?: string
+          recorded_by?: string | null
+          week_start?: string
+          meeting_hours?: number
+          screening_hours?: number
+          screening_study_count?: number
+          query_hours?: number
+          query_study_count?: number
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      study_coordinators: {
+        Row: {
+          id: string
+          study_id: string
+          coordinator_id: string
+          role: string | null
+          joined_at: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          study_id: string
+          coordinator_id: string
+          role?: string | null
+          joined_at?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          study_id?: string
+          coordinator_id?: string
+          role?: string | null
+          joined_at?: string
           created_at?: string
           updated_at?: string
         }
@@ -662,6 +876,41 @@ export interface Database {
           buffer_count?: number | null
           delivery_days?: number | null
           is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      study_drugs: {
+        Row: {
+          id: string
+          study_id: string
+          code: string
+          name: string
+          dosing_frequency: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom'
+          dose_per_day: number | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          study_id: string
+          code: string
+          name: string
+          dosing_frequency: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom'
+          dose_per_day?: number | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          study_id?: string
+          code?: string
+          name?: string
+          dosing_frequency?: 'QD' | 'BID' | 'TID' | 'QID' | 'weekly' | 'custom'
+          dose_per_day?: number | null
+          notes?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -997,17 +1246,92 @@ export interface Database {
       }
     }
     Views: {
-      [_ in never]: never
+      v_subject_drug_compliance: {
+        Row: {
+          id: string
+          subject_id: string
+          visit_id: string | null
+          drug_id: string
+          dispensing_date: string | null
+          ip_last_dose_date: string | null
+          dispensed_count: number
+          returned_count: number
+          expected_taken: number | null
+          actual_taken: number
+          compliance_percentage: number | null
+          is_compliant: boolean | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: never
+        Update: never
+      }
+      cwe_weights: {
+        Row: {
+          study_id: string | null
+          lifecycle_w: number | null
+          recruitment_w: number | null
+          ps: number | null
+          sm: number | null
+          qm: number | null
+        }
+        Insert: never
+        Update: never
+      }
+      cwe_now: {
+        Row: {
+          study_id: string | null
+          raw_now: number | null
+        }
+        Insert: never
+        Update: never
+      }
+      cwe_actuals: {
+        Row: {
+          study_id: string | null
+          raw_actuals: number | null
+        }
+        Insert: never
+        Update: never
+      }
+      cwe_forecast_4w: {
+        Row: {
+          study_id: string | null
+          raw_forecast: number | null
+        }
+        Insert: never
+        Update: never
+      }
     }
     Functions: {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      lifecycle_stage: 'start_up' | 'active' | 'follow_up' | 'close_out'
+      recruitment_status: 'enrolling' | 'paused' | 'closed_to_accrual' | 'on_hold'
+      subject_phase: 'active_treatment' | 'follow_up' | 'screen_fail'
     }
     CompositeTypes: {
       [_ in never]: never
     }
+  }
+}
+
+type WithRelationships<T> = T extends { Relationships: unknown } ? T : T & { Relationships: [] }
+
+type PublicSchema = Database['public']
+
+export type SupabaseDatabase = Omit<Database, 'public'> & {
+  public: {
+    Tables: {
+      [K in keyof PublicSchema['Tables']]: WithRelationships<PublicSchema['Tables'][K]>
+    }
+    Views: {
+      [K in keyof PublicSchema['Views']]: WithRelationships<PublicSchema['Views'][K]>
+    }
+    Functions: PublicSchema['Functions']
+    Enums: PublicSchema['Enums']
+    CompositeTypes: PublicSchema['CompositeTypes']
   }
 }
 
@@ -1040,6 +1364,26 @@ export type SubjectVisit = Database['public']['Tables']['subject_visits']['Row']
 export type SubjectVisitInsert = Database['public']['Tables']['subject_visits']['Insert']
 export type SubjectVisitUpdate = Database['public']['Tables']['subject_visits']['Update']
 
+export type SubjectDrugCycle = Database['public']['Tables']['subject_drug_cycles']['Row']
+export type SubjectDrugCycleInsert = Database['public']['Tables']['subject_drug_cycles']['Insert']
+export type SubjectDrugCycleUpdate = Database['public']['Tables']['subject_drug_cycles']['Update']
+
+export type DrugCycleAdjustment = Database['public']['Tables']['drug_cycle_adjustments']['Row']
+export type DrugCycleAdjustmentInsert = Database['public']['Tables']['drug_cycle_adjustments']['Insert']
+export type DrugCycleAdjustmentUpdate = Database['public']['Tables']['drug_cycle_adjustments']['Update']
+
+export type VisitWeight = Database['public']['Tables']['visit_weights']['Row']
+export type VisitWeightInsert = Database['public']['Tables']['visit_weights']['Insert']
+export type VisitWeightUpdate = Database['public']['Tables']['visit_weights']['Update']
+
+export type CoordinatorMetric = Database['public']['Tables']['coordinator_metrics']['Row']
+export type CoordinatorMetricInsert = Database['public']['Tables']['coordinator_metrics']['Insert']
+export type CoordinatorMetricUpdate = Database['public']['Tables']['coordinator_metrics']['Update']
+
+export type StudyCoordinator = Database['public']['Tables']['study_coordinators']['Row']
+export type StudyCoordinatorInsert = Database['public']['Tables']['study_coordinators']['Insert']
+export type StudyCoordinatorUpdate = Database['public']['Tables']['study_coordinators']['Update']
+
 export type StudySection = Database['public']['Tables']['study_sections']['Row']
 export type StudySectionInsert = Database['public']['Tables']['study_sections']['Insert']
 export type StudySectionUpdate = Database['public']['Tables']['study_sections']['Update']
@@ -1051,6 +1395,10 @@ export type SubjectSectionUpdate = Database['public']['Tables']['subject_section
 export type LabKit = Database['public']['Tables']['lab_kits']['Row']
 export type LabKitInsert = Database['public']['Tables']['lab_kits']['Insert']
 export type LabKitUpdate = Database['public']['Tables']['lab_kits']['Update']
+
+export type StudyDrug = Database['public']['Tables']['study_drugs']['Row']
+export type StudyDrugInsert = Database['public']['Tables']['study_drugs']['Insert']
+export type StudyDrugUpdate = Database['public']['Tables']['study_drugs']['Update']
 
 export type LabKitOrder = Database['public']['Tables']['lab_kit_orders']['Row']
 export type LabKitOrderInsert = Database['public']['Tables']['lab_kit_orders']['Insert']
@@ -1066,6 +1414,7 @@ export type LabKitShipmentUpdate = Database['public']['Tables']['lab_kit_shipmen
 export type LabKitUsage = Database['public']['Tables']['lab_kit_usage']['Row']
 export type LabKitUsageInsert = Database['public']['Tables']['lab_kit_usage']['Insert']
 export type LabKitUsageUpdate = Database['public']['Tables']['lab_kit_usage']['Update']
+
 
 export type VisitScheduleHistory = Database['public']['Tables']['visit_schedule_history']['Row']
 export type VisitScheduleHistoryInsert = Database['public']['Tables']['visit_schedule_history']['Insert']

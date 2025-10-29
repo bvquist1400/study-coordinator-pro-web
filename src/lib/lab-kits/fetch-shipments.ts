@@ -1,6 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import logger from '@/lib/logger'
-import type { Database } from '@/types/database'
+import type { Database, SupabaseDatabase } from '@/types/database'
 
 export interface ShipmentSubjectInfo {
   subject_id: string | null
@@ -43,7 +43,7 @@ export interface EnrichedShipment {
   kit: ShipmentKitInfo | null
 }
 
-type Supabase = SupabaseClient<Database>
+type Supabase = SupabaseClient<SupabaseDatabase>
 type ShipmentPayload = Database['public']['Tables']['lab_kit_shipments']['Row']['ups_tracking_payload']
 
 interface ShipmentRow {

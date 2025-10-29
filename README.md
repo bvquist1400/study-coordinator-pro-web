@@ -4,6 +4,10 @@ Opinionated Next.js app for study/site coordination with visits, IP accountabili
 
 Recent Changes
 
+- **Baseline Supabase Migration**: Added `migrations/20240801_initial_core_schema.sql` to bootstrap core tables, triggers, and helper functions so fresh environments start from a known state.
+- **Schema Parity Guardrails**: Added `migrations/20251021_add_studies_site_metadata.sql`, typed Supabase payloads, and new table definitions (`study_drugs`, `subject_drug_cycles`, `drug_cycle_adjustments`) to keep API typings in lock-step with the database snapshots.
+- **Supabase Config Snapshot**: `supabase/studio-config.toml` now tracks the project ID/connection defaults used by CLI tooling.
+- **Coordinator Workload Refresh**: `migrations/20251025_add_coordinator_metrics.sql` & `migrations/20251026_restructure_coordinator_metrics.sql` restructure coordinator metrics to be logged per coordinator, add the `study_coordinators` table, and power the new coordinator directory plus weekly workload logging UI.
 - **Lab Kit Management**: Enhanced inventory system with intelligent forecasting, shipment tracking, and alert management. Supports multi-kit studies with configurable buffers and deficit tracking.
 - **Lab Kit Ordering**: New order workflow with pending order tracking, automatic deficit coverage, and "Mark Received" → inventory entry flow.
 - **Shipment Status**: Added `delivered` status to lab kit shipments with corresponding migration and UI updates.
@@ -41,10 +45,12 @@ Database
 - Bootstrap schema: `setup-database.sql`
 - Full schema reference: `database-schema.sql`
 - Local tweaks and fixes (idempotent): files under `migrations/`
-  - Example order:
-    1) `migrations/20240901_add_ip_fields_migration.sql`
-    2) `migrations/20240901_add_return_ip_id_field.sql`
-    3) `migrations/20250917_add_delivery_days_settings.sql`
+  - Recommended order for a fresh environment:
+    1) `migrations/20240801_initial_core_schema.sql`
+    2) `migrations/20240901_add_ip_fields_migration.sql`
+    3) `migrations/20240901_add_return_ip_id_field.sql`
+    4) Remaining dated migrations (e.g., `migrations/20250917_add_delivery_days_settings.sql`, `migrations/20251021_add_studies_site_metadata.sql`, `migrations/20251025_add_coordinator_metrics.sql`, `migrations/20251026_restructure_coordinator_metrics.sql`)
+- Supabase CLI config: `supabase/studio-config.toml` (keeps project ref/ports in sync across contributors)
 
 Run
 
