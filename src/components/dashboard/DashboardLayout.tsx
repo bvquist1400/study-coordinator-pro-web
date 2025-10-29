@@ -26,6 +26,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
     { name: 'Analytics', href: '/analytics', icon: ChartBarIcon },
+    { name: 'Workload Engine', href: '/workload', icon: WrenchScrewdriverIcon },
+    { name: 'Coordinators', href: '/coordinators', icon: UsersIcon },
     { name: 'Studies', href: '/studies', icon: FolderIcon },
     { name: 'Subjects', href: '/subjects', icon: UsersIcon },
     { name: 'Visits', href: '/visits', icon: CalendarIcon },
@@ -230,6 +232,14 @@ function ChartBarIcon(props: React.ComponentProps<'svg'>) {
   return (
     <svg {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+    </svg>
+  )
+}
+
+function WrenchScrewdriverIcon(props: React.ComponentProps<'svg'>) {
+  return (
+    <svg {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.862 4.487l1.687-1.688 2.121 2.122-1.688 1.687a2 2 0 00-.512.883l-.464 1.857a1 1 0 01-1.21.73l-2.53-.632-5.63 5.63a2.25 2.25 0 11-3.182-3.183l5.63-5.63-.632-2.53a1 1 0 01.73-1.21l1.857-.464a2 2 0 00.883-.512zM7.5 16.5l3 3m-6.75-1.5h4.5" />
     </svg>
   )
 }

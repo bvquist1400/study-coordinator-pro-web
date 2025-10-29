@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser, verifyStudyMembership, createSupabaseAdmin } from '@/lib/api/auth'
 import logger from '@/lib/logger'
 import { fetchShipmentsForStudies } from '@/lib/lab-kits/fetch-shipments'
+import type { LabKitShipmentInsert, LabKitUpdate } from '@/types/database'
 
 // GET /api/shipments?studyId=xxx - List shipments for a study (read-only)
 export async function GET(request: NextRequest) {
@@ -40,6 +41,10 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const { labKitIds, accessionNumbers, airwayBillNumber, carrier = 'fedex', shippedDate, studyId } = body || {}
+    const allowedCarriers: NonNullable<LabKitShipmentInsert['carrier']>[] = ['fedex', 'ups', 'other']
+    const carrierValue = allowedCarriers.includes(String(carrier).toLowerCase() as any)
+      ? (String(carrier).toLowerCase() as NonNullable<LabKitShipmentInsert['carrier']>)
+      : 'other'
 
     if ((!Array.isArray(labKitIds) || labKitIds.length === 0) && (!Array.isArray(accessionNumbers) || accessionNumbers.length === 0)) {
       return NextResponse.json({ error: 'Provide labKitIds or accessionNumbers' }, { status: 400 })
@@ -119,29 +124,28 @@ export async function POST(request: NextRequest) {
     }
 
     // Insert shipments
-    const rowsFromIds = kitIds.map((id: string) => ({
+    const rowsFromIds: LabKitShipmentInsert[] = kitIds.map((id: string) => ({
       lab_kit_id: id,
       accession_number: null,
       airway_bill_number: String(airwayBillNumber).trim(),
-      carrier,
+      carrier: carrierValue,
       shipped_date: shippedDate || null,
       tracking_status: 'shipped'
     }))
-    const rowsFromAcc = accNums.map((acc: string) => {
+    const rowsFromAcc: LabKitShipmentInsert[] = accNums.map((acc: string) => {
       const k = kitsByAcc.get(acc)
       return {
         lab_kit_id: (k?.id as string),
         accession_number: acc,
         airway_bill_number: String(airwayBillNumber).trim(),
-        carrier,
+        carrier: carrierValue,
         shipped_date: shippedDate || null,
         tracking_status: 'shipped'
       }
     })
-    const rows = [...rowsFromIds, ...rowsFromAcc]
+    const rows: LabKitShipmentInsert[] = [...rowsFromIds, ...rowsFromAcc]
     const { data: inserted, error: insErr } = await supabase
       .from('lab_kit_shipments')
-      // @ts-expect-error dynamic insert array
       .insert(rows)
       .select('id, lab_kit_id, accession_number, airway_bill_number, carrier, shipped_date, tracking_status')
     if (insErr) {
@@ -153,8 +157,7 @@ export async function POST(request: NextRequest) {
     if (kitIds.length > 0) {
       const { error: updErr } = await supabase
         .from('lab_kits')
-        // @ts-expect-error update object
-        .update({ status: 'shipped' })
+        .update({ status: 'shipped' } as Partial<LabKitUpdate>)
         .in('id', kitIds)
       if (updErr) {
         logger.error('Update lab kits to shipped error', updErr as any)

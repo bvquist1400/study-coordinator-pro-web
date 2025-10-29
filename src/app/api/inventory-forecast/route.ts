@@ -268,7 +268,13 @@ if (studySettingsError) {
       return NextResponse.json({ error: 'Failed to load kit requirements' }, { status: 500 })
     }
 
-    const requirements = (requirementRows || []) as RequirementRow[]
+    const requirements = (requirementRows || []).map((row) => ({
+      ...row,
+      study_kit_types:
+        row.study_kit_types && 'id' in row.study_kit_types
+          ? row.study_kit_types
+          : null
+    })) as RequirementRow[]
     if (requirements.length === 0) {
       const summary: ForecastSummary = {
         totalVisitsScheduled: 0,
@@ -378,8 +384,16 @@ if (studySettingsError) {
       return NextResponse.json({ error: 'Failed to load upcoming visits' }, { status: 500 })
     }
 
+    const normalizedSubjectVisits = (subjectVisitRows || []).map((row) => ({
+      ...row,
+      subjects:
+        row.subjects && typeof row.subjects === 'object' && 'subject_number' in row.subjects
+          ? row.subjects
+          : null
+    })) as SubjectVisitRow[]
+
     const visitsBySchedule = new Map<string, SubjectVisitRow[]>()
-    for (const row of (subjectVisitRows || []) as SubjectVisitRow[]) {
+    for (const row of normalizedSubjectVisits) {
       if (!row.visit_schedule_id) continue
       if (!visitsBySchedule.has(row.visit_schedule_id)) {
         visitsBySchedule.set(row.visit_schedule_id, [])

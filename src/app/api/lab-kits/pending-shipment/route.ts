@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser, verifyStudyMembership, createSupabaseAdmin } from '@/lib/api/auth'
 import logger from '@/lib/logger'
+import type { LabKit } from '@/types/database'
 
-type KitRow = { id: string; study_id: string; status: string; accession_number: string }
+type KitRow = Pick<LabKit, 'id' | 'study_id' | 'status' | 'accession_number'>
 
 // POST /api/lab-kits/pending-shipment
 // Payload: { studyId: string, labKitIds?: string[], accessionNumbers?: string[] }
@@ -106,10 +107,10 @@ export async function POST(request: NextRequest) {
     // Perform update if any
     let updated = 0
     if (updatableIds.length > 0) {
+      const updatePayload = { status: 'pending_shipment' as KitRow['status'] }
       const { data: updatedRows, error: updErr } = await supabase
         .from('lab_kits')
-        // @ts-expect-error update object
-        .update({ status: 'pending_shipment' })
+        .update(updatePayload)
         .in('id', updatableIds)
         .select('id, accession_number')
       if (updErr) {

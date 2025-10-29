@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import type { Study, StudySection } from '@/types/database'
@@ -18,6 +19,7 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
     study_title: '',
     protocol_version: '',
     status: 'enrolling',
+    recruitment: 'enrolling',
     sponsor: '',
     principal_investigator: '',
     phase: '',
@@ -61,6 +63,7 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
         study_title: study.study_title || '',
         protocol_version: study.protocol_version || '',
         status: study.status || 'enrolling',
+        recruitment: (study.recruitment as any) || 'enrolling',
         sponsor: study.sponsor || '',
         principal_investigator: study.principal_investigator || '',
         phase: study.phase || '',
@@ -153,6 +156,7 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
         study_title: formData.study_title.trim(),
         protocol_version: formData.protocol_version.trim() || null,
         status: formData.status,
+        recruitment: formData.recruitment,
         sponsor: formData.sponsor.trim() || null,
         principal_investigator: formData.principal_investigator.trim() || null,
         phase: formData.phase.trim() || null,
@@ -212,7 +216,8 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
         inventory_buffer_days: formData.inventory_buffer_days,
         visit_window_buffer_days: formData.visit_window_buffer_days,
         notes: formData.notes.trim() || null,
-        status: 'completed'
+        status: 'completed',
+        recruitment: formData.recruitment
       }
       const resp = await fetch('/api/studies', {
         method: 'PUT',
@@ -260,14 +265,23 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-gray-800/95 backdrop-blur-sm border border-gray-700 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-white">Edit Study</h2>
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-white">Edit Study</h2>
+          <div className="flex items-center gap-3">
+            <Link
+              href={`/studies/${study.id}/workload`}
+              target="_blank"
+              className="text-sm text-blue-400 hover:text-blue-300 border border-blue-500/50 rounded-lg px-3 py-1.5 transition-colors"
+            >
+              Open Workload Engine
+            </Link>
             <button onClick={onClose} className="text-gray-400 hover:text-white" disabled={isSubmitting}>
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
+        </div>
 
           {errors.general && (
             <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
@@ -515,7 +529,7 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
               {errors.study_title && <p className="text-red-400 text-sm mt-1">{errors.study_title}</p>}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Status</label>
                 <select name="status" value={formData.status} onChange={handleInputChange} className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2" disabled={isSubmitting}>
@@ -523,6 +537,21 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
                   <option value="active">Active</option>
                   <option value="closed_to_enrollment">Closed to Enrollment</option>
                   <option value="completed">Completed</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Recruitment Status</label>
+                <select
+                  name="recruitment"
+                  value={formData.recruitment}
+                  onChange={handleInputChange}
+                  className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2"
+                  disabled={isSubmitting}
+                >
+                  <option value="enrolling">Enrolling (active accrual)</option>
+                  <option value="paused">Paused</option>
+                  <option value="closed_to_accrual">Closed to Accrual</option>
+                  <option value="on_hold">On Hold</option>
                 </select>
               </div>
               <div>

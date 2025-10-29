@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Use the safe replacement function
-    const { data: result, error } = await supabase
+    const { data: result, error } = await (supabase as any)
       .rpc('replace_study_visit_schedules', {
         p_study_id: study_id,
         p_new_schedules: schedules

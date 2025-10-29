@@ -69,7 +69,20 @@ export async function GET(request: NextRequest) {
         .eq('study_id', studyId)
         .order('subject_number')
 
-      if (status) subjectQuery = subjectQuery.eq('status', status)
+      if (status) {
+        const allowedStatuses: Array<'screening' | 'enrolled' | 'active' | 'completed' | 'discontinued' | 'withdrawn'> = [
+          'screening',
+          'enrolled',
+          'active',
+          'completed',
+          'discontinued',
+          'withdrawn'
+        ]
+        if (!allowedStatuses.includes(status as any)) {
+          return NextResponse.json({ error: 'Invalid status filter' }, { status: 400 })
+        }
+        subjectQuery = subjectQuery.eq('status', status as (typeof allowedStatuses)[number])
+      }
       if (search) subjectQuery = subjectQuery.ilike('subject_number', `%${search}%`)
 
       const { data: subjects, error: subjectsErr } = await subjectQuery
@@ -322,7 +335,18 @@ export async function GET(request: NextRequest) {
 
       // Filter by status if provided
       if (status) {
-        query = query.eq('status', status)
+        const allowedStatuses: Array<'screening' | 'enrolled' | 'active' | 'completed' | 'discontinued' | 'withdrawn'> = [
+          'screening',
+          'enrolled',
+          'active',
+          'completed',
+          'discontinued',
+          'withdrawn'
+        ]
+        if (!allowedStatuses.includes(status as any)) {
+          return NextResponse.json({ error: 'Invalid status filter' }, { status: 400 })
+        }
+        query = query.eq('status', status as (typeof allowedStatuses)[number])
       }
 
       // Search by subject number if provided
