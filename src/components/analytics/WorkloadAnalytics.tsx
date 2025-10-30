@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import { formatRecruitmentStatus, formatStudyStatus } from '@/constants/studyStatus'
 
 interface WorkloadEntry {
   studyId: string
@@ -152,14 +153,6 @@ export default function WorkloadAnalytics({ className, refreshToken }: WorkloadA
     return 'Balanced'
   }
 
-  const formatStatus = (value: string | null | undefined) => {
-    if (!value) return '—'
-    return value
-      .split('_')
-      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(' ')
-  }
-
   if (loading) {
     return (
       <div className={`${className ?? ''}`}>
@@ -294,7 +287,7 @@ export default function WorkloadAnalytics({ className, refreshToken }: WorkloadA
                     {entry.lifecycle ?? '—'}
                   </td>
                   <td className="px-4 py-3 text-gray-300">
-                    {formatStatus(entry.recruitment ?? entry.status)}
+                    {entry.recruitment ? formatRecruitmentStatus(entry.recruitment) : formatStudyStatus(entry.status)}
                   </td>
                   <td className="px-4 py-3 text-right text-gray-200">
                     <div>{entry.metrics.avgMeetingHours.toFixed(1)} h</div>

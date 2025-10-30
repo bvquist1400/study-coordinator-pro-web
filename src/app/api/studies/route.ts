@@ -199,6 +199,8 @@ export async function PUT(request: NextRequest) {
     if (typeof updateData.phase !== 'undefined') updateObject.phase = updateData.phase
     if (typeof updateData.indication !== 'undefined') updateObject.indication = updateData.indication
     if (typeof updateData.status !== 'undefined') updateObject.status = updateData.status
+    if (typeof updateData.recruitment !== 'undefined') updateObject.recruitment = updateData.recruitment
+    if (typeof updateData.lifecycle !== 'undefined') updateObject.lifecycle = updateData.lifecycle
     if (typeof updateData.start_date !== 'undefined') updateObject.start_date = updateData.start_date
     if (typeof updateData.end_date !== 'undefined') updateObject.end_date = updateData.end_date
     if (typeof updateData.target_enrollment !== 'undefined') updateObject.target_enrollment = updateData.target_enrollment ? parseInt(updateData.target_enrollment) : null

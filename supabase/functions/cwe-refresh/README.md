@@ -17,12 +17,17 @@ Copy `.env.example` → `.env` and fill these values before deploying.
 1. `cd supabase/functions/cwe-refresh`
 2. Deploy the function: `supabase functions deploy cwe-refresh`
 3. Set secrets: `supabase secrets set --env-file supabase/functions/cwe-refresh/.env`
-4. In Supabase Dashboard, register a webhook/listener on the `cwe_events` channel targeting this function.
+4. Attach the `cwe_events` broadcast channel to this function via Supabase dashboard/CLI once the listener tooling is available (currently pending; manual refresh works via direct invoke).
 
 ## Testing
 
 Invoke manually with a sample payload:
 
 ```bash
-supabase functions invoke cwe-refresh --data '{"record":{"table":"coordinator_metrics","event":"INSERT","study_id":"00000000-0000-0000-0000-000000000000"}}'
+curl -X POST 'https://<project-ref>.supabase.co/functions/v1/cwe-refresh' \
+  -H 'Authorization: Bearer '"$SERVICE_ROLE_KEY"'' \
+  -H 'Content-Type: application/json' \
+  -d '{"record":{"table":"coordinator_metrics","event":"INSERT","study_id":"00000000-0000-0000-0000-000000000000"}}'
 ```
+
+Replace `<project-ref>` and `study_id` with real values. A 200 response with `{ "ok": true, "queued": [...] }` confirms the function processed the event; check `study_workload_snapshots` for a fresh `computed_at`.

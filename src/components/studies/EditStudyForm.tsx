@@ -4,6 +4,12 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import type { Study, StudySection } from '@/types/database'
+import {
+  STUDY_STATUS_OPTIONS,
+  STUDY_RECRUITMENT_OPTIONS,
+  type StudyOperationalStatus,
+  type StudyRecruitmentStatus
+} from '@/constants/studyStatus'
 
 interface EditStudyFormProps {
   study: Study
@@ -14,7 +20,27 @@ interface EditStudyFormProps {
 export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    protocol_number: string
+    study_title: string
+    protocol_version: string
+    status: StudyOperationalStatus
+    recruitment: StudyRecruitmentStatus
+    sponsor: string
+    principal_investigator: string
+    phase: string
+    indication: string
+    target_enrollment: string
+    start_date: string
+    end_date: string
+    dosing_frequency: Study['dosing_frequency']
+    compliance_threshold: string
+    anchor_day: string
+    inventory_buffer_days: string
+    visit_window_buffer_days: string
+    delivery_days_default: string
+    notes: string
+  }>({
     protocol_number: '',
     study_title: '',
     protocol_version: '',
@@ -62,8 +88,8 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
         protocol_number: study.protocol_number || '',
         study_title: study.study_title || '',
         protocol_version: study.protocol_version || '',
-        status: study.status || 'enrolling',
-        recruitment: (study.recruitment as any) || 'enrolling',
+        status: (study.status ?? 'enrolling') as StudyOperationalStatus,
+        recruitment: (study.recruitment ?? 'enrolling') as StudyRecruitmentStatus,
         sponsor: study.sponsor || '',
         principal_investigator: study.principal_investigator || '',
         phase: study.phase || '',
@@ -115,7 +141,20 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
+    setFormData(prev => {
+      if (name === 'status') {
+        const nextStatus = value as StudyOperationalStatus
+        let nextRecruitment = prev.recruitment
+        if (nextStatus === 'closed_to_enrollment' && nextRecruitment === 'enrolling') {
+          nextRecruitment = 'closed_to_accrual'
+        }
+        if (nextStatus === 'enrolling' && nextRecruitment === 'closed_to_accrual') {
+          nextRecruitment = 'enrolling'
+        }
+        return { ...prev, status: nextStatus, recruitment: nextRecruitment }
+      }
+      return { ...prev, [name]: value }
+    })
     if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }))
   }
 
@@ -150,13 +189,18 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
       if (!token) return
+      const resolvedRecruitment: StudyRecruitmentStatus =
+        formData.status === 'closed_to_enrollment' && formData.recruitment === 'enrolling'
+          ? 'closed_to_accrual'
+          : formData.recruitment
+
       const payload = {
         id: study.id,
         protocol_number: formData.protocol_number.trim(),
         study_title: formData.study_title.trim(),
         protocol_version: formData.protocol_version.trim() || null,
         status: formData.status,
-        recruitment: formData.recruitment,
+        recruitment: resolvedRecruitment,
         sponsor: formData.sponsor.trim() || null,
         principal_investigator: formData.principal_investigator.trim() || null,
         phase: formData.phase.trim() || null,
@@ -197,6 +241,11 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
       if (!token) return
+      const resolvedRecruitment: StudyRecruitmentStatus =
+        formData.status === 'closed_to_enrollment' && formData.recruitment === 'enrolling'
+          ? 'closed_to_accrual'
+          : formData.recruitment
+
       const payload = {
         id: study.id,
         // preserve current values to avoid default overrides on server
@@ -217,7 +266,7 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
         visit_window_buffer_days: formData.visit_window_buffer_days,
         notes: formData.notes.trim() || null,
         status: 'completed',
-        recruitment: formData.recruitment
+        recruitment: resolvedRecruitment
       }
       const resp = await fetch('/api/studies', {
         method: 'PUT',
@@ -533,10 +582,11 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Status</label>
                 <select name="status" value={formData.status} onChange={handleInputChange} className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2" disabled={isSubmitting}>
-                  <option value="enrolling">Enrolling</option>
-                  <option value="active">Active</option>
-                  <option value="closed_to_enrollment">Closed to Enrollment</option>
-                  <option value="completed">Completed</option>
+                  {STUDY_STATUS_OPTIONS.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -548,10 +598,11 @@ export default function EditStudyForm({ study, onClose, onSuccess }: EditStudyFo
                   className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2"
                   disabled={isSubmitting}
                 >
-                  <option value="enrolling">Enrolling (active accrual)</option>
-                  <option value="paused">Paused</option>
-                  <option value="closed_to_accrual">Closed to Accrual</option>
-                  <option value="on_hold">On Hold</option>
+                  {STUDY_RECRUITMENT_OPTIONS.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>

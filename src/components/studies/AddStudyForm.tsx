@@ -4,6 +4,12 @@ import { useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useSite } from '@/components/site/SiteProvider'
+import {
+  STUDY_STATUS_OPTIONS,
+  STUDY_RECRUITMENT_OPTIONS,
+  type StudyOperationalStatus,
+  type StudyRecruitmentStatus
+} from '@/constants/studyStatus'
 
 interface AddStudyFormProps {
   onClose: () => void
@@ -14,7 +20,8 @@ interface StudyFormData {
   protocol_number: string
   study_title: string
   protocol_version: string
-  status: 'enrolling' | 'active' | 'closed_to_enrollment' | 'completed'
+  status: StudyOperationalStatus
+  recruitment: StudyRecruitmentStatus
   sponsor: string
   principal_investigator: string
   phase: string
@@ -47,6 +54,7 @@ export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) 
     study_title: '',
     protocol_version: '',
     status: 'enrolling',
+    recruitment: 'enrolling',
     sponsor: '',
     principal_investigator: '',
     phase: '',
@@ -68,10 +76,23 @@ export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) 
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }))
+    setFormData(prev => {
+      if (name === 'status') {
+        const nextStatus = value as StudyOperationalStatus
+        let nextRecruitment = prev.recruitment
+        if (nextStatus === 'closed_to_enrollment' && nextRecruitment === 'enrolling') {
+          nextRecruitment = 'closed_to_accrual'
+        }
+        if (nextStatus === 'enrolling' && nextRecruitment === 'closed_to_accrual') {
+          nextRecruitment = 'enrolling'
+        }
+        return { ...prev, status: nextStatus, recruitment: nextRecruitment }
+      }
+      return {
+        ...prev,
+        [name]: value
+      }
+    })
     
     // Clear error when user starts typing
     if (errors[name]) {
@@ -172,6 +193,11 @@ export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) 
       }
 
       // Prepare data for insertion
+      const resolvedRecruitment: StudyRecruitmentStatus =
+        formData.status === 'closed_to_enrollment' && formData.recruitment === 'enrolling'
+          ? 'closed_to_accrual'
+          : formData.recruitment
+
       const insertData = {
         user_id: userData.user.id, // legacy/audit
         site_id: siteId,
@@ -180,6 +206,7 @@ export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) 
         study_title: formData.study_title.trim(),
         protocol_version: formData.protocol_version.trim() || null,
         status: formData.status,
+        recruitment: resolvedRecruitment,
         sponsor: formData.sponsor.trim() || null,
         principal_investigator: formData.principal_investigator.trim() || null,
         phase: formData.phase.trim() || null,
@@ -342,7 +369,7 @@ export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) 
               )}
             </div>
             {/* Protocol Number & Study Title */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   Protocol Number *
@@ -372,10 +399,29 @@ export default function AddStudyForm({ onClose, onSuccess }: AddStudyFormProps) 
                   className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   disabled={isSubmitting}
                 >
-                  <option value="enrolling">Enrolling</option>
-                  <option value="active">Active</option>
-                  <option value="closed_to_enrollment">Closed to Enrollment</option>
-                  <option value="completed">Completed</option>
+                  {STUDY_STATUS_OPTIONS.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Recruitment Status
+                </label>
+                <select
+                  name="recruitment"
+                  value={formData.recruitment}
+                  onChange={handleInputChange}
+                  className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  disabled={isSubmitting}
+                >
+                  {STUDY_RECRUITMENT_OPTIONS.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>

@@ -4,6 +4,94 @@ import logger from '@/lib/logger'
 
 const MAX_RECENT_WEEKS = 12
 
+interface MetricsBreakdownPayload {
+  studyId?: string
+  study_id?: string
+  meetingHours?: unknown
+  screeningHours?: unknown
+  queryHours?: unknown
+  notes?: unknown
+}
+
+interface MetricsBreakdownRow {
+  id: string
+  studyId: string
+  weekStart: string
+  meetingHours: number
+  screeningHours: number
+  queryHours: number
+  notes: string | null
+  updatedAt: string | null
+}
+
+const toNumber = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (trimmed.length > 0) {
+      const parsed = Number(trimmed)
+      if (Number.isFinite(parsed)) {
+        return parsed
+      }
+    }
+  }
+  return null
+}
+
+const sanitizeBreakdownEntries = (entries: unknown): Array<{
+  studyId: string
+  meetingHours: number
+  screeningHours: number
+  queryHours: number
+  notes: string | null
+}> => {
+  if (!Array.isArray(entries)) return []
+
+  const sanitized: Array<{
+    studyId: string
+    meetingHours: number
+    screeningHours: number
+    queryHours: number
+    notes: string | null
+  }> = []
+
+  for (const entry of entries as MetricsBreakdownPayload[]) {
+    if (!entry || typeof entry !== 'object') continue
+    const studyId = typeof entry.studyId === 'string'
+      ? entry.studyId
+      : typeof entry.study_id === 'string'
+      ? entry.study_id
+      : null
+    if (!studyId) continue
+
+    const meeting = toNumber(entry.meetingHours)
+    const screening = toNumber(entry.screeningHours)
+    const query = toNumber(entry.queryHours)
+    const notesRaw = typeof entry.notes === 'string' ? entry.notes : null
+    const notes = notesRaw ? notesRaw.trim() : null
+
+    const meetingHours = meeting !== null && meeting >= 0 ? Number(meeting.toFixed(2)) : 0
+    const screeningHours = screening !== null && screening >= 0 ? Number(screening.toFixed(2)) : 0
+    const queryHours = query !== null && query >= 0 ? Number(query.toFixed(2)) : 0
+
+    if (meetingHours === 0 && screeningHours === 0 && queryHours === 0 && (!notes || notes.length === 0)) {
+      continue
+    }
+
+    sanitized.push({
+      studyId,
+      meetingHours,
+      screeningHours,
+      queryHours,
+      notes: notes && notes.length > 0 ? notes : null
+    })
+  }
+
+  return sanitized
+}
+
 export async function GET(request: NextRequest) {
   const auth = await authenticateUser(request)
   if (!auth.user) {
@@ -66,6 +154,35 @@ export async function GET(request: NextRequest) {
       updatedAt: row.updated_at
     }))
 
+    let breakdownRows: Array<Record<string, any>> | null = null
+    let breakdownError: any = null
+
+    try {
+      const breakdownResponse = await supabase
+        .from('coordinator_metrics_notes' as any)
+        .select('id, coordinator_id, study_id, week_start, meeting_hours, screening_hours, query_hours, notes, updated_at')
+        .eq('coordinator_id', targetCoordinatorId)
+        .order('week_start', { ascending: false })
+        .limit(50)
+
+      breakdownRows = breakdownResponse.data as Array<Record<string, any>> | null
+      breakdownError = breakdownResponse.error
+    } catch (err) {
+      breakdownError = err
+    }
+
+    if (breakdownError?.code === '42P01') {
+      breakdownRows = []
+      breakdownError = null
+    }
+
+    if (breakdownError) {
+      logger.warn('Failed to load coordinator metrics breakdown', {
+        error: breakdownError as any,
+        coordinatorId: targetCoordinatorId
+      })
+    }
+
     const { data: assignmentRows, error: assignmentsError } = await supabase
       .from('study_coordinators' as any)
       .select('id, study_id, role, joined_at, studies!inner(id, study_title, protocol_number)')
@@ -90,7 +207,18 @@ export async function GET(request: NextRequest) {
         : null
     }))
 
-    return NextResponse.json({ coordinatorId: targetCoordinatorId, metrics: normalizedMetrics, assignments })
+    const breakdowns: MetricsBreakdownRow[] = (breakdownRows ?? []).map((row: any) => ({
+      id: row.id,
+      studyId: row.study_id,
+      weekStart: row.week_start,
+      meetingHours: Number(row.meeting_hours ?? 0),
+      screeningHours: Number(row.screening_hours ?? 0),
+      queryHours: Number(row.query_hours ?? 0),
+      notes: row.notes ?? null,
+      updatedAt: row.updated_at ?? null
+    }))
+
+    return NextResponse.json({ coordinatorId: targetCoordinatorId, metrics: normalizedMetrics, assignments, breakdowns })
   } catch (error) {
     logger.error('Unexpected error loading coordinator metrics', error as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -106,6 +234,7 @@ interface MetricsPayload {
   queryHours?: number
   queryStudyCount?: number
   notes?: string | null
+  breakdown?: MetricsBreakdownPayload[]
 }
 
 const isValidDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value)
@@ -151,74 +280,71 @@ export async function POST(request: NextRequest) {
     const notes = typeof payload?.notes === 'string' ? payload?.notes : null
 
     const supabase = createSupabaseAdmin()
+    const breakdownEntries = sanitizeBreakdownEntries(payload?.breakdown ?? [])
 
-    const upsertResponse = await supabase
-      .from('coordinator_metrics')
-      .upsert(
-        {
-          coordinator_id: targetCoordinatorId,
-          recorded_by: auth.user.id,
-          week_start: weekStart,
-          meeting_hours: meetingHours,
-          screening_hours: screeningHours,
-          screening_study_count: screeningStudies,
-          query_hours: queryHours,
-          query_study_count: queryStudies,
-          notes
-        },
-        { onConflict: 'coordinator_id,week_start' }
-      )
-      .select('id, coordinator_id, recorded_by, week_start, meeting_hours, screening_hours, screening_study_count, query_hours, query_study_count, notes, created_at, updated_at')
-      .single()
-    let data = upsertResponse.data as Record<string, any> | null
-    let error = upsertResponse.error
+    const rpcResult = await (supabase as any).rpc('save_coordinator_metrics_with_breakdown', {
+      p_coordinator_id: targetCoordinatorId,
+      p_recorded_by: auth.user.id,
+      p_week_start: weekStart,
+      p_meeting_hours: meetingHours,
+      p_screening_hours: screeningHours,
+      p_screening_study_count: screeningStudies,
+      p_query_hours: queryHours,
+      p_query_study_count: queryStudies,
+      p_notes: notes,
+      p_breakdown: breakdownEntries
+    })
 
-    if (error?.code === '42703') {
-      const legacy = await supabase
-        .from('coordinator_metrics')
-        .upsert(
-          {
-            coordinator_id: targetCoordinatorId,
-            week_start: weekStart,
-            screening_hours: screeningHours,
-            query_hours: queryHours,
-            admin_hours: meetingHours,
-            notes
-          },
-          { onConflict: 'coordinator_id,week_start' }
-        )
-        .select('id, coordinator_id, week_start, screening_hours, query_hours, admin_hours, notes, created_at, updated_at')
-        .single()
-      error = legacy.error
-      const legacyData = legacy.data as Record<string, any> | null
-      if (!error && legacyData) {
-        data = {
-          ...legacyData,
-          meeting_hours: legacyData.meeting_hours ?? legacyData.admin_hours ?? meetingHours,
-          screening_study_count: legacyData.screening_study_count ?? screeningStudies,
-          query_study_count: legacyData.query_study_count ?? queryStudies,
-          recorded_by: auth.user.id
-        }
-      } else {
-        data = legacyData
-      }
-    }
+    let metricRow = rpcResult.data as Record<string, any> | null
+    const rpcError = rpcResult.error
 
-    if (error) {
-      logger.error('Failed to save coordinator metrics', error as any, {
+    if (rpcError && !['42883', '42P01', '42703'].includes(rpcError.code ?? '')) {
+      logger.error('Failed to save coordinator metrics via RPC', rpcError as any, {
         coordinatorId: targetCoordinatorId,
         weekStart
       })
       return NextResponse.json({ error: 'Failed to save coordinator metrics' }, { status: 500 })
     }
 
-    const normalized = data
+    if (rpcError) {
+      // Fallback for environments without the new function/table
+      const fallbackUpsert = await supabase
+        .from('coordinator_metrics')
+        .upsert(
+          {
+            coordinator_id: targetCoordinatorId,
+            recorded_by: auth.user.id,
+            week_start: weekStart,
+            meeting_hours: meetingHours,
+            screening_hours: screeningHours,
+            screening_study_count: screeningStudies,
+            query_hours: queryHours,
+            query_study_count: queryStudies,
+            notes
+          },
+          { onConflict: 'coordinator_id,week_start' }
+        )
+        .select('id, coordinator_id, recorded_by, week_start, meeting_hours, screening_hours, screening_study_count, query_hours, query_study_count, notes, created_at, updated_at')
+        .single()
+
+      if (fallbackUpsert.error) {
+        logger.error('Failed to save coordinator metrics (legacy path)', fallbackUpsert.error as any, {
+          coordinatorId: targetCoordinatorId,
+          weekStart
+        })
+        return NextResponse.json({ error: 'Failed to save coordinator metrics' }, { status: 500 })
+      }
+
+      metricRow = fallbackUpsert.data as Record<string, any> | null
+    }
+
+    const normalized = metricRow
       ? {
-          ...data,
-          meeting_hours: data.meeting_hours ?? data.admin_hours ?? meetingHours,
-          screening_study_count: data.screening_study_count ?? screeningStudies,
-          query_study_count: data.query_study_count ?? queryStudies,
-          recorded_by: data.recorded_by ?? auth.user.id
+          ...metricRow,
+          meeting_hours: metricRow.meeting_hours ?? metricRow.admin_hours ?? meetingHours,
+          screening_study_count: metricRow.screening_study_count ?? screeningStudies,
+          query_study_count: metricRow.query_study_count ?? queryStudies,
+          recorded_by: metricRow.recorded_by ?? auth.user.id
         }
       : null
 

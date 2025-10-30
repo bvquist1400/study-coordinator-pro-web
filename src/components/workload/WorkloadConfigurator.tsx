@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import CoordinatorMetricsPanel from './CoordinatorMetricsPanel'
+import { formatRecruitmentStatus, formatLifecycleStage } from '@/constants/studyStatus'
 
 interface WorkloadEntry {
   studyId: string
@@ -39,14 +40,6 @@ interface CoordinatorOption {
   email: string | null
   organization: string | null
   assignments: Array<{ id: string; studyTitle: string; protocolNumber: string; role: string | null; joinedAt: string }>
-}
-
-const formatStatus = (value: string | null | undefined) => {
-  if (!value) return '—'
-  return value
-    .split('_')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ')
 }
 
 const formatPoints = (value: number) => Math.round(value).toLocaleString('en-US')
@@ -321,11 +314,11 @@ export default function WorkloadConfigurator({ onMetricsRefresh }: WorkloadConfi
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div className="space-y-1">
                   <p className="text-gray-400 text-xs uppercase tracking-wide">Lifecycle</p>
-                  <p className="text-white">{formatStatus(entry.lifecycle)}</p>
+                  <p className="text-white">{formatLifecycleStage(entry.lifecycle)}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-gray-400 text-xs uppercase tracking-wide">Recruitment</p>
-                  <p className="text-white">{formatStatus(entry.recruitment)}</p>
+                  <p className="text-white">{formatRecruitmentStatus(entry.recruitment)}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-gray-400 text-xs uppercase tracking-wide">Meeting load</p>

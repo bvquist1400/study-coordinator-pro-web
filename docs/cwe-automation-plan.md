@@ -80,3 +80,19 @@
 3. **Monitoring**
    - Track succeeded vs. failed refreshes via Supabase function logs.
    - Extend `/api/analytics/workload` response metadata to feed automation dashboards.
+
+## 9. Runbook — Manual Snapshot Refresh
+- Verify latest snapshot timestamp:
+  ```sql
+  select study_id, computed_at, expires_at
+  from study_workload_snapshots
+  where study_id = '<study-id>';
+  ```
+- Trigger refresh on demand:
+  ```bash
+  curl -X POST 'https://leszzfzjloftinknohen.supabase.co/functions/v1/cwe-refresh' \
+    -H 'Authorization: Bearer '"$SERVICE_ROLE_KEY"'' \
+    -H 'Content-Type: application/json' \
+    -d '{"record":{"table":"coordinator_metrics","event":"INSERT","study_id":"<study-id>"}}'
+  ```
+- 200 response with `{ "ok": true, "queued": [...] }` indicates success; re-run the SQL to confirm `computed_at` advanced. Leave a note in ops channel if refresh fails so the edge-function logs can be reviewed.

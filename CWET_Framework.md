@@ -17,6 +17,8 @@ To replace static feasibility scoring with a dynamic workload system that predic
 - Implemented **protocol complexity rubric**, **meeting/admin load**, and guided workload configuration UI in the Study Coordinator Pro web app.
 - Introduced **study coordinator assignments + weekly metrics loop** so recorded hours and study counts dynamically adjust screening/query multipliers and meeting load.
 - Expanded the **Members** dashboard to resolve coordinator identities (name/email) and manage per-study assignments inline, keeping directory views and workload snapshots aligned.
+- Normalized **study status, recruitment status, and lifecycle labels** across the application, with automatic recruitment alignment when studies are closed to enrollment.
+- Added **per-study coordinator workload breakdowns** so weekly log submissions capture hours and notes by assignment while preserving the aggregate loop.
 
 ---
 
@@ -24,10 +26,10 @@ To replace static feasibility scoring with a dynamic workload system that predic
 
 | Area | Status | Notes |
 |------|--------|-------|
-| Schema | ✅ | `studies` table includes lifecycle, recruitment, rubric fields, and meeting/admin load. `visit_weights`, `cwe_*` views active when migration applied. |
-| API | ✅ | `/api/analytics/workload` and `/api/cwe/[studyId]` deliver workload totals, auto-fallback when new tables/views are absent, and support anon-key fallback if service role is missing. |
-| UI | ✅ | `/workload` dashboard surfaces portfolio summary; `/studies/[id]/workload` guides rubric scoring, lifecycle selection, multipliers, meeting load, and visit weights. |
-| Coordinator Metrics Loop | ✅ | Weekly metrics logging via `/api/cwe/metrics` and study assignments power adaptive multipliers in workload analytics. |
+| Schema | ✅ | `studies` table includes lifecycle, recruitment, rubric fields, and meeting/admin load. `coordinator_metrics_notes` stores per-study log breakdowns. |
+| API | ✅ | `/api/analytics/workload` and `/api/cwe/[studyId]` deliver workload totals; `/api/cwe/metrics` now persists aggregate + per-study entries via `save_coordinator_metrics_with_breakdown`. |
+| UI | ✅ | `/workload` dashboard surfaces portfolio summary; `/studies/[id]/workload` guides rubric scoring, lifecycle selection, multipliers, meeting load, and visit weights. Status chips share a common label & color system. |
+| Coordinator Metrics Loop | ✅ | Weekly metrics logging via `/api/cwe/metrics` and study assignments power adaptive multipliers in workload analytics with detailed breakdown persistence. |
 | Automation | 🚧 In Progress | Snapshot cache + nightly `/api/cron/cwe-backfill` refresh are live; `cwe-refresh` Edge function deployed and manually verified; Supabase broadcast listener still pending UI support. |
 
 ---

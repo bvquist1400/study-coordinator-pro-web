@@ -10,6 +10,7 @@ import AddStudyForm from '@/components/studies/AddStudyForm'
 import EditStudyForm from '@/components/studies/EditStudyForm'
 import StudyDetailsModal from '@/components/studies/StudyDetailsModal'
 import ScheduleOfEventsBuilder from '@/components/studies/ScheduleOfEventsBuilder'
+import { formatStudyStatus, getStudyStatusBadgeClass } from '@/constants/studyStatus'
 
 export default function StudiesPage() {
   const router = useRouter()
@@ -84,13 +85,28 @@ export default function StudiesPage() {
           return
         }
 
+        try {
+          const token = (await supabase.auth.getSession()).data.session?.access_token
+          if (token) {
+            const url = currentSiteId ? `/api/studies?site_id=${currentSiteId}` : '/api/studies'
+            const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+            if (resp.ok) {
+              const { studies } = await resp.json()
+              setStudies(studies || [])
+              return
+            }
+          }
+        } catch (apiErr) {
+          console.warn('API error reloading studies, falling back to direct DB:', apiErr)
+        }
+
         const { data: studiesData, error: studiesError } = await supabase
           .from('studies')
           .select('*')
           .order('created_at', { ascending: false })
 
         if (!studiesError) {
-          setStudies(studiesData || [])
+          setStudies(currentSiteId ? (studiesData || []).filter((s: { site_id: string | null }) => s.site_id === currentSiteId) : (studiesData || []))
         }
       } catch (error) {
         console.error('Error reloading studies:', error)
@@ -98,36 +114,6 @@ export default function StudiesPage() {
     }
     
     reloadStudies()
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'enrolling':
-        return 'text-blue-400 bg-blue-400/10 border-blue-400/20'
-      case 'active':
-        return 'text-green-400 bg-green-400/10 border-green-400/20'
-      case 'closed_to_enrollment':
-        return 'text-orange-400 bg-orange-400/10 border-orange-400/20'
-      case 'completed':
-        return 'text-gray-400 bg-gray-400/10 border-gray-400/20'
-      default:
-        return 'text-gray-400 bg-gray-400/10 border-gray-400/20'
-    }
-  }
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'enrolling':
-        return 'Enrolling'
-      case 'active':
-        return 'Active'
-      case 'closed_to_enrollment':
-        return 'Closed to Enrollment'
-      case 'completed':
-        return 'Completed'
-      default:
-        return status
-    }
   }
 
   const getDosingLabel = (abbr?: Study['dosing_frequency'] | null) => {
@@ -251,8 +237,8 @@ export default function StudiesPage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <h3 className="text-xl font-semibold text-white">{study.study_title}</h3>
-                      <span className={`px-3 py-1 rounded-full text-sm font-medium border ${getStatusColor(study.status)}`}>
-                        {getStatusLabel(study.status)}
+                      <span className={`px-3 py-1 rounded-full text-sm font-medium border ${getStudyStatusBadgeClass(study.status)}`}>
+                        {formatStudyStatus(study.status)}
                       </span>
                     </div>
                     <p className="text-blue-400 font-mono text-sm mb-1 flex items-center gap-2">
