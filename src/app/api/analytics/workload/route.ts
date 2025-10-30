@@ -4,12 +4,19 @@ import logger from '@/lib/logger'
 import {
   computeWorkloads,
   type StudyMeta,
-  type WorkloadResponse
+  type WorkloadResponse,
+  type WorkloadBreakdown
 } from '@/lib/workload/computeWorkloads'
 import {
   loadWorkloadSnapshots,
   computeAndStoreWorkloadSnapshots
 } from '@/lib/workload/snapshots'
+import {
+  groupBreakdownRows,
+  type CoordinatorMetricsBreakdownRow
+} from '@/lib/workload/breakdown'
+
+const BREAKDOWN_LOOKBACK_WEEKS = 12
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
@@ -20,6 +27,7 @@ export async function GET(request: NextRequest) {
   const token = authHeader.split(' ')[1]
   const searchParams = new URL(request.url).searchParams
   const skipCache = searchParams.get('force') === 'true'
+  const includeBreakdown = searchParams.get('includeBreakdown') === 'true'
 
   try {
     let supabase
@@ -137,8 +145,58 @@ export async function GET(request: NextRequest) {
       .map((study) => workloads.find((entry) => entry.studyId === study.id))
       .filter((entry): entry is WorkloadResponse => !!entry)
 
+    let responseWorkloads: WorkloadResponse[] = orderedWorkloads
+
+    if (includeBreakdown && orderedWorkloads.length > 0) {
+      const since = new Date()
+      since.setUTCDate(since.getUTCDate() - (BREAKDOWN_LOOKBACK_WEEKS * 7))
+      since.setUTCHours(0, 0, 0, 0)
+      const sinceISO = since.toISOString().slice(0, 10)
+
+      const breakdownQuery = supabase
+        .from('v_coordinator_metrics_breakdown_weekly' as any)
+        .select('study_id, coordinator_id, week_start, meeting_hours, screening_hours, query_hours, total_hours, note_entries, last_updated_at')
+        .in('study_id', studyIds)
+        .gte('week_start', sinceISO)
+        .order('week_start', { ascending: true })
+
+      const { data: breakdownRows, error: breakdownError } = await breakdownQuery
+
+      let groupedBreakdown: Map<string, WorkloadBreakdown> | null = null
+
+      if (breakdownError) {
+        if (breakdownError.code && breakdownError.code !== '42P01') {
+          logger.warn('Failed to load breakdown view for workload analytics', {
+            error: breakdownError,
+            studyIds
+          })
+        }
+      } else if (Array.isArray(breakdownRows)) {
+        const sanitizedRows: CoordinatorMetricsBreakdownRow[] = breakdownRows.map((row: any) => ({
+          study_id: row?.study_id ?? null,
+          coordinator_id: row?.coordinator_id ?? null,
+          week_start: row?.week_start ?? null,
+          meeting_hours: row?.meeting_hours ?? null,
+          screening_hours: row?.screening_hours ?? null,
+          query_hours: row?.query_hours ?? null,
+          total_hours: row?.total_hours ?? null,
+          note_entries: row?.note_entries ?? null,
+          last_updated_at: row?.last_updated_at ?? null
+        }))
+        groupedBreakdown = groupBreakdownRows(sanitizedRows)
+      }
+
+      responseWorkloads = orderedWorkloads.map((entry) => {
+        const weeks = groupedBreakdown?.get(entry.studyId)?.weeks ?? []
+        return {
+          ...entry,
+          breakdown: { weeks }
+        }
+      })
+    }
+
     return NextResponse.json({
-      workloads: orderedWorkloads,
+      workloads: responseWorkloads,
       meta: {
         studies: studyRows.length,
         cacheHits,
