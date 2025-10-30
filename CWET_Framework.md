@@ -16,6 +16,7 @@ To replace static feasibility scoring with a dynamic workload system that predic
 - Three key measures calculated: **Now (baseline)**, **Actuals (completed visits)**, and **Forecast (upcoming visits)**.
 - Implemented **protocol complexity rubric**, **meeting/admin load**, and guided workload configuration UI in the Study Coordinator Pro web app.
 - Introduced **study coordinator assignments + weekly metrics loop** so recorded hours and study counts dynamically adjust screening/query multipliers and meeting load.
+- Expanded the **Members** dashboard to resolve coordinator identities (name/email) and manage per-study assignments inline, keeping directory views and workload snapshots aligned.
 
 ---
 
@@ -27,7 +28,7 @@ To replace static feasibility scoring with a dynamic workload system that predic
 | API | ✅ | `/api/analytics/workload` and `/api/cwe/[studyId]` deliver workload totals, auto-fallback when new tables/views are absent, and support anon-key fallback if service role is missing. |
 | UI | ✅ | `/workload` dashboard surfaces portfolio summary; `/studies/[id]/workload` guides rubric scoring, lifecycle selection, multipliers, meeting load, and visit weights. |
 | Coordinator Metrics Loop | ✅ | Weekly metrics logging via `/api/cwe/metrics` and study assignments power adaptive multipliers in workload analytics. |
-| Automation | 🚧 Planned | Automatic refresh hooks (e.g., post-visit completion) to be added after validating manual workflow. |
+| Automation | 🚧 In Progress | Snapshot cache + nightly `/api/cron/cwe-backfill` refresh are live; `cwe-refresh` Edge function deployed and manually verified; Supabase broadcast listener still pending UI support. |
 
 ---
 

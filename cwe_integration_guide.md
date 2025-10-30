@@ -136,6 +136,16 @@ Run `migrations/20251025_add_coordinator_metrics.sql` after the core CWE migrati
 
 Run `migrations/20251026_restructure_coordinator_metrics.sql` to drop the legacy `study_id` column, add `recorded_by`, and introduce the `study_coordinators` table used to link coordinators with studies.
 
+### Automation Hooks (Oct 2025)
+
+After the schema changes above, wire the workload automation loop:
+
+- ✅ `migrations/20251027_cwe_event_triggers.sql` applied — database emits `cwe_events` for visit, coordinator metric, and assignment changes.
+- ✅ `migrations/20251027_add_workload_snapshots.sql` applied — snapshot cache table + RLS in place (verified Oct 29, 2025).
+- ✅ Supabase Edge function deployed from `supabase/functions/cwe-refresh`, secrets loaded, and manual invoke verified (`study_workload_snapshots` refreshes on demand).
+- ✅ Nightly cron entry for `/api/cron/cwe-backfill` active (03:00 UTC) with `CRON_SECRET` enforced; logs confirm successful runs.
+- ⚠️ Realtime listener wiring remains pending — Supabase UI/CLI currently lacks the broadcast → Edge function binding. Until enabled, rely on TTL expiry, nightly cron, or manual function invocation for refreshes.
+
 ---
 
 ## 🧱 2. API Routes
@@ -219,6 +229,7 @@ Add `src/app/api/study-coordinators/route.ts` (GET + POST) and `src/app/api/stud
 - Coordinator Weekly Workload Log captures coordinator-level meeting hours, screening hours/study counts, and query hours/study counts, displays recent submissions, and triggers analytics refresh. Admins can select any active coordinator while beta testing.
 - Coordinator Directory (`/coordinators`) lists every active coordinator with contact info and linked studies for quick QA or reassignment.
   - Prompts: hours spent in meetings, screening hours, number of studies screened, query hours resolved, and number of studies with queries that week.
+- Site Members (`/members`) page now surfaces coordinator names/emails and lets site owners assign or remove studies directly, writing to `study_coordinators` so the directory and workload analytics update immediately.
 
 ### C) Analytics Enhancements
 - `/api/analytics/workload` now ingests the 4-week rolling coordinator metrics to adjust screening/query multipliers (clamped between 0.6×–1.8×), distributing hours across studies via `study_coordinators` assignments when available.

@@ -9,7 +9,7 @@
 - **Visit completion** (`subject_visits.status = 'completed'`): see `src/app/api/subject-visits/[id]/route.ts:86`.
 - **Visit scheduling updates** (date/status changes that impact `cwe_forecast_4w`).
 - **Coordinator metrics submissions** (`coordinator_metrics` upserts via `src/app/api/cwe/metrics/route.ts:113`).
-- **Study coordinator assignment changes** (`study_coordinators` CRUD in `src/app/api/study-coordinators/**`).
+- **Study coordinator assignment changes** (`study_coordinators` CRUD in `src/app/api/study-coordinators/**`, now driven by the `/members` coordinator assignment UI).
 
 ## 3. Proposed Automation Hooks
 1. **Postgres trigger → NOTIFY channel**
@@ -28,8 +28,8 @@
    - `refresh` endpoint performs recalculation using existing logic, storing snapshot + timestamp.
 
 4. **Nightly Cron (Vercel)**
-   - Run `/api/cron/cwe-backfill` to:
-     - Rebuild all snapshots (safety net).
+   - `/api/cron/cwe-backfill` runs nightly (03:00 UTC) to:
+     - Rebuild all snapshots (safety net, verified Oct 29 run logs).
      - Detect stale assignments vs. coordinator metrics (report gaps).
 
 ## 4. Data and Safety Considerations
@@ -39,13 +39,13 @@
 - **Failure handling:** on refresh failure, leave snapshot untouched and enqueue retry (Edge function uses exponential backoff).
 
 ## 5. Implementation Steps
-1. Create SQL migration for NOTIFY triggers (`migrations/20251027_cwe_event_triggers.sql`) emitting compact JSON payloads via `pg_notify('cwe_events', ...)`.
-2. Scaffold Edge function with Supabase CLI (document deployment).
-3. Add `study_workload_snapshots` table + TypeScript types.
-4. Refactor `/api/analytics/workload` to read/write snapshot layer while retaining live calc fallback.
-5. Implement `refresh` handler to reuse existing computation (factor out into shared helper).
-6. Add Vercel cron job + endpoint for nightly rebuild.
-7. Document rollout in `CWET_Framework.md` and runbook.
+1. ✅ Created SQL migration for NOTIFY triggers (`migrations/20251027_cwe_event_triggers.sql`) emitting compact JSON payloads via `pg_notify('cwe_events', ...)`.
+2. ✅ Scaffolded and documented the `cwe-refresh` Edge function deployment (Supabase CLI).
+3. ✅ Added `study_workload_snapshots` table + TypeScript types (`migrations/20251027_add_workload_snapshots.sql` applied Oct 29, 2025).
+4. ✅ `/api/analytics/workload` now reads/writes the snapshot layer while retaining live calc fallback.
+5. ✅ `refresh` handler reuses shared computation and is callable by the Edge function (manual invoke verified Oct 29, 2025).
+6. ✅ Vercel cron job + endpoint for nightly rebuild live at 03:00 UTC (logs monitored).
+7. ✅ Rollout documented in `CWET_Framework.md` and this runbook.
 
 ## 6. Open Questions
 - Do we need per-coordinator personal dashboards cached separately?
@@ -53,18 +53,18 @@
 - How to surface automation failures to end users—banner vs. silent retry?
 
 ## 7. Immediate Next Tasks
-- Deploy `cwe-refresh` Edge function and wire Supabase `cwe_events` notifications (invoke via Supabase webhooks or function triggers).
-- Add nightly cron that calls the refresh endpoint for all studies, emitting alerts when snapshot generation fails.
+- Escalate with Supabase or wait for UI/CLI support to attach the `cwe_events` broadcast channel to `cwe-refresh` (listener pending; manual invoke + cron cover interim).
+- Continue monitoring nightly `/api/cron/cwe-backfill` runs and alert on failures; extend reporting if error rate >0.
 
 ## 8. Deployment Checklist
 1. **Edge Function**
-   - `cd supabase/functions/cwe-refresh`
-   - Copy `.env.example` → `.env`, set `BASE_URL`, `SERVICE_ROLE_KEY`, `BATCH_INTERVAL_MS?`.
-   - `supabase functions deploy cwe-refresh`.
-   - `supabase secrets set --env-file supabase/functions/cwe-refresh/.env`.
-   - Register webhook: Supabase Dashboard → Database → Triggers → “Listen to webhook” → channel `cwe_events` → function `cwe-refresh`.
+   - ✅ `cd supabase/functions/cwe-refresh`
+   - ✅ Copied `.env.example` → `.env`, set `BASE_URL`, `SERVICE_ROLE_KEY`, `BATCH_INTERVAL_MS?`.
+   - ✅ `supabase functions deploy cwe-refresh`.
+   - ✅ `supabase secrets set --env-file supabase/functions/cwe-refresh/.env`.
+   - ⚠️ Pending: register broadcast listener `cwe_events → cwe-refresh` (blocked until Supabase exposes listener tooling for this project).
 2. **Nightly Cron**
-   - `/api/cron/cwe-backfill` endpoint refreshes all studies (requires `x-cron-secret` header).
+   - `/api/cron/cwe-backfill` endpoint refreshes all studies (accepts `x-cron-secret` or `Authorization: Bearer` header). Successfully executed Oct 29 manual run (200 status).
    - Vercel `vercel.json` example:
      ```json
      {

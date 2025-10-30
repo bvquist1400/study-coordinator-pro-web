@@ -8,6 +8,8 @@ Recent Changes
 - **Schema Parity Guardrails**: Added `migrations/20251021_add_studies_site_metadata.sql`, typed Supabase payloads, and new table definitions (`study_drugs`, `subject_drug_cycles`, `drug_cycle_adjustments`) to keep API typings in lock-step with the database snapshots.
 - **Supabase Config Snapshot**: `supabase/studio-config.toml` now tracks the project ID/connection defaults used by CLI tooling.
 - **Coordinator Workload Refresh**: `migrations/20251025_add_coordinator_metrics.sql` & `migrations/20251026_restructure_coordinator_metrics.sql` restructure coordinator metrics to be logged per coordinator, add the `study_coordinators` table, and power the new coordinator directory plus weekly workload logging UI.
+- **Site Membership Assignments**: The Members page now loads profile info and lets site owners assign or remove studies for coordinators without leaving the membership view, keeping `/coordinators` and workload analytics in sync.
+- **CWE Automation Loop**: Snapshot cache + nightly cron (`/api/cron/cwe-backfill`) keep analytics current; Supabase triggers emit `cwe_events`, Edge function is deployed and manually verified, with realtime listener wiring pending Supabase UI support.
 - **Lab Kit Management**: Enhanced inventory system with intelligent forecasting, shipment tracking, and alert management. Supports multi-kit studies with configurable buffers and deficit tracking.
 - **Lab Kit Ordering**: New order workflow with pending order tracking, automatic deficit coverage, and "Mark Received" → inventory entry flow.
 - **Shipment Status**: Added `delivered` status to lab kit shipments with corresponding migration and UI updates.

@@ -56,7 +56,35 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to list site members' }, { status: 500 })
     }
 
-    return NextResponse.json({ members: data || [] })
+    const memberRows = (data || []) as Array<{ user_id: string; role: SiteMemberRole; created_at: string }>
+    const userIds = Array.from(new Set(memberRows.map(row => row.user_id).filter(Boolean)))
+
+    let profilesMap: Record<string, { fullName: string | null; email: string | null }> = {}
+    if (userIds.length > 0) {
+      const { data: profiles, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('id, full_name, email')
+        .in('id', userIds)
+
+      if (profileError) {
+        console.error('List members profile lookup error:', profileError)
+      } else {
+        profilesMap = (profiles || []).reduce((acc, profile) => {
+          const row = profile as { id: string; full_name: string | null; email: string | null }
+          acc[row.id] = { fullName: row.full_name, email: row.email }
+          return acc
+        }, {} as Record<string, { fullName: string | null; email: string | null }>)
+      }
+    }
+
+    const members = memberRows.map(row => ({
+      user_id: row.user_id,
+      role: row.role,
+      created_at: row.created_at,
+      profile: profilesMap[row.user_id] ?? null
+    }))
+
+    return NextResponse.json({ members })
   } catch (error) {
     console.error('API error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
