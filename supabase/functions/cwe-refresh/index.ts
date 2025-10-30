@@ -14,6 +14,8 @@ const DEFAULT_BATCH_INTERVAL_MS = Number(Deno.env.get('BATCH_INTERVAL_MS') ?? '1
 const MAX_BATCH_SIZE = 25
 const queue = new Set<string>()
 let flushTimer: number | null = null
+const supabaseRestUrl = Deno.env.get('SUPABASE_URL')
+const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY')
 
 const enqueueStudy = (studyId: string) => {
   if (!studyId) return
@@ -37,9 +39,8 @@ const flushQueue = async () => {
   }
 
   const refreshUrlEnv = Deno.env.get('BASE_URL')
-  const serviceKey = Deno.env.get('SERVICE_ROLE_KEY')
 
-  if (!refreshUrlEnv || !serviceKey) {
+  if (!refreshUrlEnv || !serviceRoleKey) {
     console.error('Missing BASE_URL or SERVICE_ROLE_KEY for cwe-refresh function')
     return
   }
@@ -52,7 +53,7 @@ const flushQueue = async () => {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      authorization: `Bearer ${serviceKey}`
+      authorization: `Bearer ${serviceRoleKey}`
     },
     body: JSON.stringify({ studyIds: studies })
   })
@@ -66,6 +67,45 @@ const flushQueue = async () => {
   console.log('[cwe-refresh] refresh completed', { status: response.status })
 }
 
+const resolveStudyIds = async (event: CweEventPayload): Promise<Set<string>> => {
+  const studyIds = new Set<string>()
+
+  if (event.study_id) {
+    studyIds.add(event.study_id)
+  }
+
+  if (!event.study_id && event.table === 'coordinator_metrics' && event.coordinator_id && supabaseRestUrl && serviceRoleKey) {
+    try {
+      const queryUrl = new URL('/rest/v1/study_coordinators', supabaseRestUrl)
+      queryUrl.searchParams.set('select', 'study_id')
+      queryUrl.searchParams.set('coordinator_id', `eq.${event.coordinator_id}`)
+
+      const res = await fetch(queryUrl, {
+        headers: {
+          accept: 'application/json',
+          apikey: serviceRoleKey,
+          authorization: `Bearer ${serviceRoleKey}`
+        }
+      })
+
+      if (res.ok) {
+        const rows = await res.json() as Array<{ study_id?: string }>
+        rows.forEach((row) => {
+          if (row.study_id) {
+            studyIds.add(row.study_id)
+          }
+        })
+      } else {
+        console.error('[cwe-refresh] failed to resolve coordinator study assignments', res.status, await res.text())
+      }
+    } catch (error) {
+      console.error('[cwe-refresh] error resolving coordinator assignments', error)
+    }
+  }
+
+  return studyIds
+}
+
 serve(async (_req) => {
   try {
     const payload = await _req.json() as { type?: string; record?: CweEventPayload }
@@ -74,10 +114,7 @@ serve(async (_req) => {
       return new Response(JSON.stringify({ ok: true, skipped: 'no-event' }), { headers: { 'content-type': 'application/json' } })
     }
 
-    const targetStudies = new Set<string>()
-    if (event.study_id) {
-      targetStudies.add(event.study_id)
-    }
+    const targetStudies = await resolveStudyIds(event)
 
     for (const studyId of targetStudies) {
       enqueueStudy(studyId)

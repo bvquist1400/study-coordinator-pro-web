@@ -14,3 +14,21 @@
 - ✅ Supabase migration `20260115_add_coordinator_metrics_notes.sql` added the `coordinator_metrics_notes` table plus the `save_coordinator_metrics_with_breakdown` RPC so aggregate metrics and per-study breakdowns stay in sync.
 - ✅ `/api/cwe/metrics` now reads and writes the detailed breakdown, and the Workload Engine inline log prefills exact values from the latest submission instead of evenly distributing totals.
 - ⚠️ Follow-up: expose historical trend views that surface the breakdown data (e.g., per-study coordinator load charts) once consumption patterns are defined.
+
+## Breakdown Analytics Rollout
+
+- ✅ **Phase 1 — Data contract:** Added the weekly rollup view (`v_coordinator_metrics_breakdown_weekly`), extended `/api/analytics/workload?includeBreakdown=true`, and covered the grouping helper with unit tests.
+- ✅ **Phase 2 — UI surfaces:** `/workload` now offers a per-study stacked-area view with study selector + summary stats, and `/studies/[id]/workload` surfaces a matching weekly table with averages/notes for the selected study.
+- 🔄 **Follow-up:** Add UI visual regression (stacked chart snapshot / screenshot) alongside the new API + component coverage (`analytics-workload.route.test.ts`, `WorkloadEngineView.test.tsx`).
+
+### Breakdown QA Checklist
+
+1. Seed or submit a coordinator metrics entry that includes per-study breakdown rows (≥2 studies recommended for stacked comparison).
+2. Hit `/api/analytics/workload?includeBreakdown=true&force=true` with a service token and verify the response contains `breakdown.weeks` with the expected hour totals.
+3. Open `/workload`:
+   - Confirm the “Per-study breakdown” card is visible for the seeded study.
+   - Hover the stacked area chart to validate tooltips show meeting/screening/query hour splits and note counts.
+4. Navigate to `/studies/[id]/workload`:
+   - Check the “Per-study breakdown history” table lists the recent week, totals, and note counts.
+   - Validate the summary cards (average weekly hours, latest week) match the API response.
+5. Clear the data (or use a study without breakdown entries) to confirm both UI surfaces hide gracefully.

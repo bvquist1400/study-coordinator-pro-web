@@ -35,6 +35,8 @@ Note: We use `next/jest` for TypeScript + Next integration; `ts-jest` is not use
 - `ThemeToggle.test.tsx` - Theme switching component tests ✅
 - `AddStudyForm.test.tsx` - Form validation and interaction tests (4/6 passing) ⚠️
 - `database-types.test.ts` - TypeScript interface validation ✅
+- `analytics-workload.route.test.ts` - Ensures `/api/analytics/workload?includeBreakdown=true` emits weekly coordinator breakdown aggregates ✅
+- `WorkloadEngineView.test.tsx` - Renders dashboard with API mocks and verifies the per-study breakdown card/summary ✅
 
 ### Test Coverage
 Current coverage: ~15% (foundation only)

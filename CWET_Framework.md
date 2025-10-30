@@ -34,6 +34,13 @@ To replace static feasibility scoring with a dynamic workload system that predic
 
 ---
 
+## Upcoming Work
+
+- **Per-study breakdown analytics (shipped):** rollup view + `/api/analytics/workload?includeBreakdown=true` feed the new `/workload` stacked chart and the study workload breakdown table; next step is expanding automated regression coverage.
+- **Realtime automation listener:** remains blocked on Supabase broadcast → Edge bindings; revisit after the breakdown analytics release so the new charts have value while manual refresh + cron cover the gap.
+
+---
+
 ## 1. Core Components
 
 | Component | Description |

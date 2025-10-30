@@ -8,6 +8,7 @@ import {
   useMemo,
   useState
 } from 'react'
+import type { TooltipProps } from 'recharts'
 import {
   ResponsiveContainer,
   LineChart,
@@ -21,10 +22,34 @@ import {
   Cell,
   BarChart,
   Bar,
-  Legend
+  Legend,
+  AreaChart,
+  Area
 } from 'recharts'
 import { supabase } from '@/lib/supabase/client'
 import { formatLifecycleStage, formatRecruitmentStatus, formatStudyStatus } from '@/constants/studyStatus'
+
+interface WorkloadBreakdownCoordinator {
+  coordinatorId: string
+  meetingHours: number
+  screeningHours: number
+  queryHours: number
+  totalHours: number
+  notesCount: number
+  lastUpdatedAt: string | null
+}
+
+interface WorkloadBreakdownWeek {
+  weekStart: string
+  coordinators: WorkloadBreakdownCoordinator[]
+  totals: {
+    meetingHours: number
+    screeningHours: number
+    queryHours: number
+    totalHours: number
+    notesCount: number
+  }
+}
 
 interface WorkloadRecord {
   studyId: string
@@ -66,6 +91,9 @@ interface WorkloadRecord {
     meetingPointsAdjustment: number
     entries: number
     lastWeekStart: string | null
+  }
+  breakdown?: {
+    weeks: WorkloadBreakdownWeek[]
   }
 }
 
@@ -123,6 +151,20 @@ interface TrendPoint {
   forecast: number
 }
 
+type BreakdownTooltipDatum = {
+  meetingHours: number
+  screeningHours: number
+  queryHours: number
+  totalHours: number
+  notesCount: number
+  coordinators: WorkloadBreakdownCoordinator[]
+}
+
+type BreakdownTooltipProps = TooltipProps<string | number, string> & {
+  payload?: Array<{ payload?: BreakdownTooltipDatum }>
+  label?: string | number
+}
+
 const STEP_ITEMS = [
   { label: 'Review', description: 'Scan KPIs and trends' },
   { label: 'Identify', description: 'Spot overloads fast' },
@@ -176,6 +218,7 @@ export default function WorkloadEngineView() {
   const [latestBreakdown, setLatestBreakdown] = useState<Record<string, AssignmentBreakdown>>({})
   const [trendPoints, setTrendPoints] = useState<TrendPoint[]>([])
   const [trendError, setTrendError] = useState<string | null>(null)
+  const [selectedBreakdownStudyId, setSelectedBreakdownStudyId] = useState<string | null>(null)
 
   const loadData = useCallback(async () => {
     try {
@@ -190,7 +233,7 @@ export default function WorkloadEngineView() {
       }
 
       const [workloadResponse, coordinatorResponse, trendResponse] = await Promise.all([
-        fetch('/api/analytics/workload', {
+        fetch('/api/analytics/workload?includeBreakdown=true', {
           headers: { Authorization: `Bearer ${token}` }
         }),
         fetch('/api/coordinators', {
@@ -218,43 +261,88 @@ export default function WorkloadEngineView() {
       const coordinatorPayload = await coordinatorResponse.json()
       const trendPayload = trendResponse.ok ? await trendResponse.json() : { points: [] }
 
-      const normalizedWorkloads = (workloadPayload.workloads || []).map((entry: any) => ({
-        ...entry,
-        lifecycleWeight: Number(entry.lifecycleWeight ?? entry.lifecycle_weight ?? 1),
-        recruitmentWeight: Number(entry.recruitmentWeight ?? entry.recruitment_weight ?? 1),
-        screeningMultiplier: Number(entry.screeningMultiplier ?? entry.screening_multiplier ?? 1),
-        screeningMultiplierEffective: Number(entry.screeningMultiplierEffective ?? entry.screening_multiplier_effective ?? entry.screeningMultiplier ?? 1),
-        queryMultiplier: Number(entry.queryMultiplier ?? entry.query_multiplier ?? 1),
-        queryMultiplierEffective: Number(entry.queryMultiplierEffective ?? entry.query_multiplier_effective ?? entry.queryMultiplier ?? 1),
-        meetingAdminPoints: Number(entry.meetingAdminPoints ?? entry.meeting_admin_points ?? 0),
-        meetingAdminPointsAdjusted: Number(entry.meetingAdminPointsAdjusted ?? entry.meeting_admin_points_adjusted ?? entry.meetingAdminPoints ?? 0),
-        protocolScore: Number(entry.protocolScore ?? entry.protocol_score ?? 0),
-        now: {
-          raw: Number(entry?.now?.raw ?? entry?.now?.raw_now ?? 0),
-          weighted: Number(entry?.now?.weighted ?? entry?.now?.weighted_now ?? entry?.now?.raw ?? 0)
-        },
-        actuals: {
-          raw: Number(entry?.actuals?.raw ?? entry?.actuals?.raw_actuals ?? 0),
-          weighted: Number(entry?.actuals?.weighted ?? entry?.actuals?.weighted_actuals ?? entry?.actuals?.raw ?? 0)
-        },
-        forecast: {
-          raw: Number(entry?.forecast?.raw ?? entry?.forecast?.raw_forecast ?? 0),
-          weighted: Number(entry?.forecast?.weighted ?? entry?.forecast?.weighted_forecast ?? entry?.forecast?.raw ?? 0)
-        },
-        metrics: {
-          contributors: Number(entry?.metrics?.contributors ?? 0),
-          avgMeetingHours: Number(entry?.metrics?.avgMeetingHours ?? entry?.metrics?.avg_meeting_hours ?? 0),
-          avgScreeningHours: Number(entry?.metrics?.avgScreeningHours ?? entry?.metrics?.avg_screening_hours ?? 0),
-          avgScreeningStudyCount: Number(entry?.metrics?.avgScreeningStudyCount ?? entry?.metrics?.avg_screening_study_count ?? 0),
-          avgQueryHours: Number(entry?.metrics?.avgQueryHours ?? entry?.metrics?.avg_query_hours ?? 0),
-          avgQueryStudyCount: Number(entry?.metrics?.avgQueryStudyCount ?? entry?.metrics?.avg_query_study_count ?? 0),
-          screeningScale: Number(entry?.metrics?.screeningScale ?? entry?.metrics?.screening_scale ?? 1),
-          queryScale: Number(entry?.metrics?.queryScale ?? entry?.metrics?.query_scale ?? 1),
-          meetingPointsAdjustment: Number(entry?.metrics?.meetingPointsAdjustment ?? entry?.metrics?.meeting_points_adjustment ?? 0),
-          entries: Number(entry?.metrics?.entries ?? 0),
-          lastWeekStart: entry?.metrics?.lastWeekStart ?? entry?.metrics?.last_week_start ?? null
+      const normalizedWorkloads = (workloadPayload.workloads || []).map((entry: any) => {
+        const weeks: WorkloadBreakdownWeek[] = Array.isArray(entry?.breakdown?.weeks)
+          ? (entry.breakdown.weeks as any[])
+              .map((week: any) => {
+                if (!week || typeof week !== 'object') return null
+                const weekStart = week.weekStart ?? week.week_start ?? ''
+                if (!weekStart) return null
+
+                const coordinators: WorkloadBreakdownCoordinator[] = Array.isArray(week?.coordinators)
+                  ? week.coordinators
+                      .map((coordinator: any) => ({
+                        coordinatorId: coordinator.coordinatorId ?? coordinator.coordinator_id ?? '',
+                        meetingHours: Number(coordinator.meetingHours ?? coordinator.meeting_hours ?? 0),
+                        screeningHours: Number(coordinator.screeningHours ?? coordinator.screening_hours ?? 0),
+                        queryHours: Number(coordinator.queryHours ?? coordinator.query_hours ?? 0),
+                        totalHours: Number(coordinator.totalHours ?? coordinator.total_hours ?? 0),
+                        notesCount: Number(coordinator.notesCount ?? coordinator.notes_count ?? 0),
+                        lastUpdatedAt: coordinator.lastUpdatedAt ?? coordinator.last_updated_at ?? null
+                      }))
+                      .filter((coord: WorkloadBreakdownCoordinator) => !!coord.coordinatorId)
+                  : []
+
+                const meetingHours = Number(week?.totals?.meetingHours ?? week?.totals?.meeting_hours ?? week?.meetingHours ?? week?.meeting_hours ?? 0)
+                const screeningHours = Number(week?.totals?.screeningHours ?? week?.totals?.screening_hours ?? week?.screeningHours ?? week?.screening_hours ?? 0)
+                const queryHours = Number(week?.totals?.queryHours ?? week?.totals?.query_hours ?? week?.queryHours ?? week?.query_hours ?? 0)
+                const totalHours = Number(week?.totals?.totalHours ?? week?.totals?.total_hours ?? week?.totalHours ?? week?.total_hours ?? meetingHours + screeningHours + queryHours)
+                const notesCount = Number(week?.totals?.notesCount ?? week?.totals?.notes_count ?? week?.notesCount ?? week?.notes_count ?? 0)
+
+                return {
+                  weekStart,
+                  coordinators,
+                  totals: {
+                    meetingHours,
+                    screeningHours,
+                    queryHours,
+                    totalHours,
+                    notesCount
+                  }
+                } satisfies WorkloadBreakdownWeek
+              })
+              .filter((week: WorkloadBreakdownWeek | null): week is WorkloadBreakdownWeek => !!week)
+          : []
+
+        return {
+          ...entry,
+          lifecycleWeight: Number(entry.lifecycleWeight ?? entry.lifecycle_weight ?? 1),
+          recruitmentWeight: Number(entry.recruitmentWeight ?? entry.recruitment_weight ?? 1),
+          screeningMultiplier: Number(entry.screeningMultiplier ?? entry.screening_multiplier ?? 1),
+          screeningMultiplierEffective: Number(entry.screeningMultiplierEffective ?? entry.screening_multiplier_effective ?? entry.screeningMultiplier ?? 1),
+          queryMultiplier: Number(entry.queryMultiplier ?? entry.query_multiplier ?? 1),
+          queryMultiplierEffective: Number(entry.queryMultiplierEffective ?? entry.query_multiplier_effective ?? entry.queryMultiplier ?? 1),
+          meetingAdminPoints: Number(entry.meetingAdminPoints ?? entry.meeting_admin_points ?? 0),
+          meetingAdminPointsAdjusted: Number(entry.meetingAdminPointsAdjusted ?? entry.meeting_admin_points_adjusted ?? entry.meetingAdminPoints ?? 0),
+          protocolScore: Number(entry.protocolScore ?? entry.protocol_score ?? 0),
+          now: {
+            raw: Number(entry?.now?.raw ?? entry?.now?.raw_now ?? 0),
+            weighted: Number(entry?.now?.weighted ?? entry?.now?.weighted_now ?? entry?.now?.raw ?? 0)
+          },
+          actuals: {
+            raw: Number(entry?.actuals?.raw ?? entry?.actuals?.raw_actuals ?? 0),
+            weighted: Number(entry?.actuals?.weighted ?? entry?.actuals?.weighted_actuals ?? entry?.actuals?.raw ?? 0)
+          },
+          forecast: {
+            raw: Number(entry?.forecast?.raw ?? entry?.forecast?.raw_forecast ?? 0),
+            weighted: Number(entry?.forecast?.weighted ?? entry?.forecast?.weighted_forecast ?? entry?.forecast?.raw ?? 0)
+          },
+          metrics: {
+            contributors: Number(entry?.metrics?.contributors ?? 0),
+            avgMeetingHours: Number(entry?.metrics?.avgMeetingHours ?? entry?.metrics?.avg_meeting_hours ?? 0),
+            avgScreeningHours: Number(entry?.metrics?.avgScreeningHours ?? entry?.metrics?.avg_screening_hours ?? 0),
+            avgScreeningStudyCount: Number(entry?.metrics?.avgScreeningStudyCount ?? entry?.metrics?.avg_screening_study_count ?? 0),
+            avgQueryHours: Number(entry?.metrics?.avgQueryHours ?? entry?.metrics?.avg_query_hours ?? 0),
+            avgQueryStudyCount: Number(entry?.metrics?.avgQueryStudyCount ?? entry?.metrics?.avg_query_study_count ?? 0),
+            screeningScale: Number(entry?.metrics?.screeningScale ?? entry?.metrics?.screening_scale ?? 1),
+            queryScale: Number(entry?.metrics?.queryScale ?? entry?.metrics?.query_scale ?? 1),
+            meetingPointsAdjustment: Number(entry?.metrics?.meetingPointsAdjustment ?? entry?.metrics?.meeting_points_adjustment ?? 0),
+            entries: Number(entry?.metrics?.entries ?? 0),
+            lastWeekStart: entry?.metrics?.lastWeekStart ?? entry?.metrics?.last_week_start ?? null
+          },
+          breakdown: weeks.length > 0 ? { weeks } : undefined
         }
-      })) as WorkloadRecord[]
+      }) as WorkloadRecord[]
 
       const normalizedCoordinators = (coordinatorPayload.coordinators || []).map((entry: any) => ({
         id: entry.id,
@@ -280,6 +368,16 @@ export default function WorkloadEngineView() {
         }))
       )
 
+      const studiesWithBreakdown = normalizedWorkloads.filter(
+        (entry) => entry.breakdown && entry.breakdown.weeks.length > 0
+      )
+
+      if (!selectedBreakdownStudyId) {
+        setSelectedBreakdownStudyId(studiesWithBreakdown[0]?.studyId ?? null)
+      } else if (!studiesWithBreakdown.some((entry) => entry.studyId === selectedBreakdownStudyId)) {
+        setSelectedBreakdownStudyId(studiesWithBreakdown[0]?.studyId ?? null)
+      }
+
       if (!selectedCoordinatorId && normalizedCoordinators.length > 0) {
         setSelectedCoordinatorId(normalizedCoordinators[0].id)
       }
@@ -289,7 +387,7 @@ export default function WorkloadEngineView() {
     } finally {
       setLoading(false)
     }
-  }, [selectedCoordinatorId])
+  }, [selectedCoordinatorId, selectedBreakdownStudyId])
 
   const loadCoordinatorMetrics = useCallback(async (coordinatorId: string) => {
     setSaveError(null)
@@ -391,6 +489,63 @@ export default function WorkloadEngineView() {
       // handled in loader
     })
   }, [loadCoordinatorMetrics, selectedCoordinatorId])
+
+  const breakdownStudies = useMemo(() => {
+    return workloads
+      .filter((entry) => entry.breakdown && entry.breakdown.weeks.length > 0)
+      .map((entry) => ({
+        studyId: entry.studyId,
+        studyTitle: entry.studyTitle,
+        protocolNumber: entry.protocolNumber,
+        breakdown: entry.breakdown!
+      }))
+  }, [workloads])
+
+  const selectedBreakdownStudy = useMemo(() => {
+    if (!selectedBreakdownStudyId) return null
+    return breakdownStudies.find((entry) => entry.studyId === selectedBreakdownStudyId) ?? null
+  }, [breakdownStudies, selectedBreakdownStudyId])
+
+  const breakdownSeries = useMemo(() => {
+    if (!selectedBreakdownStudy) return []
+    return selectedBreakdownStudy.breakdown.weeks.map((week) => ({
+      weekStart: week.weekStart,
+      meetingHours: round(week.totals.meetingHours, 2),
+      screeningHours: round(week.totals.screeningHours, 2),
+      queryHours: round(week.totals.queryHours, 2),
+      totalHours: round(week.totals.totalHours, 2),
+      notesCount: week.totals.notesCount,
+      coordinators: week.coordinators
+    }))
+  }, [selectedBreakdownStudy])
+
+  const breakdownSummary = useMemo(() => {
+    if (!selectedBreakdownStudy || selectedBreakdownStudy.breakdown.weeks.length === 0) {
+      return {
+        totalWeeks: 0,
+        averageWeeklyHours: 0,
+        latestWeek: null as string | null,
+        latestTotal: 0,
+        coordinatorCount: 0
+      }
+    }
+    const totalWeeks = selectedBreakdownStudy.breakdown.weeks.length
+    const hoursSum = selectedBreakdownStudy.breakdown.weeks.reduce((sum, week) => sum + week.totals.totalHours, 0)
+    const latest = selectedBreakdownStudy.breakdown.weeks[selectedBreakdownStudy.breakdown.weeks.length - 1]
+    const coordinatorIds = new Set<string>()
+    for (const week of selectedBreakdownStudy.breakdown.weeks) {
+      week.coordinators.forEach((coord) => {
+        if (coord.coordinatorId) coordinatorIds.add(coord.coordinatorId)
+      })
+    }
+    return {
+      totalWeeks,
+      averageWeeklyHours: totalWeeks > 0 ? round(hoursSum / totalWeeks, 1) : 0,
+      latestWeek: latest?.weekStart ?? null,
+      latestTotal: round(latest?.totals.totalHours ?? 0, 1),
+      coordinatorCount: coordinatorIds.size
+    }
+  }, [selectedBreakdownStudy])
 
   const overview = useMemo(() => {
     if (workloads.length === 0) {
@@ -857,6 +1012,90 @@ export default function WorkloadEngineView() {
           </div>
         </div>
       </section>
+
+      {breakdownStudies.length > 0 && (
+        <section className="space-y-4">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-white">Per-study breakdown</h2>
+              <p className="text-sm text-gray-400">
+                Weekly hours logged per study, stacked by meeting, screening, and query work.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <label htmlFor="breakdown-study" className="text-xs uppercase tracking-wide text-gray-400">
+                Study
+              </label>
+              <select
+                id="breakdown-study"
+                value={selectedBreakdownStudyId ?? breakdownStudies[0]?.studyId ?? ''}
+                onChange={(event) => setSelectedBreakdownStudyId(event.target.value || null)}
+                className="rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {breakdownStudies.map((study) => (
+                  <option key={study.studyId} value={study.studyId}>
+                    {study.studyTitle} · {study.protocolNumber}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <SummaryCard
+              label="Avg weekly hours"
+              value={`${breakdownSummary.averageWeeklyHours.toFixed(1)} hrs`}
+              footnote={`Across ${breakdownSummary.totalWeeks} week${breakdownSummary.totalWeeks === 1 ? '' : 's'}`}
+            />
+            <SummaryCard
+              label="Latest week"
+              value={breakdownSummary.latestWeek ? breakdownSummary.latestWeek : '—'}
+              footnote={breakdownSummary.latestWeek ? `${breakdownSummary.latestTotal.toFixed(1)} hrs total` : 'No submissions yet'}
+            />
+            <SummaryCard
+              label="Contributing coordinators"
+              value={`${breakdownSummary.coordinatorCount}`}
+              footnote="Unique coordinators in the selected range"
+            />
+          </div>
+
+          <div className="rounded-lg border border-gray-700 bg-gray-900/60 p-4">
+            {breakdownSeries.length === 0 ? (
+              <div className="flex h-60 items-center justify-center text-sm text-gray-400">
+                No breakdown entries for this study yet.
+              </div>
+            ) : (
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={breakdownSeries}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                    <XAxis
+                      dataKey="weekStart"
+                      stroke="#9ca3af"
+                      fontSize={11}
+                    />
+                    <YAxis
+                      tickFormatter={(value) => `${round(value as number, 1)}h`}
+                      stroke="#9ca3af"
+                      fontSize={11}
+                    />
+                    <Tooltip content={<BreakdownTooltip />} />
+                    <Legend
+                      verticalAlign="top"
+                      align="right"
+                      height={36}
+                      formatter={(value) => <span className="text-xs text-gray-300">{value}</span>}
+                    />
+                    <Area type="monotone" dataKey="meetingHours" name="Meetings" stackId="1" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.5} />
+                    <Area type="monotone" dataKey="screeningHours" name="Screening" stackId="1" stroke="#22c55e" fill="#22c55e" fillOpacity={0.5} />
+                    <Area type="monotone" dataKey="queryHours" name="Queries" stackId="1" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.5} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       <section className="space-y-4">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
@@ -1332,6 +1571,36 @@ function SummaryCard({
 
 function formatNumber(value: number) {
   return Math.round(value).toLocaleString('en-US')
+}
+
+function BreakdownTooltip({ active, payload, label }: BreakdownTooltipProps) {
+  if (!active || !payload || payload.length === 0) {
+    return null
+  }
+
+  const datum = payload[0]?.payload as BreakdownTooltipDatum | undefined
+
+  if (!datum) return null
+
+  const formatHours = (value: number) => `${round(value, 1)} hrs`
+
+  return (
+    <div style={tooltipStyle} className="space-y-1">
+      <div className="text-xs font-semibold text-gray-100">{label}</div>
+      <div className="text-xs text-gray-200">Meetings: {formatHours(datum.meetingHours)}</div>
+      <div className="text-xs text-gray-200">Screening: {formatHours(datum.screeningHours)}</div>
+      <div className="text-xs text-gray-200">Queries: {formatHours(datum.queryHours)}</div>
+      <div className="text-xs text-gray-300">Total: {formatHours(datum.totalHours)}</div>
+      {datum.notesCount > 0 && (
+        <div className="text-[11px] text-blue-300">Notes logged: {datum.notesCount}</div>
+      )}
+      {datum.coordinators?.length > 0 && (
+        <div className="text-[11px] text-gray-400">
+          Contributors: {datum.coordinators.length}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function computeSetupCompletion(entry: WorkloadRecord) {

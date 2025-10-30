@@ -109,6 +109,15 @@ interface StudyWorkloadSetupProps {
   studyId: string
 }
 
+interface StudyBreakdownWeek {
+  weekStart: string
+  meetingHours: number
+  screeningHours: number
+  queryHours: number
+  totalHours: number
+  notesCount: number
+}
+
 const formatStatus = (value: string | null) => {
   if (!value) return '—'
   return value
@@ -123,6 +132,7 @@ export default function StudyWorkloadSetup({ studyId }: StudyWorkloadSetupProps)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [formState, setFormState] = useState<StudyWorkloadState | null>(null)
+  const [breakdownWeeks, setBreakdownWeeks] = useState<StudyBreakdownWeek[]>([])
 
   const loadStudy = useCallback(async () => {
     try {
@@ -136,15 +146,46 @@ export default function StudyWorkloadSetup({ studyId }: StudyWorkloadSetupProps)
         throw new Error('You must be signed in to configure workload settings.')
       }
 
-      const response = await fetch(`/api/cwe/settings/${studyId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
+      const [response, breakdownResponse] = await Promise.all([
+        fetch(`/api/cwe/settings/${studyId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        fetch('/api/analytics/workload?includeBreakdown=true&force=true', {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+      ])
 
       if (!response.ok) {
         throw new Error('Failed to load workload settings for this study.')
       }
 
       const payload = await response.json()
+
+      if (breakdownResponse.ok) {
+        const breakdownPayload = await breakdownResponse.json()
+        const entry = (breakdownPayload.workloads || []).find((item: any) => item.studyId === studyId)
+        const weeks: StudyBreakdownWeek[] = Array.isArray(entry?.breakdown?.weeks)
+          ? (entry.breakdown.weeks as any[])
+              .map((week: any) => {
+                if (!week || typeof week !== 'object') return null
+                const weekStart = week.weekStart ?? week.week_start
+                if (!weekStart) return null
+                const totals = week.totals ?? week
+                return {
+                  weekStart,
+                  meetingHours: Number(totals?.meetingHours ?? totals?.meeting_hours ?? week.meetingHours ?? 0),
+                  screeningHours: Number(totals?.screeningHours ?? totals?.screening_hours ?? week.screeningHours ?? 0),
+                  queryHours: Number(totals?.queryHours ?? totals?.query_hours ?? week.queryHours ?? 0),
+                  totalHours: Number(totals?.totalHours ?? totals?.total_hours ?? week.totalHours ?? 0),
+                  notesCount: Number(totals?.notesCount ?? totals?.notes_count ?? week.notesCount ?? 0)
+                } as StudyBreakdownWeek
+              })
+              .filter((week: StudyBreakdownWeek | null): week is StudyBreakdownWeek => !!week)
+          : []
+        setBreakdownWeeks(weeks)
+      } else {
+        setBreakdownWeeks([])
+      }
       const mappedWeights = (payload.visitWeights || []).map((row: any) => ({
         id: row.id,
         visitType: row.visitType,
@@ -192,6 +233,7 @@ export default function StudyWorkloadSetup({ studyId }: StudyWorkloadSetupProps)
         }))
       })
     } catch (err) {
+      setBreakdownWeeks([])
       setError(err instanceof Error ? err.message : 'Failed to load workload settings.')
     } finally {
       setLoading(false)
@@ -257,6 +299,36 @@ export default function StudyWorkloadSetup({ studyId }: StudyWorkloadSetupProps)
       lookupScore(PROCEDURAL_INTENSITY_OPTIONS, formState.rubricProceduralIntensity)
     )
   }, [formState])
+
+  const breakdownSummary = useMemo(() => {
+    if (breakdownWeeks.length === 0) {
+      return {
+        averageWeeklyHours: 0,
+        latestWeek: null as string | null,
+        latestTotal: 0,
+        totalWeeks: 0,
+        notesLogged: 0
+      }
+    }
+
+    const totalWeeks = breakdownWeeks.length
+    const totalHours = breakdownWeeks.reduce((sum, week) => sum + week.totalHours, 0)
+    const notesLogged = breakdownWeeks.reduce((sum, week) => sum + week.notesCount, 0)
+    const latest = breakdownWeeks[breakdownWeeks.length - 1]
+
+    return {
+      averageWeeklyHours: totalHours / totalWeeks,
+      latestWeek: latest.weekStart,
+      latestTotal: latest.totalHours,
+      totalWeeks,
+      notesLogged
+    }
+  }, [breakdownWeeks])
+
+  const recentBreakdownWeeks = useMemo(() => {
+    if (breakdownWeeks.length === 0) return []
+    return [...breakdownWeeks].slice(-12).reverse()
+  }, [breakdownWeeks])
 
   const handleNumericChange = (field: keyof Pick<StudyWorkloadState, 'protocolScore' | 'screeningMultiplier' | 'queryMultiplier'>) => (event: ChangeEvent<HTMLInputElement>) => {
     if (!formState) return
@@ -437,6 +509,74 @@ export default function StudyWorkloadSetup({ studyId }: StudyWorkloadSetupProps)
               </p>
             </div>
           </div>
+
+          <section className="bg-gray-800/40 border border-gray-700 rounded-lg p-6 space-y-5">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-white">Per-study breakdown history</h2>
+                <p className="text-sm text-gray-400">
+                  Recent weekly submissions for this study, grouped by meeting, screening, and query effort.
+                </p>
+              </div>
+              {breakdownWeeks.length > 0 && (
+                <div className="text-xs text-gray-500">
+                  Tracking {breakdownSummary.totalWeeks} week{breakdownSummary.totalWeeks === 1 ? '' : 's'} · {breakdownSummary.notesLogged} note{breakdownSummary.notesLogged === 1 ? '' : 's'} logged
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="rounded-lg border border-gray-700 bg-gray-900/50 p-4">
+                <p className="text-xs uppercase tracking-wide text-gray-400">Average weekly hours</p>
+                <p className="text-2xl font-semibold text-white">{breakdownSummary.averageWeeklyHours.toFixed(1)} hrs</p>
+              </div>
+              <div className="rounded-lg border border-gray-700 bg-gray-900/50 p-4">
+                <p className="text-xs uppercase tracking-wide text-gray-400">Most recent week</p>
+                <p className="text-2xl font-semibold text-white">{breakdownSummary.latestWeek ?? '—'}</p>
+                {breakdownSummary.latestWeek && (
+                  <p className="text-xs text-gray-500 mt-1">{breakdownSummary.latestTotal.toFixed(1)} hrs recorded</p>
+                )}
+              </div>
+              <div className="rounded-lg border border-gray-700 bg-gray-900/50 p-4">
+                <p className="text-xs uppercase tracking-wide text-gray-400">Notes captured</p>
+                <p className="text-2xl font-semibold text-white">{breakdownSummary.notesLogged}</p>
+                <p className="text-xs text-gray-500 mt-1">Across all weeks</p>
+              </div>
+            </div>
+
+            {recentBreakdownWeeks.length === 0 ? (
+              <div className="border border-dashed border-gray-700 rounded-lg px-4 py-6 text-sm text-gray-400 text-center">
+                No per-study breakdown entries have been logged for this study yet.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-800 text-sm">
+                  <thead className="bg-gray-900/50">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-300">Week start</th>
+                      <th className="px-4 py-3 text-right font-semibold text-gray-300">Meetings (hrs)</th>
+                      <th className="px-4 py-3 text-right font-semibold text-gray-300">Screening (hrs)</th>
+                      <th className="px-4 py-3 text-right font-semibold text-gray-300">Queries (hrs)</th>
+                      <th className="px-4 py-3 text-right font-semibold text-gray-300">Total (hrs)</th>
+                      <th className="px-4 py-3 text-right font-semibold text-gray-300">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {recentBreakdownWeeks.map((week) => (
+                      <tr key={week.weekStart} className="hover:bg-gray-900/40 transition-colors">
+                        <td className="px-4 py-3 text-gray-100">{week.weekStart}</td>
+                        <td className="px-4 py-3 text-right text-gray-200">{week.meetingHours.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-right text-gray-200">{week.screeningHours.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-right text-gray-200">{week.queryHours.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-right text-gray-200">{week.totalHours.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-right text-gray-400">{week.notesCount}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
 
           <section className="bg-gray-800/40 border border-gray-700 rounded-lg p-6 space-y-6">
             <div>

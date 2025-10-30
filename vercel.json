@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/cwe-backfill",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/cwe-refresh",
+      "schedule": "0 2 * * *"
     }
   ]
 }

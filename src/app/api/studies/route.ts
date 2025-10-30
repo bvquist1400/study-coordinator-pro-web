@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser, createSupabaseAdmin } from '@/lib/api/auth'
+import logger from '@/lib/logger'
 import type { StudyUpdate } from '@/types/database'
+import type { StudyMeta } from '@/lib/workload/computeWorkloads'
+import { computeAndStoreWorkloadSnapshots } from '@/lib/workload/snapshots'
 
 // GET /api/studies - Get all studies for authenticated user
 export async function GET(request: NextRequest) {
@@ -309,6 +312,26 @@ export async function PUT(request: NextRequest) {
 
     if (!study) {
       return NextResponse.json({ error: 'Study not found or access denied' }, { status: 404 })
+    }
+
+    try {
+      const { data: refreshedStudy, error: refreshError } = await supabase
+        .from('studies')
+        .select('id, protocol_number, study_title, lifecycle, recruitment, status, site_id, user_id, created_at, meeting_admin_points')
+        .eq('id', id)
+        .maybeSingle()
+
+      if (!refreshError && refreshedStudy) {
+        await computeAndStoreWorkloadSnapshots({
+          supabase,
+          studyRows: [refreshedStudy as StudyMeta]
+        })
+      }
+    } catch (refreshErr) {
+      logger.warn('Failed to refresh workload snapshot after study update', {
+        error: refreshErr instanceof Error ? refreshErr.message : refreshErr,
+        studyId: id
+      })
     }
 
     return NextResponse.json({ study })

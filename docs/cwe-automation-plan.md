@@ -53,7 +53,7 @@
 - How to surface automation failures to end users—banner vs. silent retry?
 
 ## 7. Immediate Next Tasks
-- Escalate with Supabase or wait for UI/CLI support to attach the `cwe_events` broadcast channel to `cwe-refresh` (listener pending; manual invoke + cron cover interim).
+- Escalate with Supabase or wait for UI/CLI support to attach the `cwe_events` broadcast channel to `cwe-refresh` (listener pending; manual invoke + cron cover interim). **Update — Jan 2026:** The Edge function now resolves impacted studies for coordinator events via REST, so once the broadcast binding unblocks, no additional code changes should be needed.
 - Continue monitoring nightly `/api/cron/cwe-backfill` runs and alert on failures; extend reporting if error rate >0.
 
 ## 8. Deployment Checklist

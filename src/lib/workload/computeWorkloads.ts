@@ -29,6 +29,32 @@ export interface WorkloadMetricsSummary {
   lastWeekStart: string | null
 }
 
+export interface WorkloadBreakdownCoordinator {
+  coordinatorId: string
+  meetingHours: number
+  screeningHours: number
+  queryHours: number
+  totalHours: number
+  notesCount: number
+  lastUpdatedAt: string | null
+}
+
+export interface WorkloadBreakdownWeek {
+  weekStart: string
+  coordinators: WorkloadBreakdownCoordinator[]
+  totals: {
+    meetingHours: number
+    screeningHours: number
+    queryHours: number
+    totalHours: number
+    notesCount: number
+  }
+}
+
+export interface WorkloadBreakdown {
+  weeks: WorkloadBreakdownWeek[]
+}
+
 export interface WorkloadResponse {
   studyId: string
   protocolNumber: string
@@ -58,6 +84,7 @@ export interface WorkloadResponse {
     weighted: number
   }
   metrics: WorkloadMetricsSummary
+  breakdown?: WorkloadBreakdown
 }
 
 export interface ComputeWorkloadsParams {
