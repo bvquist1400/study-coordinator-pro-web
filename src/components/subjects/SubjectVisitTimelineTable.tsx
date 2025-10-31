@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, Fragment } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, Fragment, ChangeEvent } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import ScheduleVisitModal from '@/components/visits/ScheduleVisitModal'
 import RescheduleModal from '@/components/visits/RescheduleModal'
@@ -35,6 +35,16 @@ interface SubjectVisit {
   return_ip_id?: string | null
   visit_not_needed?: boolean | null
   visit_schedules: VisitSchedule | null
+  subject_visit_coordinators?: Array<{
+    coordinator_id: string
+    role: string | null
+    assigned_by: string | null
+    created_at: string
+    user_profiles?: {
+      full_name: string | null
+      email: string | null
+    } | null
+  }> | null
   // Section assignment (if any) of the actual visit
   subject_section_id?: string | null
 }
@@ -74,6 +84,28 @@ interface TimelineVisit {
   // Section grouping/ordering
   section_code?: string | null
   section_order?: number | null
+  coordinators: Array<{
+    coordinatorId: string
+    name: string
+    email: string | null
+    role: string | null
+    assignedAt: string
+  }>
+}
+
+interface CoordinatorOption {
+  coordinatorId: string
+  name: string
+  email: string | null
+  role: string | null
+}
+
+interface VisitCoordinatorAssignment {
+  coordinatorId: string
+  name: string
+  email: string | null
+  role: string | null
+  assignedAt: string
 }
 
 interface SubjectVisitTimelineTableProps {
@@ -138,12 +170,81 @@ export default function SubjectVisitTimelineTable({
   const [preSchedule, setPreSchedule] = useState<{ scheduleId: string | null; date: string | null; sectionId: string | null }>({ scheduleId: null, date: null, sectionId: null })
   const [rescheduleVisit, setRescheduleVisit] = useState<TimelineVisit | null>(null)
   const ipDispensingHistory = metrics?.ip_dispensing_history
+  const [studyCoordinators, setStudyCoordinators] = useState<CoordinatorOption[]>([])
+  const [selectedVisitIds, setSelectedVisitIds] = useState<Set<string>>(new Set())
+  const [isBulkAssignOpen, setIsBulkAssignOpen] = useState(false)
+  const [bulkCoordinatorSelection, setBulkCoordinatorSelection] = useState<string[]>([])
+  const [assigning, setAssigning] = useState(false)
+  const masterCheckboxRef = useRef<HTMLInputElement | null>(null)
+  const hasSelection = selectedVisitIds.size > 0
+  const canAssign = hasSelection && studyCoordinators.length > 0
+  const totalSelectableVisits = useMemo(
+    () => timelineVisits.filter((visit) => !visit.id.startsWith('schedule-')).length,
+    [timelineVisits]
+  )
+
+  const coordinatorNameMap = useMemo(() => {
+    const map = new Map<string, CoordinatorOption>()
+    studyCoordinators.forEach((coordinator) => {
+      map.set(coordinator.coordinatorId, coordinator)
+    })
+    return map
+  }, [studyCoordinators])
+
+  const fetchStudyCoordinators = useCallback(async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) return
+
+      const response = await fetch('/api/coordinators', {
+        cache: 'no-store',
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
+
+      if (!response.ok) {
+        console.warn('Failed to load coordinators', await response.text())
+        return
+      }
+
+      const payload = await response.json().catch(() => ({ coordinators: [] }))
+      const coordinatorRows = Array.isArray(payload.coordinators) ? payload.coordinators : []
+      if (coordinatorRows.length === 0) {
+        setStudyCoordinators([])
+        return
+      }
+
+      const options: CoordinatorOption[] = coordinatorRows
+        .map((row: any): CoordinatorOption | null => {
+          const assignments = Array.isArray(row.assignments) ? row.assignments : []
+          const isAssigned = assignments.some((assignment: any) => assignment.id === studyId)
+          if (!isAssigned || typeof row.id !== 'string' || row.id.length === 0) {
+            return null
+          }
+          return {
+            coordinatorId: row.id,
+            name: row.name ?? row.email ?? 'Unknown coordinator',
+            email: row.email ?? null,
+            role: assignments.find((assignment: any) => assignment.id === studyId)?.role ?? null
+          } as CoordinatorOption
+        })
+        .filter((option: CoordinatorOption | null): option is CoordinatorOption => option !== null)
+        .sort((a: CoordinatorOption, b: CoordinatorOption) => a.name.localeCompare(b.name))
+
+      setStudyCoordinators(options)
+    } catch (error) {
+      console.warn('Unexpected error loading coordinators', error)
+    }
+  }, [studyId])
 
   const buildCompleteTimeline = useCallback((
     schedules: VisitSchedule[], 
     visits: SubjectVisit[], 
     anchorDate: string,
-    anchorDay: number
+    anchorDay: number,
+    assignmentsByVisit: Map<string, VisitCoordinatorAssignment[]>
   ): TimelineVisit[] => {
     const timeline: TimelineVisit[] = []
     const anchorDateObj = parseDateUTC(anchorDate) || new Date(anchorDate)
@@ -153,6 +254,27 @@ export default function SubjectVisitTimelineTable({
     if (!anchorDate) {
       console.warn('⚠️ No anchor date provided for timeline calculations!')
       return []
+    }
+
+    const mapVisitCoordinators = (visitId: string | null | undefined): TimelineVisit['coordinators'] => {
+      if (!visitId) return []
+      const assignments = assignmentsByVisit.get(visitId)
+      if (!assignments || assignments.length === 0) {
+        return []
+      }
+      return assignments
+        .map((assignment) => {
+          const coordinatorFromState = coordinatorNameMap.get(assignment.coordinatorId)
+          const name = coordinatorFromState?.name ?? assignment.name ?? assignment.email ?? 'Unknown coordinator'
+          return {
+            coordinatorId: assignment.coordinatorId,
+            name,
+            email: coordinatorFromState?.email ?? assignment.email ?? null,
+            role: assignment.role ?? coordinatorFromState?.role ?? null,
+            assignedAt: assignment.assignedAt
+          }
+        })
+        .sort((a, b) => a.name.localeCompare(b.name))
     }
 
     const visitsByScheduleId = new Map<string, SubjectVisit>()
@@ -230,7 +352,8 @@ export default function SubjectVisitTimelineTable({
         unscheduled_reason: (actualVisit as any)?.unscheduled_reason || null,
         visit_schedule_id: schedule.id,
         subject_section_id: (actualVisit as any)?.subject_section_id || null,
-        reschedule_history: []
+        reschedule_history: [],
+        coordinators: mapVisitCoordinators(actualVisit?.id ?? null)
       })
     })
 
@@ -270,14 +393,15 @@ export default function SubjectVisitTimelineTable({
         subject_section_id: visit.subject_section_id || null,
         reschedule_history: [],
         section_code: sectionMeta?.section_code || null,
-        section_order: sectionMeta?.section_order ?? null
+        section_order: sectionMeta?.section_order ?? null,
+        coordinators: mapVisitCoordinators(visit.id)
       })
     }
 
     timeline.sort((a, b) => new Date(a.scheduled_date).getTime() - new Date(b.scheduled_date).getTime())
 
     return timeline
-  }, [sectionAnchors])
+  }, [sectionAnchors, coordinatorNameMap])
 
   const loadTimelineData = useCallback(async () => {
     try {
@@ -289,6 +413,59 @@ export default function SubjectVisitTimelineTable({
       if (!session?.user || !token) {
         console.error('No authenticated user')
         return
+      }
+
+      const assignmentsByVisit = new Map<string, VisitCoordinatorAssignment[]>()
+
+      try {
+        const assignmentsResponse = await fetch(
+          `/api/subject-visits/coordinators?subjectId=${subjectId}`,
+          {
+            cache: 'no-store',
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          }
+        )
+
+        if (assignmentsResponse.ok) {
+          const payload = await assignmentsResponse.json().catch(() => ({ assignments: [] }))
+          const assignmentRows = Array.isArray((payload as any).assignments)
+            ? (payload as any).assignments
+            : []
+
+          assignmentRows.forEach((row: any) => {
+            const visitId = typeof row.visitId === 'string' ? row.visitId : null
+            const coordinatorId = typeof row.coordinatorId === 'string' ? row.coordinatorId : null
+            if (!visitId || !coordinatorId) return
+
+            const assignedAt =
+              typeof row.assignedAt === 'string'
+                ? row.assignedAt
+                : typeof row.created_at === 'string'
+                  ? row.created_at
+                  : new Date().toISOString()
+
+            const current = assignmentsByVisit.get(visitId) ?? []
+            current.push({
+              coordinatorId,
+              name:
+                typeof row.name === 'string' && row.name.length > 0
+                  ? row.name
+                  : typeof row.email === 'string' && row.email.length > 0
+                    ? row.email
+                    : 'Unknown coordinator',
+              email: typeof row.email === 'string' ? row.email : null,
+              role: typeof row.role === 'string' ? row.role : null,
+              assignedAt
+            })
+            assignmentsByVisit.set(visitId, current)
+          })
+        } else {
+          console.warn('Failed to load visit coordinator assignments', await assignmentsResponse.text())
+        }
+      } catch (assignmentError) {
+        console.warn('Unexpected error loading visit coordinator assignments', assignmentError)
       }
 
       // Fetch study anchor day once so timeline respects Day 0/Day 1 semantics
@@ -332,15 +509,32 @@ export default function SubjectVisitTimelineTable({
         if (assnRes.ok) {
           const json = await assnRes.json()
           assignments = json.sections || []
-          setSectionAnchors(
-            (assignments as any[]).map(a => ({
-              id: a.id,
-              study_section_id: a.study_section_id || null,
-              anchor_date: a.anchor_date,
-              section_code: a.study_sections?.code || null,
-              section_order: a.study_sections?.order_index ?? null
-            }))
-          )
+          const nextAnchors = (assignments as any[]).map((a: any) => ({
+            id: a.id,
+            study_section_id: a.study_section_id || null,
+            anchor_date: a.anchor_date,
+            section_code: a.study_sections?.code || null,
+            section_order: a.study_sections?.order_index ?? null
+          }))
+
+          setSectionAnchors((prev) => {
+            if (prev.length === nextAnchors.length) {
+              const isSame = prev.every((anchor, index) => {
+                const next = nextAnchors[index]
+                return (
+                  anchor.id === next.id &&
+                  anchor.study_section_id === next.study_section_id &&
+                  anchor.anchor_date === next.anchor_date &&
+                  anchor.section_code === next.section_code &&
+                  anchor.section_order === next.section_order
+                )
+              })
+              if (isSame) {
+                return prev
+              }
+            }
+            return nextAnchors
+          })
         }
       } catch (e) {
         console.warn('Failed to fetch subject sections', e)
@@ -350,8 +544,18 @@ export default function SubjectVisitTimelineTable({
       const { data: visits, error: visitError } = await supabase
         .from('subject_visits')
         .select(`
-          *,
-          visit_schedules:visit_schedule_id(*)
+          id,
+          subject_id,
+          visit_date,
+          status,
+          visit_name,
+          visit_schedule_id,
+          visit_not_needed,
+          procedures_completed,
+          ip_dispensed,
+          ip_returned,
+          ip_id,
+          subject_section_id
         `)
         .eq('subject_id', subjectId)
         .order('visit_date', { ascending: true })
@@ -369,13 +573,25 @@ export default function SubjectVisitTimelineTable({
           let secSchedules = (schedules || []).filter((s: any) => (s as any).section_id === assn.study_section_id)
           const secVisits = (visits || []).filter((v: any) => (v as any).subject_section_id === assn.id)
           if (secSchedules.length === 0) secSchedules = (schedules || [])
-          const seg = buildCompleteTimeline(secSchedules, secVisits, assn.anchor_date, resolvedAnchorDay)
+          const seg = buildCompleteTimeline(
+            secSchedules,
+            secVisits as unknown as SubjectVisit[],
+            assn.anchor_date,
+            resolvedAnchorDay,
+            assignmentsByVisit
+          )
             .map(v => ({ ...v, section_code: assn.study_sections?.code || null, section_order: assn.study_sections?.order_index ?? null }))
           timeline.push(...seg)
         })
       } else {
         // Fallback single segment using provided anchorDate (aka anchor_date_1)
-        timeline = buildCompleteTimeline(schedules || [], visits || [], anchorDate, resolvedAnchorDay)
+        timeline = buildCompleteTimeline(
+          schedules || [],
+          (visits || []) as unknown as SubjectVisit[],
+          anchorDate,
+          resolvedAnchorDay,
+          assignmentsByVisit
+        )
       }
 
       // Fetch drug compliance for this subject and map to visits by visit_id
@@ -489,6 +705,15 @@ export default function SubjectVisitTimelineTable({
       }
 
       setTimelineVisits(timeline)
+      setSelectedVisitIds((prev) => {
+        if (prev.size === 0) return prev
+        const validIds = new Set(timeline.filter((visit) => !visit.id.startsWith('schedule-')).map((visit) => visit.id))
+        const next = new Set<string>()
+        prev.forEach((id) => {
+          if (validIds.has(id)) next.add(id)
+        })
+        return next
+      })
 
     } catch (error) {
       console.error('Error loading timeline data:', error)
@@ -497,9 +722,57 @@ export default function SubjectVisitTimelineTable({
     }
   }, [subjectId, studyId, anchorDate, buildCompleteTimeline, ipDispensingHistory])
 
+  const updateVisitCoordinators = useCallback(async (visitIds: string[], coordinatorIds: string[]) => {
+    if (visitIds.length === 0) return false
+    let success = false
+    try {
+      setAssigning(true)
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) {
+        alert('Authentication error. Please refresh and try again.')
+        return false
+      }
+
+      const response = await fetch('/api/subject-visits/coordinators', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ visitIds, coordinatorIds })
+      })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({ error: 'Failed to update coordinators.' }))
+        throw new Error(payload.error || 'Failed to update coordinators.')
+      }
+
+      success = true
+    } catch (error) {
+      console.error('Error updating visit coordinators', error)
+      alert(error instanceof Error ? error.message : 'Failed to update visit coordinators.')
+    } finally {
+      setAssigning(false)
+    }
+    await loadTimelineData()
+    return success
+  }, [loadTimelineData])
+
   useEffect(() => {
     loadTimelineData()
   }, [loadTimelineData])
+
+  useEffect(() => {
+    fetchStudyCoordinators()
+  }, [fetchStudyCoordinators])
+
+  useEffect(() => {
+    if (masterCheckboxRef.current) {
+      masterCheckboxRef.current.indeterminate =
+        selectedVisitIds.size > 0 && selectedVisitIds.size < totalSelectableVisits
+    }
+  }, [selectedVisitIds, totalSelectableVisits])
 
   const toggleRowExpansion = (visitId: string) => {
     const newExpanded = new Set(expandedRows)
@@ -509,6 +782,69 @@ export default function SubjectVisitTimelineTable({
       newExpanded.add(visitId)
     }
     setExpandedRows(newExpanded)
+  }
+
+  const toggleVisitSelection = (visitId: string, checked: boolean) => {
+    setSelectedVisitIds((prev) => {
+      const next = new Set(prev)
+      if (checked) {
+        next.add(visitId)
+      } else {
+        next.delete(visitId)
+      }
+      return next
+    })
+  }
+
+  const toggleAllVisits = (checked: boolean) => {
+    if (checked) {
+      setSelectedVisitIds(new Set(timelineVisits.filter((visit) => !visit.id.startsWith('schedule-')).map((visit) => visit.id)))
+    } else {
+      setSelectedVisitIds(new Set())
+    }
+  }
+
+  const openBulkAssignModal = () => {
+    if (selectedVisitIds.size === 0) return
+    const selected = timelineVisits.filter((visit) => selectedVisitIds.has(visit.id))
+    if (selected.length === 0) {
+      setIsBulkAssignOpen(false)
+      setBulkCoordinatorSelection([])
+      return
+    }
+    const initial = selected.reduce<Set<string>>((acc, visit, index) => {
+      const ids = new Set(visit.coordinators.map((coord) => coord.coordinatorId))
+      if (index === 0) {
+        return ids
+      }
+      const next = new Set<string>()
+      ids.forEach((id) => {
+        if (acc.has(id)) next.add(id)
+      })
+      return next
+    }, new Set<string>())
+
+    setBulkCoordinatorSelection(Array.from(initial))
+    setIsBulkAssignOpen(true)
+  }
+
+  const handleBulkAssignSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    const updated = await updateVisitCoordinators(Array.from(selectedVisitIds), bulkCoordinatorSelection)
+    if (updated) {
+      setIsBulkAssignOpen(false)
+      setBulkCoordinatorSelection([])
+    }
+  }
+
+  const handleCoordinatorSelectChange = async (visitId: string, event: ChangeEvent<HTMLSelectElement>) => {
+    const values = Array.from(event.target.selectedOptions).map((option) => option.value)
+    await updateVisitCoordinators([visitId], values)
+  }
+
+  const handleBulkCoordinatorChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const values = Array.from(event.target.selectedOptions).map((option) => option.value)
+    setBulkCoordinatorSelection(values)
   }
 
   const openScheduleForVisit = (visit: TimelineVisit) => {
@@ -718,6 +1054,7 @@ export default function SubjectVisitTimelineTable({
     )
   }
 
+
   // Removed section icons for a cleaner look per request
 
   return (
@@ -761,7 +1098,26 @@ export default function SubjectVisitTimelineTable({
           }}
         />
       )}
-      <div className="flex justify-end">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={openBulkAssignModal}
+            disabled={!canAssign || assigning}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              canAssign && !assigning
+                ? 'bg-gray-700 hover:bg-gray-600 text-white'
+                : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+            }`}
+          >
+            {assigning ? 'Assigning…' : 'Assign coordinators'}
+          </button>
+          {hasSelection && studyCoordinators.length === 0 && (
+            <span className="text-xs text-amber-300">
+              Add study coordinators first to enable assignments.
+            </span>
+          )}
+        </div>
         <button
           type="button"
           onClick={openUnscheduledVisit}
@@ -803,12 +1159,21 @@ export default function SubjectVisitTimelineTable({
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10">
               <tr className="bg-gray-700 border-b border-gray-600 shadow-sm">
-                <th className="px-4 py-3 text-left text-gray-300 font-medium w-8"></th>
+                <th className="px-4 py-3 text-left text-gray-300 font-medium w-12">
+                  <input
+                    ref={masterCheckboxRef}
+                    type="checkbox"
+                    className="w-4 h-4 rounded border-gray-500 bg-gray-800 text-blue-500 focus:ring-blue-400"
+                    checked={totalSelectableVisits > 0 && selectedVisitIds.size === totalSelectableVisits}
+                    onChange={(event) => toggleAllVisits(event.target.checked)}
+                  />
+                </th>
                 <th className="px-4 py-3 text-left text-gray-300 font-medium">Visit</th>
                 <th className="px-4 py-3 text-left text-gray-300 font-medium">Day</th>
                 <th className="px-4 py-3 text-left text-gray-300 font-medium">Target Date</th>
                 <th className="px-4 py-3 text-left text-gray-300 font-medium">Actual Date</th>
                 <th className="px-4 py-3 text-left text-gray-300 font-medium">Window</th>
+                <th className="px-4 py-3 text-left text-gray-300 font-medium">Coordinator(s)</th>
                 <th className="px-4 py-3 text-left text-gray-300 font-medium">Activities</th>
                 <th className="px-4 py-3 text-center text-gray-300 font-medium">Not Needed</th>
                 <th className="px-4 py-3 text-left text-gray-300 font-medium">Status</th>
@@ -819,26 +1184,39 @@ export default function SubjectVisitTimelineTable({
               {timelineVisits.map((visit, _index) => {
                 const isExpanded = expandedRows.has(visit.id)
                 const rowBg = _index % 2 === 0 ? 'bg-gray-800/20' : 'bg-gray-800/10'
+                const isPlaceholder = visit.id.startsWith('schedule-')
                 
                 return (
                   <Fragment key={visit.id}>
                     {/* Main Row */}
                     <tr className={`${rowBg} hover:bg-gray-700/30 transition-colors border-b border-gray-700/50`}>
-                      {/* Expand Button */}
+                      {/* Selection + Expand */}
                       <td className="px-4 py-3">
-                        <button
-                          onClick={() => toggleRowExpansion(visit.id)}
-                          className="text-gray-400 hover:text-gray-200 transition-colors"
-                        >
-                          <svg 
-                            className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} 
-                            fill="none" 
-                            stroke="currentColor" 
-                            viewBox="0 0 24 24"
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4 rounded border-gray-500 bg-gray-800 text-blue-500 focus:ring-blue-400"
+                            checked={selectedVisitIds.has(visit.id)}
+                            onChange={(event) => toggleVisitSelection(visit.id, event.target.checked)}
+                            onClick={(event) => event.stopPropagation()}
+                            disabled={isPlaceholder}
+                            title={isPlaceholder ? 'Schedule this visit before assigning coordinators' : undefined}
+                          />
+                          <button
+                            onClick={() => toggleRowExpansion(visit.id)}
+                            className="text-gray-400 hover:text-gray-200 transition-colors"
+                            type="button"
                           >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                          </svg>
-                        </button>
+                            <svg 
+                              className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} 
+                              fill="none" 
+                              stroke="currentColor" 
+                              viewBox="0 0 24 24"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                            </svg>
+                          </button>
+                        </div>
                       </td>
                       
                       {/* Visit */}
@@ -883,7 +1261,25 @@ export default function SubjectVisitTimelineTable({
                           </span>
                         ) : '-'}
                       </td>
-                      
+
+                      {/* Coordinators */}
+                      <td className="px-4 py-3 text-gray-300">
+                        {visit.coordinators.length > 0 ? (
+                          <div className="flex flex-wrap gap-1 max-w-xs">
+                            {visit.coordinators.map((coordinator) => (
+                              <span
+                                key={`${visit.id}-${coordinator.coordinatorId}`}
+                                className="px-2 py-0.5 text-xs rounded-full bg-gray-700 text-gray-100 border border-gray-600"
+                              >
+                                {coordinator.name}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-500">Unassigned</span>
+                        )}
+                      </td>
+
                       {/* Activities */}
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap max-w-xs">
@@ -956,8 +1352,36 @@ export default function SubjectVisitTimelineTable({
                     {isExpanded && (
                       <tr className={`${rowBg} border-b border-gray-700/50`}>
                         <td></td>
-                        <td colSpan={9} className="px-4 py-4">
+                        <td colSpan={10} className="px-4 py-4">
                           <div className="bg-gray-800/50 rounded-lg p-4 space-y-4">
+                            <div>
+                              <h5 className="text-white font-medium mb-2">Coordinator assignments</h5>
+                              {studyCoordinators.length > 0 ? (
+                                <select
+                                  multiple
+                                  value={visit.coordinators.map((coordinator) => coordinator.coordinatorId)}
+                                  onChange={(event) => handleCoordinatorSelectChange(visit.id, event)}
+                                  className="w-full rounded-lg border border-gray-700 bg-gray-950/70 px-3 py-2 text-sm text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  aria-label={`Update coordinators for ${visit.visit_name}`}
+                                >
+                                  {studyCoordinators.map((coordinator) => (
+                                    <option key={`${visit.id}-expanded-${coordinator.coordinatorId}`} value={coordinator.coordinatorId}>
+                                      {coordinator.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <div className="bg-gray-800/50 border border-gray-700 rounded p-3 text-xs text-gray-400">
+                                  No study coordinators available. Add assignments from the coordinator directory.
+                                </div>
+                              )}
+                              {visit.coordinators.length > 0 && (
+                                <p className="text-xs text-gray-500 mt-2">
+                                  Current: {visit.coordinators.map((coord) => coord.name).join(', ')}
+                                </p>
+                              )}
+                            </div>
+
                             {/* All Activities */}
                             {visit.procedures && (
                               <div>
@@ -1096,9 +1520,80 @@ export default function SubjectVisitTimelineTable({
               })}
             </tbody>
           </table>
-        </div>
       </div>
-      
+    </div>
+
+      {isBulkAssignOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-white">Assign coordinators</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsBulkAssignOpen(false)
+                  setBulkCoordinatorSelection([])
+                }}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <form onSubmit={handleBulkAssignSubmit} className="space-y-4">
+              {studyCoordinators.length > 0 ? (
+                <select
+                  multiple
+                  value={bulkCoordinatorSelection}
+                  onChange={handleBulkCoordinatorChange}
+                  className="w-full rounded-lg border border-gray-700 bg-gray-950/70 px-3 py-2 text-sm text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {studyCoordinators.map((coordinator) => (
+                    <option key={`bulk-${coordinator.coordinatorId}`} value={coordinator.coordinatorId}>
+                      {coordinator.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="bg-gray-800/50 border border-gray-700 rounded p-3 text-xs text-gray-400">
+                  No study coordinators available. Add coordinators to the study before assigning visits.
+                </div>
+              )}
+
+              <p className="text-xs text-gray-500">
+                Applied to {selectedVisitIds.size} visit{selectedVisitIds.size === 1 ? '' : 's'}. Leave empty to clear assignments.
+              </p>
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsBulkAssignOpen(false)
+                    setBulkCoordinatorSelection([])
+                  }}
+                  className="px-3 py-1.5 text-sm text-gray-300 hover:text-white transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={assigning || studyCoordinators.length === 0}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                    assigning || studyCoordinators.length === 0
+                      ? 'bg-blue-900/40 text-blue-200/60 cursor-not-allowed'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  }`}
+                >
+                  {assigning ? 'Saving…' : 'Apply'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Simple Modal/Alert for Edit Actions */}
       {showEditModal && (
         <div className="fixed inset-0 bg-gray-900/50 z-50 flex items-center justify-center">

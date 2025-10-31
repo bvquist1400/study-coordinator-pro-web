@@ -35,3 +35,9 @@
 5. Run `npm run test:visual -- --update-snapshots` after intentional UI tweaks to refresh the baseline screenshot.
 6. Use the “Spread across studies” button after entering screening/query totals to verify the per-study table populates evenly (meeting hours remain in the summary field).
 7. Clear the data (or use a study without breakdown entries) to confirm both UI surfaces hide gracefully.
+
+## Upcoming Work
+
+- **Realtime automation listener:** remains blocked on Supabase broadcast → Edge bindings; once live, phase out the scheduled `/api/cron/cwe-refresh` job after two weeks of clean realtime runs.
+- **Link visit intensity weights to SOE visits:** hook the SOE builder into the `visit_weights` table so the forecast chart uses the configured weight per visit type instead of today’s defaults.
+- **SOE coordinator assignments:** explore surfacing coordinator pickers on visit rows so planned visits can map to responsible coordinators and weekly logs can pre-fill without manual lookup.

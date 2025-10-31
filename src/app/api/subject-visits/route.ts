@@ -115,7 +115,14 @@ export async function POST(request: NextRequest) {
     if (authError || !user) return NextResponse.json({ error: authError || 'Unauthorized' }, { status: authStatus || 401 })
     const supabase = createSupabaseAdmin()
 
-    const visitData = await request.json()
+    const payload = await request.json()
+    const coordinatorIds = Array.isArray(payload?.coordinator_ids)
+      ? payload.coordinator_ids.filter((value: unknown): value is string => typeof value === 'string' && value.length > 0)
+      : []
+    const uniqueCoordinatorIds = Array.from(new Set(coordinatorIds))
+
+    const visitData = { ...payload }
+    delete (visitData as any).coordinator_ids
     
     // Validate required fields (visit_date is required)
     if (!visitData.study_id || !visitData.subject_id || !visitData.visit_name || !visitData.visit_date) {
@@ -142,6 +149,36 @@ export async function POST(request: NextRequest) {
     if (error) {
       logger.error('Database error creating subject visit', error as any)
       return NextResponse.json({ error: 'Failed to create subject visit' }, { status: 500 })
+    }
+
+    if (uniqueCoordinatorIds.length > 0 && subjectVisit?.id) {
+      const rows = uniqueCoordinatorIds.map((coordinatorId) => ({
+        subject_visit_id: subjectVisit.id as string,
+        coordinator_id: coordinatorId,
+        assigned_by: user.id
+      }))
+
+      const { error: coordinatorError } = await supabase
+        .from('subject_visit_coordinators' as any)
+        .insert(rows)
+
+      if (coordinatorError) {
+        logger.error('Failed to assign coordinators during visit scheduling', coordinatorError as any, {
+          visitId: subjectVisit.id,
+          coordinatorIds: uniqueCoordinatorIds
+        })
+        try {
+          await supabase
+            .from('subject_visits' as any)
+            .delete()
+            .eq('id', subjectVisit.id)
+        } catch (cleanupError) {
+          logger.error('Failed to roll back visit after coordinator assignment error', cleanupError as any, {
+            visitId: subjectVisit.id
+          })
+        }
+        return NextResponse.json({ error: 'Visit scheduled but coordinator assignment failed' }, { status: 500 })
+      }
     }
 
     // Removed: automatic transition to 'assigned'.

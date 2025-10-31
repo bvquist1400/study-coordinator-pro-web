@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { formatDateUTC } from '@/lib/date-utils'
+import LabKitOrderModal from './LabKitOrderModal'
 
 interface ForecastUpcomingVisit {
   visit_date: string
@@ -96,6 +97,7 @@ interface ForecastSummary {
 interface InventoryForecastProps {
   studyId: string
   daysAhead?: number
+  onSuggestedOrdersChange?: (suggestions: Array<{ kitTypeId: string | null; kitTypeName: string; quantity: number }>) => void
 }
 
 type SeverityKey = 'critical' | 'warning' | 'ok'
@@ -119,13 +121,14 @@ function SummaryChip({ label, count, tone }: { label: string; count: number; ton
   )
 }
 
-export default function InventoryForecast({ studyId, daysAhead = 30 }: InventoryForecastProps) {
+export default function InventoryForecast({ studyId, daysAhead = 30, onSuggestedOrdersChange }: InventoryForecastProps) {
   const [forecast, setForecast] = useState<InventoryForecastItem[]>([])
   const [summary, setSummary] = useState<ForecastSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [showOnlyIssues, setShowOnlyIssues] = useState(true)
   const [collapsedSections, setCollapsedSections] = useState<Set<SeverityKey>>(new Set(['ok']))
+  const [orderTarget, setOrderTarget] = useState<InventoryForecastItem | null>(null)
 
   const loadForecast = useCallback(async () => {
     try {
@@ -209,6 +212,11 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
     loadForecast()
   }, [loadForecast])
 
+  const handleOrderSuccess = useCallback(async () => {
+    setLoading(true)
+    await loadForecast()
+  }, [loadForecast])
+
   const severityConfig: Array<{ key: SeverityKey; label: string; description: string; tone: 'red' | 'yellow' | 'green' }> = [
     { key: 'critical', label: 'Critical', description: 'Immediate action required to cover kit shortfalls.', tone: 'red' },
     { key: 'warning', label: 'Warnings', description: 'Monitor buffer gaps and pending coverage closely.', tone: 'yellow' },
@@ -250,6 +258,25 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
         return b.recommendedOrderQty - a.recommendedOrderQty
       })
   }, [forecast])
+
+  const computeSuggestedQuantity = useCallback((item: InventoryForecastItem) => {
+    const recommended = Number.isFinite(item.recommendedOrderQty) ? item.recommendedOrderQty : 0
+    const deficit = Math.max(0, item.deficit ?? 0)
+    const shortageAfterBuffer = Math.max(0, (item.requiredWithBuffer ?? 0) - item.kitsAvailable)
+    const bufferTarget = Math.max(0, item.bufferKitsNeeded ?? 0)
+    const baseline = Math.max(recommended, deficit, shortageAfterBuffer, bufferTarget)
+    return Math.max(1, Math.round(baseline))
+  }, [])
+
+  useEffect(() => {
+    if (!onSuggestedOrdersChange) return
+    const payload = suggestedOrders.map((item) => ({
+      kitTypeId: item.kitTypeId,
+      kitTypeName: item.kitTypeName,
+      quantity: computeSuggestedQuantity(item)
+    }))
+    onSuggestedOrdersChange(payload)
+  }, [suggestedOrders, onSuggestedOrdersChange, computeSuggestedQuantity])
   const totalSuggestedQty = suggestedOrders.reduce((sum, item) => sum + item.recommendedOrderQty, 0)
   const highRiskCount = summary?.highRisk ?? 0
   const hasSuggestedOrders = suggestedOrders.length > 0
@@ -363,7 +390,25 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
   }
 
   return (
-    <div className="bg-gray-800/50 rounded-lg border border-gray-700">
+    <div className="relative">
+      {orderTarget && (
+        <LabKitOrderModal
+          studyId={studyId}
+          isOpen={!!orderTarget}
+          onClose={() => setOrderTarget(null)}
+          onSuccess={handleOrderSuccess}
+          defaultKitTypeId={orderTarget.kitTypeId ?? undefined}
+          defaultKitTypeName={orderTarget.kitTypeName}
+          defaultQuantity={computeSuggestedQuantity(orderTarget)}
+          allowKitTypeChange={false}
+          deficitSummary={{
+            original: orderTarget.originalDeficit ?? orderTarget.deficit ?? 0,
+            outstanding: orderTarget.deficit ?? 0,
+            pending: orderTarget.pendingOrderQuantity ?? 0
+          }}
+        />
+      )}
+      <div className="bg-gray-800/50 rounded-lg border border-gray-700">
       {/* Header */}
       <div className="p-6 border-b border-gray-700">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
@@ -562,10 +607,11 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
                       const bufferTarget = item.bufferMeta?.targetKits ?? item.bufferKitsNeeded ?? 0
                       const totalTarget = item.requiredWithBuffer ?? (item.kitsRequired + bufferTarget)
                       const slackAfterBuffer = item.kitsAvailable - totalTarget
-                      const lowBufferThreshold = bufferTarget > 0 ? Math.min(2, bufferTarget) : 2
-                      const hasLowBuffer = slackAfterBuffer >= 0 && slackAfterBuffer <= lowBufferThreshold
+                      const hasLowBuffer = bufferTarget > 0 && slackAfterBuffer === 0
                       const hasPendingCoverage = pendingQty > 0 && item.deficit <= 0 && (item.originalDeficit ?? 0) > 0
                       const highlight = hasPendingCoverage || hasLowBuffer
+                      const suggestedQuantity = computeSuggestedQuantity(item)
+                      const canPlanOrder = suggestedQuantity > 0
 
                       return (
                         <div
@@ -608,11 +654,12 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
                                   if (meta.minCount) {
                                     details.push(`min ${meta.minCount} kit${meta.minCount === 1 ? '' : 's'}`)
                                   }
-                                  const descriptor = meta.source === 'kit-specific'
-                                    ? 'Kit override'
-                                    : meta.source === 'study-default'
-                                      ? 'Study default'
-                                      : 'No buffer configured'
+                                  const descriptor =
+                                    meta.source === 'kit-specific'
+                                      ? 'Kit override'
+                                      : meta.source === 'study-default'
+                                        ? 'Study default'
+                                        : 'No buffer configured'
                                   return (
                                     <p className="text-xs text-gray-500 mt-1">
                                       {descriptor}
@@ -632,7 +679,29 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
                                   {item.visitsScheduled} visit{item.visitsScheduled === 1 ? '' : 's'} scheduled
                                 </div>
                               </div>
-
+                              <div className="flex items-center gap-3">
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    if (!canPlanOrder) return
+                                    setOrderTarget(item)
+                                  }}
+                                  className={`rounded border px-3 py-1 text-xs font-semibold transition-colors ${
+                                    canPlanOrder
+                                      ? 'border-purple-400/60 text-purple-200 hover:border-purple-300 hover:text-purple-100'
+                                      : 'border-gray-600 text-gray-500 cursor-not-allowed opacity-60'
+                                  }`}
+                                  title={
+                                    canPlanOrder
+                                      ? `Prefill order for ~${suggestedQuantity} kit${suggestedQuantity === 1 ? '' : 's'}`
+                                      : 'No order recommended'
+                                  }
+                                  disabled={!canPlanOrder}
+                                >
+                                  Plan order{canPlanOrder ? ` (${suggestedQuantity})` : ''}
+                                </button>
+                              </div>
                               <svg
                                 className={`w-5 h-5 text-gray-400 transition-transform ${expanded.has(item.key) ? 'rotate-180' : ''}`}
                                 fill="none"
@@ -660,7 +729,10 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
                                             · {typeof req.visitNumber === 'number' ? `V${req.visitNumber}` : req.visitNumber}
                                           </span>
                                         )}
-                                        <span className="text-gray-400"> · {req.quantityPerVisit} kit{req.quantityPerVisit === 1 ? '' : 's'}/visit</span>
+                                        <span className="text-gray-400">
+                                          {' '}
+                                          · {req.quantityPerVisit} kit{req.quantityPerVisit === 1 ? '' : 's'}/visit
+                                        </span>
                                         {req.isOptional && <span className="ml-2 text-xs text-gray-400">(optional)</span>}
                                       </div>
                                       <div className="text-xs text-gray-400">
@@ -676,7 +748,10 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
                                   <h5 className="text-sm font-semibold text-gray-300 mb-3">Upcoming Visits</h5>
                                   <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                                     {item.upcomingVisits.map((visit, index) => (
-                                      <div key={`${visit.visit_date}-${visit.subject_number ?? 'subject'}-${index}`} className="flex flex-wrap justify-between gap-2 text-sm">
+                                      <div
+                                        key={`${visit.visit_date}-${visit.subject_number ?? 'subject'}-${index}`}
+                                        className="flex flex-wrap justify-between gap-2 text-sm"
+                                      >
                                         <div className="text-gray-300">
                                           {visit.subject_number || 'Subject'}
                                           {visit.visit_name && <span className="text-gray-400"> · {visit.visit_name}</span>}
@@ -703,5 +778,6 @@ export default function InventoryForecast({ studyId, daysAhead = 30 }: Inventory
         )}
       </div>
     </div>
-  )
+    </div>
+  );
 }

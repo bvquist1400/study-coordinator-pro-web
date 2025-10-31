@@ -303,11 +303,10 @@ export default function LabKitAlertsPanel({ studyId, daysAhead = 30, onNavigate,
     () => forecast.filter((item: ForecastItem) => {
       if (item.deficit > 0) return false
       const bufferTarget = item.bufferMeta?.targetKits ?? item.bufferKitsNeeded ?? 0
+      if (bufferTarget <= 0) return false
       const totalTarget = item.requiredWithBuffer ?? (item.kitsRequired + bufferTarget)
       const slackAfterBuffer = item.kitsAvailable - totalTarget
-      if (slackAfterBuffer < 0) return false
-      const threshold = bufferTarget > 0 ? Math.min(2, bufferTarget) : 2
-      return slackAfterBuffer <= threshold
+      return slackAfterBuffer === 0
     }),
     [forecast]
   )

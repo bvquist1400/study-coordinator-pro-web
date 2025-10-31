@@ -41,10 +41,12 @@ const STATUS_BADGE: Record<OrderStatus, { label: string; className: string }> = 
   cancelled: { label: 'Cancelled', className: 'bg-gray-500/20 text-gray-300 border-gray-400/40' }
 }
 
+type NoticeType = 'success' | 'error' | 'info'
+
 interface LabKitOrdersSectionProps {
   studyId: string
   refreshKey?: number
-  externalNotice?: { type: 'success' | 'error'; message: string } | null
+  externalNotice?: { type: NoticeType; message: string } | null
   onClearExternalNotice?: () => void
   onOrderReceived?: (details: {
     study_id: string
@@ -64,7 +66,7 @@ export default function LabKitOrdersSection({
 }: LabKitOrdersSectionProps) {
   const [orders, setOrders] = useState<OrderRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [panelNotice, setPanelNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const [panelNotice, setPanelNotice] = useState<{ type: NoticeType; message: string } | null>(null)
   const [statusFilter, setStatusFilter] = useState<'all' | OrderStatus>('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [pendingSearch, setPendingSearch] = useState('')
@@ -260,7 +262,15 @@ export default function LabKitOrdersSection({
       </div>
 
       {panelNotice && (
-        <div className={`px-6 py-3 text-sm ${panelNotice.type === 'error' ? 'text-red-300' : 'text-green-300'}`}>
+        <div
+          className={`px-6 py-3 text-sm ${
+            panelNotice.type === 'error'
+              ? 'text-red-300'
+              : panelNotice.type === 'info'
+                ? 'text-blue-200'
+                : 'text-green-300'
+          }`}
+        >
           {panelNotice.message}
         </div>
       )}

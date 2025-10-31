@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { todayLocalISODate, parseDateUTC } from '@/lib/date-utils'
 
@@ -18,6 +18,14 @@ interface SubjectFormData {
   treatment_arm: string
   status: 'screening' | 'active' | 'completed' | 'discontinued' | 'withdrawn'
   notes: string
+  coordinatorIds: string[]
+}
+
+interface CoordinatorOption {
+  coordinatorId: string
+  name: string
+  email: string | null
+  role: string | null
 }
 
 export default function AddSubjectForm({ studyId, onClose, onSave }: AddSubjectFormProps) {
@@ -28,18 +36,78 @@ export default function AddSubjectForm({ studyId, onClose, onSave }: AddSubjectF
     randomization_date: '',
     treatment_arm: '',
     status: 'screening',
-    notes: ''
+    notes: '',
+    coordinatorIds: []
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
+  const [studyCoordinators, setStudyCoordinators] = useState<CoordinatorOption[]>([])
 
-  const handleChange = (field: keyof SubjectFormData, value: string) => {
+  const handleChange = (field: keyof SubjectFormData, value: string | string[]) => {
     setFormData(prev => ({ ...prev, [field]: value }))
     // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }))
     }
   }
+
+  useEffect(() => {
+    const loadCoordinators = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
+        if (!token) return
+
+        const { data: assignments, error } = await supabase
+          .from('study_coordinators')
+          .select('coordinator_id, role')
+          .eq('study_id', studyId)
+
+        if (error) {
+          console.warn('Failed to load study coordinators for subject enrollment', error)
+          return
+        }
+
+        const assignmentList = (assignments ?? []) as Array<{ coordinator_id: string; role: string | null }>
+        const ids = Array.from(new Set(assignmentList.map((row) => row.coordinator_id).filter(Boolean)))
+
+        if (ids.length === 0) {
+          setStudyCoordinators([])
+          return
+        }
+
+        const { data: profiles, error: profileError } = await supabase
+          .from('user_profiles')
+          .select('id, full_name, email')
+          .in('id', ids)
+
+        if (profileError) {
+          console.warn('Failed to load coordinator profiles for subject enrollment', profileError)
+          return
+        }
+
+        const profileMap = new Map((profiles ?? []).map((profile: any) => [profile.id as string, profile]))
+
+        const options: CoordinatorOption[] = assignmentList
+          .map((row) => {
+            const profile = profileMap.get(row.coordinator_id) ?? null
+            return {
+              coordinatorId: row.coordinator_id,
+              name: profile?.full_name ?? profile?.email ?? 'Unknown coordinator',
+              email: profile?.email ?? null,
+              role: row.role ?? null
+            }
+          })
+          .sort((a, b) => a.name.localeCompare(b.name))
+
+        setStudyCoordinators(options)
+      } catch (error) {
+        console.warn('Unexpected error loading study coordinators', error)
+      }
+    }
+
+    loadCoordinators()
+  }, [studyId])
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {}
@@ -112,6 +180,31 @@ export default function AddSubjectForm({ studyId, onClose, onSave }: AddSubjectF
 
       if (response.ok) {
         alert(`Subject ${formData.subject_number} enrolled successfully!`)
+
+        if (formData.coordinatorIds.length > 0 && result.subject?.id) {
+          try {
+            const { data: visits } = await supabase
+              .from('subject_visits')
+              .select('id')
+              .eq('subject_id', result.subject.id)
+
+            const visitIds = (visits ?? []).map((row: any) => row.id as string)
+
+            if (visitIds.length > 0) {
+              await fetch('/api/subject-visits/coordinators', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({ visitIds, coordinatorIds: formData.coordinatorIds })
+              })
+            }
+          } catch (error) {
+            console.warn('Failed to assign coordinators to new subject visits', error)
+          }
+        }
+
         onSave()
       } else {
         console.error('API Error:', result)
@@ -217,6 +310,34 @@ export default function AddSubjectForm({ studyId, onClose, onSave }: AddSubjectF
                   <p className="text-red-400 text-sm mt-1">{errors.randomization_date}</p>
                 )}
               </div>
+            </div>
+
+            {/* Coordinator assignments */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Default coordinator(s)
+              </label>
+              {studyCoordinators.length > 0 ? (
+                <select
+                  multiple
+                  value={formData.coordinatorIds}
+                  onChange={(e) => handleChange('coordinatorIds', Array.from(e.target.selectedOptions).map(option => option.value))}
+                  className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  {studyCoordinators.map((coordinator) => (
+                    <option key={coordinator.coordinatorId} value={coordinator.coordinatorId}>
+                      {coordinator.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p className="text-xs text-gray-500">
+                  Add study coordinators to this study to enable default assignments.
+                </p>
+              )}
+              <p className="text-xs text-gray-500 mt-1">
+                Selected coordinators will be assigned to every generated visit for this subject. You can fine-tune visit ownership from the timeline.
+              </p>
             </div>
 
             {/* Treatment and Status */}

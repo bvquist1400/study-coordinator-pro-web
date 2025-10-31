@@ -2,6 +2,8 @@
 import LabKitOrdersSection from './LabKitOrdersSection'
 import ShipmentsList from './ShipmentsList'
 
+type ExternalNotice = { type: 'success' | 'error' | 'info'; message: string }
+
 interface OrdersAndShipmentsViewProps {
   studyId: string
   ordersRefreshKey: number
@@ -16,7 +18,7 @@ interface OrdersAndShipmentsViewProps {
     quantity?: number | null
   }) => void
   onLocateKit: (details: { studyId?: string | null; accessionNumber?: string | null }) => void
-  externalNotice: { type: 'success' | 'error'; message: string } | null
+  externalNotice: ExternalNotice | null
   onClearExternalNotice: () => void
   onCreateShipment?: () => void
   onOpenShipmentsGuide?: () => void

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, type ChangeEvent, type KeyboardEvent } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { calculateVisitDate } from '@/lib/visit-calculator'
 import { formatDateUTC, parseDateUTC, todayLocalISODate } from '@/lib/date-utils'
@@ -42,6 +42,13 @@ interface Study {
   study_title: string
   anchor_day: number
   visit_window_days: number
+}
+
+interface CoordinatorOption {
+  coordinatorId: string
+  name: string
+  email: string | null
+  role: string | null
 }
 
 interface ScheduleVisitModalProps {
@@ -87,6 +94,10 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
   const [selectedSectionId, setSelectedSectionId] = useState<string>('')
   const [activeSubjectSectionId, setActiveSubjectSectionId] = useState<string | null>(null)
   const [activeAnchorDate, setActiveAnchorDate] = useState<string | null>(null)
+
+  // Coordinators
+  const [studyCoordinators, setStudyCoordinators] = useState<CoordinatorOption[]>([])
+  const [selectedCoordinatorIds, setSelectedCoordinatorIds] = useState<string[]>([])
 
   const handleModeChange = (mode: 'protocol' | 'custom') => {
     if (mode === 'custom') {
@@ -164,7 +175,7 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
       const sectionQuery = effectiveSectionId ? `&section_id=${effectiveSectionId}` : ''
 
       // Load subjects, visit schedules, study data, and available lab kits in parallel
-      const [subjectsRes, schedulesRes, studyRes, labKitsRes] = await Promise.all([
+      const [subjectsRes, schedulesRes, studyRes, labKitsRes, coordinatorsRes] = await Promise.all([
         fetch(`/api/subjects?study_id=${targetStudyId}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         }),
@@ -175,6 +186,10 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
           headers: { 'Authorization': `Bearer ${token}` }
         }),
         fetch(`/api/lab-kits?studyId=${targetStudyId}&status=available`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch('/api/coordinators', {
+          cache: 'no-store',
           headers: { 'Authorization': `Bearer ${token}` }
         })
       ])
@@ -237,6 +252,39 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
       } else {
         console.error('Failed to fetch lab kits:', labKitsRes.status, await labKitsRes.text())
       }
+
+      if (coordinatorsRes.ok) {
+        const payload = await coordinatorsRes.json().catch(() => ({ coordinators: [] }))
+        const coordinatorRows = Array.isArray((payload as any).coordinators) ? (payload as any).coordinators : []
+        if (coordinatorRows.length === 0) {
+          setStudyCoordinators([])
+          setSelectedCoordinatorIds([])
+        } else {
+          const options: CoordinatorOption[] = coordinatorRows
+            .map((row: any): CoordinatorOption | null => {
+              const assignments = Array.isArray(row.assignments) ? row.assignments : []
+              const isAssigned = assignments.some((assignment: any) => assignment.id === targetStudyId)
+              if (!isAssigned || typeof row.id !== 'string' || row.id.length === 0) {
+                return null
+              }
+              return {
+                coordinatorId: row.id,
+                name: row.name ?? row.email ?? 'Unknown coordinator',
+                email: row.email ?? null,
+                role: assignments.find((assignment: any) => assignment.id === targetStudyId)?.role ?? null
+              } as CoordinatorOption
+            })
+            .filter((option: CoordinatorOption | null): option is CoordinatorOption => option !== null)
+            .sort((a: CoordinatorOption, b: CoordinatorOption) => a.name.localeCompare(b.name))
+
+          setStudyCoordinators(options)
+          setSelectedCoordinatorIds((prev) => prev.filter((id) => options.some((option) => option.coordinatorId === id)))
+        }
+      } else {
+        console.warn('Failed to load coordinators for scheduling', await coordinatorsRes.text())
+        setStudyCoordinators([])
+        setSelectedCoordinatorIds([])
+      }
     } catch (error) {
       console.error('Error loading data:', error)
     } finally {
@@ -280,6 +328,8 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
     setScheduledDate('')
     setSelectedLabKit(null)
     setLabKitSearch('')
+    setStudyCoordinators([])
+    setSelectedCoordinatorIds([])
   }
 
   const handleSubjectChange = (subjectId: string) => {
@@ -360,13 +410,18 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
     setShowLabKitDropdown(value.length > 0 && filteredLabKits.length > 0)
   }
 
+  const handleCoordinatorSelectionChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const values = Array.from(event.target.selectedOptions).map((option) => option.value)
+    setSelectedCoordinatorIds(Array.from(new Set(values)))
+  }
+
   const handleLabKitSelect = (kit: LabKit) => {
     setSelectedLabKit(kit)
     setLabKitSearch(kit.accession_number)
     setShowLabKitDropdown(false)
   }
 
-  const handleLabKitInputKeyDown = (e: React.KeyboardEvent) => {
+  const handleLabKitInputKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (!showLabKitDropdown || filteredLabKits.length === 0) return
 
     if (e.key === 'ArrowDown') {
@@ -453,7 +508,8 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
         // Include selected lab kit if assigned
         lab_kit_id: selectedLabKit?.id || undefined,
         is_unscheduled: isCustomVisit ? true : undefined,
-        unscheduled_reason: isCustomVisit ? unscheduledReason.trim() : undefined
+        unscheduled_reason: isCustomVisit ? unscheduledReason.trim() : undefined,
+        coordinator_ids: selectedCoordinatorIds
       }
 
       const response = await fetch('/api/subject-visits', {
@@ -466,6 +522,7 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
       })
 
       if (response.ok) {
+        setSelectedCoordinatorIds([])
         onSchedule()
       } else {
         const error = await response.json()
@@ -784,6 +841,43 @@ export default function ScheduleVisitModal({ studyId, preSelectedSubjectId, allo
                 </div>
               </div>
             )}
+
+            {/* Coordinator Assignment */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-300">
+                  Assign Coordinators
+                </label>
+                {selectedCoordinatorIds.length > 0 && (
+                  <span className="text-xs text-gray-400">
+                    {selectedCoordinatorIds.length} selected
+                  </span>
+                )}
+              </div>
+              {studyCoordinators.length > 0 ? (
+                <select
+                  multiple
+                  value={selectedCoordinatorIds}
+                  onChange={handleCoordinatorSelectionChange}
+                  className="w-full bg-gray-700/50 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {studyCoordinators.map((coordinator) => (
+                    <option key={coordinator.coordinatorId} value={coordinator.coordinatorId}>
+                      {coordinator.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="bg-gray-700/40 border border-gray-600 rounded-lg px-3 py-3 text-sm text-gray-400">
+                  Add study coordinators to this study in Members &gt; Coordinators to make them available here.
+                </div>
+              )}
+              {selectedCoordinatorIds.length > 0 && (
+                <p className="text-xs text-gray-400 mt-2">
+                  Coordinators will be assigned to this visit immediately after scheduling.
+                </p>
+              )}
+            </div>
 
             {/* Lab Kit Assignment - Hidden: Using predictive inventory system */}
             {false && (labKitRequired || selectedLabKit) && (

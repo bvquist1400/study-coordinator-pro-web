@@ -38,6 +38,8 @@ To replace static feasibility scoring with a dynamic workload system that predic
 
 - **Visual coverage expansion:** Extend Playwright screenshot tests beyond the stacked breakdown chart (coordinator load table + study detail grid) once layouts stabilize.
 - **Realtime automation listener:** remains blocked on Supabase broadcast → Edge bindings; once live, phase out the scheduled `/api/cron/cwe-refresh` job after two weeks of clean realtime runs.
+- **Visit intensity wiring:** Connect SOE visit templates to the `visit_weights` configuration so forecast math and dashboards reflect the weighted workload per visit type.
+- **Coordinator assignments in SOE:** Explore assigning coordinators while configuring visits so downstream workload logs can pre-fill who owns each step.
 
 ---
 

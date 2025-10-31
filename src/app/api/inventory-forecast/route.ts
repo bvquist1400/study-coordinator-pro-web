@@ -3,7 +3,6 @@ import { authenticateUser, verifyStudyMembership, createSupabaseAdmin } from '@/
 import logger from '@/lib/logger'
 import type { Study, LabKitAlertDismissalUpdate } from '@/types/database'
 
-const BUFFER_THRESHOLD = 2
 const DEFAULT_WINDOW_DAYS = 30
 const DEFAULT_SNOOZE_DAYS = 7
 
@@ -608,6 +607,10 @@ if (studySettingsError) {
 
       const slackAfterPending = (entry.kitsAvailable + entry.pendingOrderQuantity) - entry.requiredWithBuffer
       const slackAfterExpiry = coverageAfterPending - entry.requiredWithBuffer
+      const demandOrPending = entry.kitsRequired > 0 || entry.pendingOrderQuantity > 0
+      const shouldWarnForSlack = slackAfterPending < 0 && demandOrPending
+      const shouldWarnForExpiry = entry.kitsExpiringSoon > 0
+      const shouldWarnForExpirySlack = slackAfterExpiry <= 0 && (entry.kitsExpiringSoon > 0 || demandOrPending)
 
       if (entry.deficit > 0) {
         entry.status = entry.optional ? 'warning' : 'critical'
@@ -615,7 +618,7 @@ if (studySettingsError) {
         entry.status = 'warning'
       } else if (entry.requiredWithBuffer === 0) {
         entry.status = entry.kitsExpiringSoon > 0 ? 'warning' : 'ok'
-      } else if (slackAfterPending <= BUFFER_THRESHOLD || entry.kitsExpiringSoon > 0 || slackAfterExpiry <= 0) {
+      } else if (shouldWarnForSlack || shouldWarnForExpiry || shouldWarnForExpirySlack) {
         entry.status = 'warning'
       } else {
         entry.status = 'ok'
@@ -713,7 +716,8 @@ if (studySettingsError) {
     const lowBufferMetrics = forecast.reduce(
       (acc, item) => {
         const slack = (item.kitsAvailable + item.pendingOrderQuantity) - item.requiredWithBuffer
-        if (item.deficit <= 0 && slack >= 0 && item.status === 'warning') {
+        const hasDemand = item.kitsRequired > 0 || item.pendingOrderQuantity > 0
+        if (hasDemand && item.deficit <= 0 && slack === 0) {
           acc.count += 1
           acc.minSlack = Math.min(acc.minSlack, slack)
         }
