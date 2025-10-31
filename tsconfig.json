@@ -28,6 +28,8 @@
     "src/__tests__/**",
     "**/*.test.ts",
     "**/*.test.tsx",
-    "supabase/functions/**"
+    "supabase/functions/**",
+    "playwright-ct.config.ts",
+    "tests/**"
   ]
 }

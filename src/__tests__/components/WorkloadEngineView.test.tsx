@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import WorkloadEngineView from '@/components/workload/WorkloadEngineView'
 
 describe('WorkloadEngineView', () => {
@@ -7,7 +7,7 @@ describe('WorkloadEngineView', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     // Mock fetch responses for the chained requests the component performs
-    global.fetch = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    global.fetch = jest.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input.toString()
 
       if (url.includes('/api/analytics/workload') && !url.includes('/trend')) {
@@ -188,7 +188,64 @@ describe('WorkloadEngineView', () => {
     expect(screen.getByText('Unique coordinators in the selected range')).toBeInTheDocument()
 
     expect(screen.getAllByText('Protocol ABC').length).toBeGreaterThan(0)
-    expect(screen.getByText('Meetings (hrs)')).toBeInTheDocument()
+    expect(screen.getAllByText('Total meetings (hrs)').length).toBeGreaterThan(0)
     expect(screen.getByText('Screening (hrs)')).toBeInTheDocument()
+  })
+
+  it('lets coordinators distribute total hours evenly across assigned studies', async () => {
+    render(<WorkloadEngineView />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Weekly workload log')).toBeInTheDocument()
+    })
+
+    const totalMeetings = screen.getByLabelText('Total meetings (hrs)') as HTMLInputElement
+    const totalScreening = screen.getByLabelText('Total screening (hrs)') as HTMLInputElement
+    const totalQueries = screen.getByLabelText('Total queries (hrs)') as HTMLInputElement
+
+    await waitFor(() => {
+      expect(totalMeetings).toBeInTheDocument()
+    })
+
+    const tables = await screen.findAllByRole('table')
+    const logTable = tables.find((table) => within(table).queryByText('Screening (hrs)'))
+    expect(logTable).toBeTruthy()
+
+    const studyCellBefore = within(logTable as HTMLTableElement).getAllByText('Protocol ABC').find((element) =>
+      element.closest('tr') !== null
+    )
+    expect(studyCellBefore).toBeTruthy()
+
+    const clearButton = screen.getByRole('button', { name: 'Clear hours' })
+    clearButton.click()
+
+    fireEvent.change(totalMeetings, { target: { value: '4.5' } })
+    fireEvent.change(totalScreening, { target: { value: '6' } })
+    fireEvent.change(totalQueries, { target: { value: '2.5' } })
+
+    const distributeButton = screen.getByRole('button', { name: 'Spread across studies' })
+    distributeButton.click()
+
+    const tablesAfter = screen.getAllByRole('table')
+    const logTableAfter = tablesAfter.find((table) => within(table).queryByText('Screening (hrs)'))
+    expect(logTableAfter).toBeTruthy()
+
+    const studyCell = within(logTableAfter as HTMLTableElement).getAllByText('Protocol ABC').find((element) =>
+      element.closest('tr') !== null
+    )
+    expect(studyCell).toBeTruthy()
+
+    const row = studyCell?.closest('tr')
+    expect(row).not.toBeNull()
+
+    const inputs = within(row as HTMLTableRowElement).getAllByRole('spinbutton')
+    expect(inputs).toHaveLength(2)
+    const [screeningInput, queryInput] = inputs
+
+    await waitFor(() => {
+      expect(totalMeetings).toHaveDisplayValue('4.5')
+      expect(screeningInput).toHaveDisplayValue('6')
+      expect(queryInput).toHaveDisplayValue('2.5')
+    })
   })
 })

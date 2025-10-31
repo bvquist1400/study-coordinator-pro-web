@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "test:visual": "playwright test -c playwright-ct.config.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.1",
@@ -35,6 +36,8 @@
     "zod": "^4.1.4"
   },
   "devDependencies": {
+    "@playwright/experimental-ct-react": "^1.51.1",
+    "@playwright/test": "^1.51.1",
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.8.0",
@@ -49,6 +52,8 @@
     "jest": "^30.1.1",
     "jest-environment-jsdom": "^30.1.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.10"
   }
 }

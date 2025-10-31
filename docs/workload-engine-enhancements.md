@@ -19,7 +19,8 @@
 
 - ✅ **Phase 1 — Data contract:** Added the weekly rollup view (`v_coordinator_metrics_breakdown_weekly`), extended `/api/analytics/workload?includeBreakdown=true`, and covered the grouping helper with unit tests.
 - ✅ **Phase 2 — UI surfaces:** `/workload` now offers a per-study stacked-area view with study selector + summary stats, and `/studies/[id]/workload` surfaces a matching weekly table with averages/notes for the selected study.
-- 🔄 **Follow-up:** Add UI visual regression (stacked chart snapshot / screenshot) alongside the new API + component coverage (`analytics-workload.route.test.ts`, `WorkloadEngineView.test.tsx`).
+- ✅ **Phase 3 — Visual guardrails:** Playwright component test `tests/visual/per-study-breakdown.spec.tsx` now snapshots the stacked area chart (`npm run test:visual`). Future work: extend coverage to the coordinator load table once layouts stabilize.
+- ✅ **Phase 4 — Coordinator input polish:** Added top-level total-hour fields (meetings stay aggregate) with an even “Spread across studies” action so coordinators can log weekly screening/query totals without hand-calculating splits. Jest coverage exercises the new workflow.
 
 ### Breakdown QA Checklist
 
@@ -31,4 +32,6 @@
 4. Navigate to `/studies/[id]/workload`:
    - Check the “Per-study breakdown history” table lists the recent week, totals, and note counts.
    - Validate the summary cards (average weekly hours, latest week) match the API response.
-5. Clear the data (or use a study without breakdown entries) to confirm both UI surfaces hide gracefully.
+5. Run `npm run test:visual -- --update-snapshots` after intentional UI tweaks to refresh the baseline screenshot.
+6. Use the “Spread across studies” button after entering screening/query totals to verify the per-study table populates evenly (meeting hours remain in the summary field).
+7. Clear the data (or use a study without breakdown entries) to confirm both UI surfaces hide gracefully.

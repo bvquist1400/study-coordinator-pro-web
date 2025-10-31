@@ -25,7 +25,8 @@ Note: We use `next/jest` for TypeScript + Next integration; `ts-jest` is not use
 {
   "test": "jest",
   "test:watch": "jest --watch", 
-  "test:coverage": "jest --coverage"
+  "test:coverage": "jest --coverage",
+  "test:visual": "playwright test -c playwright-ct.config.ts"
 }
 ```
 
@@ -36,7 +37,8 @@ Note: We use `next/jest` for TypeScript + Next integration; `ts-jest` is not use
 - `AddStudyForm.test.tsx` - Form validation and interaction tests (4/6 passing) ⚠️
 - `database-types.test.ts` - TypeScript interface validation ✅
 - `analytics-workload.route.test.ts` - Ensures `/api/analytics/workload?includeBreakdown=true` emits weekly coordinator breakdown aggregates ✅
-- `WorkloadEngineView.test.tsx` - Renders dashboard with API mocks and verifies the per-study breakdown card/summary ✅
+- `WorkloadEngineView.test.tsx` - Renders dashboard with API mocks, verifies the per-study breakdown card/summary, and exercises the total-hour distribution helper ✅
+- `per-study-breakdown.spec.tsx` (Playwright, visual) - Captures screenshot regression for the stacked coordinator breakdown chart ✅
 
 ### Test Coverage
 Current coverage: ~15% (foundation only)
@@ -58,7 +60,20 @@ npm run test:coverage
 
 # Run specific test pattern
 npm test -- --testNamePattern="ThemeToggle"
+
+# Run visual regression suite
+npm run test:visual
+
+# Update visual baselines after intentional UI changes
+npm run test:visual -- --update-snapshots
 ```
+
+## Visual Regression Tests
+
+- Implemented with Playwright Component Testing (`playwright-ct.config.ts`).
+- Baseline screenshots live in `tests/visual/__screenshots__`.
+- Install browsers once locally: `npx playwright install chromium`.
+- Visual suite uses `PerStudyBreakdownChart` fixture to guard the stacked workload breakdown layout against regressions.
 
 ## Mocking Strategy
 
@@ -88,7 +103,7 @@ npm test -- --testNamePattern="ThemeToggle"
 3. Increase coverage to 80%+ on core components
 
 ### Long-term (Month 2+)
-1. Visual regression testing
+1. Expand visual regression coverage (additional workload + coordinator views)
 2. Performance testing for large datasets
 3. Accessibility testing integration
 

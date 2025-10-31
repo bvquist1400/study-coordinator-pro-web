@@ -3,6 +3,7 @@ import { createSupabaseAdmin } from '@/lib/api/auth'
 import logger from '@/lib/logger'
 import { computeAndStoreWorkloadSnapshots } from '@/lib/workload/snapshots'
 import type { StudyMeta } from '@/lib/workload/computeWorkloads'
+import { sendCronAlert } from '@/lib/alerts/cron'
 
 const CRON_SECRET = process.env.CRON_SECRET
 
@@ -26,6 +27,10 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       logger.error('Failed to load studies for cron backfill', error)
+      await sendCronAlert('CWE backfill cron failed while loading studies', {
+        error: error?.message ?? 'Unknown error',
+        code: (error as any)?.code ?? null
+      })
       return NextResponse.json({ error: 'Failed to load studies' }, { status: 500 })
     }
 
@@ -48,6 +53,10 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     logger.error('Cron CWE backfill failed', error as any)
+    const message = error instanceof Error ? error.message : String(error)
+    await sendCronAlert('CWE backfill cron failed', {
+      error: message
+    })
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

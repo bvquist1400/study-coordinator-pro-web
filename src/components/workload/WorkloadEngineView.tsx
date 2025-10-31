@@ -2,13 +2,7 @@
 
 import Link from 'next/link'
 import type { CSSProperties } from 'react'
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState
-} from 'react'
-import type { TooltipProps } from 'recharts'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ResponsiveContainer,
   LineChart,
@@ -22,12 +16,13 @@ import {
   Cell,
   BarChart,
   Bar,
-  Legend,
-  AreaChart,
-  Area
+  Legend
 } from 'recharts'
 import { supabase } from '@/lib/supabase/client'
 import { formatLifecycleStage, formatRecruitmentStatus, formatStudyStatus } from '@/constants/studyStatus'
+import PerStudyBreakdownChart, {
+  type PerStudyBreakdownDatum
+} from '@/components/workload/PerStudyBreakdownChart'
 
 interface WorkloadBreakdownCoordinator {
   coordinatorId: string
@@ -130,7 +125,6 @@ interface AssignmentLogRow {
   studyId: string
   studyTitle: string
   protocolNumber: string
-  meetings: string
   screening: string
   queries: string
   notes: string
@@ -149,20 +143,6 @@ interface TrendPoint {
   weekStart: string
   actual: number
   forecast: number
-}
-
-type BreakdownTooltipDatum = {
-  meetingHours: number
-  screeningHours: number
-  queryHours: number
-  totalHours: number
-  notesCount: number
-  coordinators: WorkloadBreakdownCoordinator[]
-}
-
-type BreakdownTooltipProps = TooltipProps<string | number, string> & {
-  payload?: Array<{ payload?: BreakdownTooltipDatum }>
-  label?: string | number
 }
 
 const STEP_ITEMS = [
@@ -202,6 +182,12 @@ const toHours = (value: string) => {
   return Math.round(parsed * 100) / 100
 }
 
+const formatInputValue = (value: number) => {
+  if (!Number.isFinite(value) || value <= 0) return ''
+  const fixed = value.toFixed(2)
+  return fixed.replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')
+}
+
 export default function WorkloadEngineView() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -219,6 +205,11 @@ export default function WorkloadEngineView() {
   const [trendPoints, setTrendPoints] = useState<TrendPoint[]>([])
   const [trendError, setTrendError] = useState<string | null>(null)
   const [selectedBreakdownStudyId, setSelectedBreakdownStudyId] = useState<string | null>(null)
+  const [totalInputs, setTotalInputs] = useState<{ meetings: string; screening: string; queries: string }>({
+    meetings: '',
+    screening: '',
+    queries: ''
+  })
 
   const loadData = useCallback(async () => {
     try {
@@ -389,6 +380,39 @@ export default function WorkloadEngineView() {
     }
   }, [selectedCoordinatorId, selectedBreakdownStudyId])
 
+  const syncTotalsFromRows = useCallback((rows: AssignmentLogRow[]) => {
+    if (rows.length === 0) {
+      setTotalInputs((prev) => ({
+        meetings: prev.meetings,
+        screening: '',
+        queries: ''
+      }))
+      return
+    }
+
+    const totals = rows.reduce(
+      (acc, row) => {
+        acc.screening += toHours(row.screening)
+        acc.queries += toHours(row.queries)
+        return acc
+      },
+      { screening: 0, queries: 0 }
+    )
+
+    setTotalInputs((prev) => ({
+      meetings: prev.meetings,
+      screening: formatInputValue(totals.screening),
+      queries: formatInputValue(totals.queries)
+    }))
+  }, [])
+
+  const applyAssignmentRows = useCallback((rows: AssignmentLogRow[], options?: { syncTotals?: boolean }) => {
+    setAssignmentRows(rows)
+    if (options?.syncTotals !== false) {
+      syncTotalsFromRows(rows)
+    }
+  }, [syncTotalsFromRows])
+
   const loadCoordinatorMetrics = useCallback(async (coordinatorId: string) => {
     setSaveError(null)
     try {
@@ -462,20 +486,28 @@ export default function WorkloadEngineView() {
       }
 
       const coordinatorAssignments = coordinators.find((entry) => entry.id === coordinatorId)?.assignments ?? []
-      setAssignmentRows(buildAssignmentRows(coordinatorAssignments, loadedMetrics[0], breakdownMap))
+      const builtRows = buildAssignmentRows(coordinatorAssignments, loadedMetrics[0], breakdownMap)
+      applyAssignmentRows(builtRows)
+      const latest = loadedMetrics[0]
+      setTotalInputs((prev) => ({
+        meetings: formatInputValue(latest?.meetingHours ?? 0),
+        screening: prev.screening,
+        queries: prev.queries
+      }))
     } catch (err) {
       console.error('Error loading coordinator metrics', err)
       setMetrics([])
       setLatestBreakdown({})
-      setAssignmentRows(buildAssignmentRows(
+      applyAssignmentRows(buildAssignmentRows(
         coordinators.find((entry) => entry.id === coordinatorId)?.assignments ?? [],
         undefined,
         {}
       ))
+      setTotalInputs({ meetings: '', screening: '', queries: '' })
       setWeekStart(getMondayISO(new Date()))
       setSaveError(err instanceof Error ? err.message : 'Failed to load coordinator metrics')
     }
-  }, [coordinators])
+  }, [applyAssignmentRows, coordinators])
 
   useEffect(() => {
     loadData().catch(() => {
@@ -506,7 +538,7 @@ export default function WorkloadEngineView() {
     return breakdownStudies.find((entry) => entry.studyId === selectedBreakdownStudyId) ?? null
   }, [breakdownStudies, selectedBreakdownStudyId])
 
-  const breakdownSeries = useMemo(() => {
+  const breakdownSeries = useMemo<PerStudyBreakdownDatum[]>(() => {
     if (!selectedBreakdownStudy) return []
     return selectedBreakdownStudy.breakdown.weeks.map((week) => ({
       weekStart: week.weekStart,
@@ -687,7 +719,7 @@ export default function WorkloadEngineView() {
     setSelectedCoordinatorId(coordinatorId)
   }, [])
 
-  const handleAssignmentValueChange = useCallback((assignmentId: string, field: 'meetings' | 'screening' | 'queries' | 'notes', value: string) => {
+  const handleAssignmentValueChange = useCallback((assignmentId: string, field: 'screening' | 'queries' | 'notes', value: string) => {
     setAssignmentRows((rows) =>
       rows.map((row) =>
         row.assignmentId === assignmentId
@@ -701,6 +733,30 @@ export default function WorkloadEngineView() {
     setWeekStart(value)
   }, [])
 
+  const clearAssignmentHours = useCallback(() => {
+    if (assignmentRows.length === 0) {
+      setTotalInputs((prev) => ({
+        meetings: prev.meetings,
+        screening: '',
+        queries: ''
+      }))
+      setSaveError(null)
+      return
+    }
+    const cleared = assignmentRows.map((row) => ({
+      ...row,
+      screening: '',
+      queries: ''
+    }))
+    applyAssignmentRows(cleared, { syncTotals: false })
+    setTotalInputs((prev) => ({
+      meetings: prev.meetings,
+      screening: '',
+      queries: ''
+    }))
+    setSaveError(null)
+  }, [applyAssignmentRows, assignmentRows])
+
   const handleMetricsSubmit = useCallback(async () => {
     if (!selectedCoordinatorId) return
 
@@ -709,17 +765,17 @@ export default function WorkloadEngineView() {
       setSaveError(null)
       setSaveMessage(null)
 
+      const meetingTotal = Math.max(0, Number(totalInputs.meetings) || 0)
+
       const totals = assignmentRows.reduce(
         (acc, row) => {
-          const meetings = toHours(row.meetings)
           const screening = toHours(row.screening)
           const queries = toHours(row.queries)
-          const hours = meetings + screening + queries
+          const hours = screening + queries
           const noteText = row.notes.trim()
           if (hours > 0) {
             acc.activeStudies += 1
           }
-          acc.totalMeeting += meetings
           acc.totalScreening += screening
           acc.totalQuery += queries
           acc.totalHours += hours
@@ -729,7 +785,7 @@ export default function WorkloadEngineView() {
           if (hours > 0 || noteText) {
             acc.breakdown.push({
               studyId: row.studyId,
-              meetingHours: meetings,
+              meetingHours: 0,
               screeningHours: screening,
               queryHours: queries,
               notes: noteText ? noteText : null
@@ -747,6 +803,9 @@ export default function WorkloadEngineView() {
           breakdown: [] as Array<{ studyId: string; meetingHours: number; screeningHours: number; queryHours: number; notes: string | null }>
         }
       )
+
+      totals.totalMeeting = Math.round(meetingTotal * 100) / 100
+      totals.totalHours += totals.totalMeeting
 
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
@@ -791,15 +850,21 @@ export default function WorkloadEngineView() {
     } finally {
       setSaving(false)
     }
-  }, [assignmentRows, loadCoordinatorMetrics, selectedCoordinatorId, weekStart])
+  }, [assignmentRows, loadCoordinatorMetrics, selectedCoordinatorId, totalInputs, weekStart])
 
   const handleResetAssignments = useCallback(() => {
     if (!selectedCoordinatorId) return
     const coordinatorAssignments = coordinators.find((entry) => entry.id === selectedCoordinatorId)?.assignments ?? []
     const latest = metrics[0]
-    setAssignmentRows(buildAssignmentRows(coordinatorAssignments, latest, latestBreakdown))
+    const rows = buildAssignmentRows(coordinatorAssignments, latest, latestBreakdown)
+    applyAssignmentRows(rows)
     if (latest) {
       setWeekStart(latest.weekStart)
+      setTotalInputs((prev) => ({
+        meetings: formatInputValue(latest.meetingHours),
+        screening: prev.screening,
+        queries: prev.queries
+      }))
     } else if (Object.keys(latestBreakdown).length > 0) {
       const newest = Object.values(latestBreakdown).reduce<AssignmentBreakdown | null>((acc, current) => {
         if (!acc) return current
@@ -807,10 +872,74 @@ export default function WorkloadEngineView() {
         return acc
       }, null)
       setWeekStart(newest?.weekStart ?? getMondayISO(new Date()))
+      setTotalInputs((prev) => ({
+        meetings: prev.meetings,
+        screening: prev.screening,
+        queries: prev.queries
+      }))
     } else {
       setWeekStart(getMondayISO(new Date()))
+      setTotalInputs((prev) => ({
+        meetings: prev.meetings,
+        screening: prev.screening,
+        queries: prev.queries
+      }))
     }
-  }, [coordinators, latestBreakdown, metrics, selectedCoordinatorId])
+  }, [applyAssignmentRows, coordinators, latestBreakdown, metrics, selectedCoordinatorId])
+
+  const handleTotalsInputChange = useCallback((field: 'meetings' | 'screening' | 'queries', value: string) => {
+    setTotalInputs((prev) => ({
+      ...prev,
+      [field]: value
+    }))
+  }, [])
+
+  const distributeEvenly = (total: number, count: number) => {
+    if (count === 0) return []
+    const scaled = Math.round(total * 100)
+    const base = Math.floor(scaled / count)
+    let remainder = scaled - base * count
+    const results: number[] = []
+    for (let index = 0; index < count; index += 1) {
+      let value = base
+      if (remainder > 0) {
+        value += 1
+        remainder -= 1
+      }
+      results.push(value / 100)
+    }
+    return results
+  }
+
+  const formatRowValue = (value: number) => formatInputValue(value)
+
+  const handleDistributeTotals = useCallback(() => {
+    if (assignmentRows.length === 0) {
+      setSaveError('Link at least one study before distributing totals.')
+      return
+    }
+
+    const screeningTotal = Math.max(0, Number(totalInputs.screening) || 0)
+    const queriesTotal = Math.max(0, Number(totalInputs.queries) || 0)
+
+    const screeningShares = distributeEvenly(screeningTotal, assignmentRows.length)
+    const queryShares = distributeEvenly(queriesTotal, assignmentRows.length)
+
+    const distributed = assignmentRows.map((row, index) => ({
+      ...row,
+      screening: formatRowValue(screeningShares[index] ?? 0),
+      queries: formatRowValue(queryShares[index] ?? 0)
+    }))
+
+    applyAssignmentRows(distributed)
+    setSaveError(null)
+
+    setTotalInputs({
+      meetings: formatInputValue(Math.max(0, Number(totalInputs.meetings) || 0)),
+      screening: formatInputValue(screeningTotal),
+      queries: formatInputValue(queriesTotal)
+    })
+  }, [applyAssignmentRows, assignmentRows, totalInputs])
 
   if (loading) {
     return (
@@ -1065,33 +1194,7 @@ export default function WorkloadEngineView() {
                 No breakdown entries for this study yet.
               </div>
             ) : (
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={breakdownSeries}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                    <XAxis
-                      dataKey="weekStart"
-                      stroke="#9ca3af"
-                      fontSize={11}
-                    />
-                    <YAxis
-                      tickFormatter={(value) => `${round(value as number, 1)}h`}
-                      stroke="#9ca3af"
-                      fontSize={11}
-                    />
-                    <Tooltip content={<BreakdownTooltip />} />
-                    <Legend
-                      verticalAlign="top"
-                      align="right"
-                      height={36}
-                      formatter={(value) => <span className="text-xs text-gray-300">{value}</span>}
-                    />
-                    <Area type="monotone" dataKey="meetingHours" name="Meetings" stackId="1" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.5} />
-                    <Area type="monotone" dataKey="screeningHours" name="Screening" stackId="1" stroke="#22c55e" fill="#22c55e" fillOpacity={0.5} />
-                    <Area type="monotone" dataKey="queryHours" name="Queries" stackId="1" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.5} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
+              <PerStudyBreakdownChart data={breakdownSeries} tooltipStyle={tooltipStyle} />
             )}
           </div>
         </section>
@@ -1301,7 +1404,7 @@ export default function WorkloadEngineView() {
           <div className="space-y-1">
             <h2 className="text-xl font-semibold text-white">Weekly workload log</h2>
             <p className="text-sm text-gray-400">
-              Enter estimates inline for each assigned study. Totals roll up automatically.
+              Enter totals once and distribute them, or edit the study rows directly—either way the summary will stay in sync.
             </p>
           </div>
           {saveMessage && (
@@ -1356,16 +1459,7 @@ export default function WorkloadEngineView() {
                   Reset inputs
                 </button>
                 <button
-                  onClick={() => {
-                    setAssignmentRows((rows) =>
-                      rows.map((row) => ({
-                        ...row,
-                        meetings: '',
-                        screening: '',
-                        queries: ''
-                      }))
-                    )
-                  }}
+                  onClick={clearAssignmentHours}
                   className="inline-flex items-center justify-center rounded-md border border-gray-700 px-3 py-2 text-xs font-medium text-gray-200 hover:bg-gray-800 transition-colors"
                   type="button"
                 >
@@ -1376,12 +1470,66 @@ export default function WorkloadEngineView() {
             </div>
           </div>
 
+          <div className="rounded-md border border-gray-800 bg-gray-900/50 p-3 grid grid-cols-1 md:grid-cols-4 gap-3">
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-gray-300">Total meetings (hrs)</span>
+              <input
+                type="number"
+                min="0"
+                step="0.25"
+                inputMode="decimal"
+                value={totalInputs.meetings}
+                onChange={(event) => handleTotalsInputChange('meetings', event.target.value)}
+                className="rounded-md border border-gray-700 bg-gray-950/70 px-3 py-2 text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g. 4"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-gray-300">Total screening (hrs)</span>
+              <input
+                type="number"
+                min="0"
+                step="0.25"
+                inputMode="decimal"
+                value={totalInputs.screening}
+                onChange={(event) => handleTotalsInputChange('screening', event.target.value)}
+                className="rounded-md border border-gray-700 bg-gray-950/70 px-3 py-2 text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g. 6"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-gray-300">Total queries (hrs)</span>
+              <input
+                type="number"
+                min="0"
+                step="0.25"
+                inputMode="decimal"
+                value={totalInputs.queries}
+                onChange={(event) => handleTotalsInputChange('queries', event.target.value)}
+                className="rounded-md border border-gray-700 bg-gray-950/70 px-3 py-2 text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g. 3"
+              />
+            </label>
+            <div className="flex flex-col gap-2">
+              <span className="text-sm text-gray-300">Distribute totals</span>
+              <button
+                onClick={handleDistributeTotals}
+                type="button"
+                className="inline-flex items-center justify-center rounded-md bg-gray-800 px-3 py-2 text-sm font-medium text-gray-100 hover:bg-gray-700 transition-colors"
+              >
+                Spread across studies
+              </button>
+              <span className="text-xs text-gray-500">
+                We’ll split totals evenly. You can fine-tune individual rows afterward.
+              </span>
+            </div>
+          </div>
+
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-800 text-sm">
               <thead className="bg-gray-900/60">
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold text-gray-300">Study</th>
-                  <th className="px-4 py-3 text-right font-semibold text-gray-300">Meetings (hrs)</th>
                   <th className="px-4 py-3 text-right font-semibold text-gray-300">Screening (hrs)</th>
                   <th className="px-4 py-3 text-right font-semibold text-gray-300">Queries (hrs)</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-300">Notes</th>
@@ -1395,18 +1543,6 @@ export default function WorkloadEngineView() {
                         <span className="text-white font-semibold">{row.studyTitle}</span>
                         <span className="text-xs text-gray-400">{row.protocolNumber}</span>
                       </div>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.25"
-                        inputMode="decimal"
-                        value={row.meetings}
-                        onChange={(event) => handleAssignmentValueChange(row.assignmentId, 'meetings', event.target.value)}
-                        className="w-full max-w-[110px] rounded-md border border-gray-700 bg-gray-950/70 px-2 py-1 text-right text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="0"
-                      />
                     </td>
                     <td className="px-4 py-3 text-right">
                       <input
@@ -1445,7 +1581,7 @@ export default function WorkloadEngineView() {
                 ))}
                 {assignmentRows.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-400">
+                    <td colSpan={4} className="px-4 py-6 text-center text-sm text-gray-400">
                       No assignments linked yet. Assign this coordinator to a study to log workload.
                     </td>
                   </tr>
@@ -1459,7 +1595,7 @@ export default function WorkloadEngineView() {
               <span>
                 Total meetings:{' '}
                 <strong className="text-white">
-                  {round(assignmentRows.reduce((sum, row) => sum + toHours(row.meetings), 0), 1)} hrs
+                  {round(toHours(totalInputs.meetings), 1)} hrs
                 </strong>
               </span>
               <span>
@@ -1573,36 +1709,6 @@ function formatNumber(value: number) {
   return Math.round(value).toLocaleString('en-US')
 }
 
-function BreakdownTooltip({ active, payload, label }: BreakdownTooltipProps) {
-  if (!active || !payload || payload.length === 0) {
-    return null
-  }
-
-  const datum = payload[0]?.payload as BreakdownTooltipDatum | undefined
-
-  if (!datum) return null
-
-  const formatHours = (value: number) => `${round(value, 1)} hrs`
-
-  return (
-    <div style={tooltipStyle} className="space-y-1">
-      <div className="text-xs font-semibold text-gray-100">{label}</div>
-      <div className="text-xs text-gray-200">Meetings: {formatHours(datum.meetingHours)}</div>
-      <div className="text-xs text-gray-200">Screening: {formatHours(datum.screeningHours)}</div>
-      <div className="text-xs text-gray-200">Queries: {formatHours(datum.queryHours)}</div>
-      <div className="text-xs text-gray-300">Total: {formatHours(datum.totalHours)}</div>
-      {datum.notesCount > 0 && (
-        <div className="text-[11px] text-blue-300">Notes logged: {datum.notesCount}</div>
-      )}
-      {datum.coordinators?.length > 0 && (
-        <div className="text-[11px] text-gray-400">
-          Contributors: {datum.coordinators.length}
-        </div>
-      )}
-    </div>
-  )
-}
-
 function computeSetupCompletion(entry: WorkloadRecord) {
   const checkpoints = [
     entry.protocolScore > 0,
@@ -1633,14 +1739,12 @@ function buildAssignmentRows(
     studyId: assignment.id,
     studyTitle: assignment.studyTitle,
     protocolNumber: assignment.protocolNumber,
-    meetings: '',
     screening: '',
     queries: '',
     notes: ''
   }))
 
   const divisor = Math.max(assignments.length, 1)
-  const avgMeeting = latest ? round(latest.meetingHours / divisor, 2) : 0
   const avgScreening = latest ? round(latest.screeningHours / divisor, 2) : 0
   const avgQuery = latest ? round(latest.queryHours / divisor, 2) : 0
 
@@ -1649,9 +1753,8 @@ function buildAssignmentRows(
     if (breakdown) {
       return {
         ...assignment,
-        meetings: breakdown.meetingHours > 0 ? breakdown.meetingHours.toString() : '',
-        screening: breakdown.screeningHours > 0 ? breakdown.screeningHours.toString() : '',
-        queries: breakdown.queryHours > 0 ? breakdown.queryHours.toString() : '',
+        screening: breakdown.screeningHours > 0 ? formatInputValue(breakdown.screeningHours) : '',
+        queries: breakdown.queryHours > 0 ? formatInputValue(breakdown.queryHours) : '',
         notes: breakdown.notes ?? ''
       }
     }
@@ -1662,9 +1765,8 @@ function buildAssignmentRows(
 
     return {
       ...assignment,
-      meetings: avgMeeting > 0 ? avgMeeting.toString() : '',
-      screening: avgScreening > 0 ? avgScreening.toString() : '',
-      queries: avgQuery > 0 ? avgQuery.toString() : '',
+      screening: avgScreening > 0 ? formatInputValue(avgScreening) : '',
+      queries: avgQuery > 0 ? formatInputValue(avgQuery) : '',
       notes: ''
     }
   })

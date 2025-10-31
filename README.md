@@ -14,6 +14,13 @@ Recent Changes
 - **Lab Kit Ordering**: New order workflow with pending order tracking, automatic deficit coverage, and "Mark Received" → inventory entry flow.
 - **Shipment Status**: Added `delivered` status to lab kit shipments with corresponding migration and UI updates.
 
+### Scheduled Jobs
+- `0 2 * * *` → `/api/cron/cwe-refresh` (invokes the Supabase Edge function `cwe-refresh` to enqueue studies for workload refresh)
+- `0 3 * * *` → `/api/cron/cwe-backfill` (rebuilds workload snapshots in bulk)
+- Jobs defined in `vercel.json` and managed via Vercel → Settings → Cron Jobs
+- Each API route enforces `CRON_SECRET` (`x-cron-secret` or `Authorization: Bearer …`) before using the service-role key
+- Supabase function logs confirm nightly executions; Slack alerts fire on failure when `CWE_CRON_ALERT_WEBHOOK_URL` (or fallback `CWE_ALERT_WEBHOOK_URL` / `SLACK_WEBHOOK_URL`) is configured
+
 Links
 
 - INSTRUCTIONS: `INSTRUCTIONS.md`
@@ -37,6 +44,7 @@ Environment
   - Optional: `LOG_MAX_PAYLOAD`, feature flags
   - `EASYPOST_API_KEY`: EasyPost API token (required for multi-carrier tracking refresh)
   - `EASYPOST_API_BASE_URL`: Optional override for EasyPost API base URL (default `https://api.easypost.com`)
+  - `CWE_CRON_ALERT_WEBHOOK_URL`: Incoming Slack webhook for cron failure alerts (falls back to `CWE_ALERT_WEBHOOK_URL` or `SLACK_WEBHOOK_URL` if unset)
 
 Install
 
@@ -65,6 +73,7 @@ Scripts
 - Lint: `npm run lint`
 - Type check: `npm run typecheck`
 - Tests: `npm test` | `npm run test:watch` | `npm run test:coverage`
+- Visual regression: `npm run test:visual`
 - Data fix/diagnostics: `scripts/*` (see filenames)
 
 Testing

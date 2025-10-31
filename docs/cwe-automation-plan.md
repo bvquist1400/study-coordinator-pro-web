@@ -46,6 +46,7 @@
 5. ✅ `refresh` handler reuses shared computation and is callable by the Edge function (manual invoke verified Oct 29, 2025).
 6. ✅ Vercel cron job + endpoint for nightly rebuild live at 03:00 UTC (logs monitored).
 7. ✅ Rollout documented in `CWET_Framework.md` and this runbook.
+8. ✅ Slack webhook alerting wired into `/api/cron/cwe-backfill` and `/api/cron/cwe-refresh` (set `CWE_CRON_ALERT_WEBHOOK_URL`) so failures page the team.
 
 ## 6. Open Questions
 - Do we need per-coordinator personal dashboards cached separately?
@@ -55,6 +56,7 @@
 ## 7. Immediate Next Tasks
 - Escalate with Supabase or wait for UI/CLI support to attach the `cwe_events` broadcast channel to `cwe-refresh` (listener pending; manual invoke + cron cover interim). **Update — Jan 2026:** The Edge function now resolves impacted studies for coordinator events via REST, so once the broadcast binding unblocks, no additional code changes should be needed.
 - Continue monitoring nightly `/api/cron/cwe-backfill` runs and alert on failures; extend reporting if error rate >0.
+- Plan to disable `/api/cron/cwe-refresh` once the Supabase broadcast binding is reliable for all three trigger sources (visits, metrics, assignments). Keep the cron configured as a fallback until we have two weeks of clean realtime runs.
 
 ## 8. Deployment Checklist
 1. **Edge Function**
@@ -80,6 +82,7 @@
 3. **Monitoring**
    - Track succeeded vs. failed refreshes via Supabase function logs.
    - Extend `/api/analytics/workload` response metadata to feed automation dashboards.
+   - Set `CWE_CRON_ALERT_WEBHOOK_URL` (or fallback `CWE_ALERT_WEBHOOK_URL` / `SLACK_WEBHOOK_URL`) so cron failures raise Slack alerts automatically.
 
 ## 9. Runbook — Manual Snapshot Refresh
 - Verify latest snapshot timestamp:

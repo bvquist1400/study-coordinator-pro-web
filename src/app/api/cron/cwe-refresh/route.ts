@@ -1,6 +1,7 @@
 // src/app/api/cron/cwe-refresh/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import logger from '@/lib/logger'
+import { sendCronAlert } from '@/lib/alerts/cron'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SERVICE_ROLE_KEY
@@ -37,6 +38,10 @@ async function triggerRefresh() {
   if (!response.ok) {
     const message = `cwe-refresh Edge function returned ${response.status}`
     logger.error(message, undefined, { response: payload })
+    await sendCronAlert('CWE refresh cron received a non-200 from cwe-refresh function', {
+      status: response.status,
+      body: payload
+    })
     throw new Error(message)
   }
 
@@ -53,6 +58,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: true, data })
   } catch (error) {
     logger.error('CWE refresh cron failed', error as any)
+    const message = error instanceof Error ? error.message : String(error)
+    await sendCronAlert('CWE refresh cron failed', {
+      error: message
+    })
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : String(error) }, { status: 500 })
   }
 }

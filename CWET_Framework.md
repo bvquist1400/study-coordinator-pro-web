@@ -30,14 +30,14 @@ To replace static feasibility scoring with a dynamic workload system that predic
 | API | ✅ | `/api/analytics/workload` and `/api/cwe/[studyId]` deliver workload totals; `/api/cwe/metrics` now persists aggregate + per-study entries via `save_coordinator_metrics_with_breakdown`. |
 | UI | ✅ | `/workload` dashboard surfaces portfolio summary; `/studies/[id]/workload` guides rubric scoring, lifecycle selection, multipliers, meeting load, and visit weights. Status chips share a common label & color system. |
 | Coordinator Metrics Loop | ✅ | Weekly metrics logging via `/api/cwe/metrics` and study assignments power adaptive multipliers in workload analytics with detailed breakdown persistence. |
-| Automation | 🚧 In Progress | Snapshot cache + nightly `/api/cron/cwe-backfill` refresh are live; `cwe-refresh` Edge function deployed and manually verified; Supabase broadcast listener still pending UI support. |
+| Automation | 🚧 In Progress | Snapshot cache + nightly `/api/cron/cwe-backfill` refresh are live with Slack alerting (`CWE_CRON_ALERT_WEBHOOK_URL`); `cwe-refresh` Edge function deployed and manually verified; Supabase broadcast listener still pending UI support. |
 
 ---
 
 ## Upcoming Work
 
-- **Per-study breakdown analytics (shipped):** rollup view + `/api/analytics/workload?includeBreakdown=true` feed the new `/workload` stacked chart and the study workload breakdown table; next step is expanding automated regression coverage.
-- **Realtime automation listener:** remains blocked on Supabase broadcast → Edge bindings; revisit after the breakdown analytics release so the new charts have value while manual refresh + cron cover the gap.
+- **Visual coverage expansion:** Extend Playwright screenshot tests beyond the stacked breakdown chart (coordinator load table + study detail grid) once layouts stabilize.
+- **Realtime automation listener:** remains blocked on Supabase broadcast → Edge bindings; once live, phase out the scheduled `/api/cron/cwe-refresh` job after two weeks of clean realtime runs.
 
 ---
 
