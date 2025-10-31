@@ -44,11 +44,15 @@ Environment
   - Optional: `LOG_MAX_PAYLOAD`, feature flags
   - `EASYPOST_API_KEY`: EasyPost API token (required for multi-carrier tracking refresh)
   - `EASYPOST_API_BASE_URL`: Optional override for EasyPost API base URL (default `https://api.easypost.com`)
-  - `CWE_CRON_ALERT_WEBHOOK_URL`: Incoming Slack webhook for cron failure alerts (falls back to `CWE_ALERT_WEBHOOK_URL` or `SLACK_WEBHOOK_URL` if unset)
+- `CWE_CRON_ALERT_WEBHOOK_URL`: Incoming Slack webhook for cron failure alerts (falls back to `CWE_ALERT_WEBHOOK_URL` or `SLACK_WEBHOOK_URL` if unset)
 
 Install
 
 - `npm ci` (preferred) or `npm install`
+
+Git Permissions
+
+- If you hit `fatal: Unable to create '.git/index.lock': Operation not permitted`, the `.git` directory is read-only. Either run the git command with `sudo`, or temporarily unlock the repo (e.g. `sudo chown -R $USER .git`) and revert the change when you are done.
 
 Database
 
