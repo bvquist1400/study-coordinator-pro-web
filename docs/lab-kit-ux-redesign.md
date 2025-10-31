@@ -21,15 +21,22 @@ The approved redesign moved the lab kit workspace from a five-tab layout to a si
 ### Current Layout (Shipping)
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│ Inventory | Forecast | Orders & Shipments | Archive | Alerts | Settings │
+│ Lab Kit Dashboard (default)                                            │
+│  • Snapshot metrics · Critical & monitor lists · Pending orders        │
+│  • Quick actions: Plan order · Mark as received · Open tabbed workspace│
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Lab Kit Management Workspace                                           │
+│  Inventory | Forecast | Orders & Shipments | Archive | Alerts | Settings│
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
 **Key Outcomes:**
-- Clear separation between day-to-day inventory work and forecasting intelligence
-- Orders & Shipments combined into a single flow with shared quick actions
-- Alerts dedicated to severity-triage, backed by inline highlights in Inventory & Forecast
-- Settings surfaced for buffer tuning, kit overrides, and manual recompute triggers
+- Dashboard-first experience keeps triage, orders, and shipments together with one-click handoffs into modals.
+- Orders & Shipments remain a combined flow with shared quick actions in both the dashboard and workspace.
+- Alerts dedicated to severity-triage, backed by inline highlights in Inventory & Forecast.
+- Settings surfaced for buffer tuning, kit overrides, and manual recompute triggers from the workspace.
 
 ---
 

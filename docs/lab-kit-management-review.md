@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-Your intelligent lab kit management system is **sophisticated and well-architected**, representing a clinical-grade inventory solution with predictive capabilities. The tabbed workspace, severity-grouped forecast, and consolidated orders + shipments hub all land cleanly. Remaining opportunities centre on deeper forecasting math, bulk-operation performance, smarter alert lifecycle handling, and first-time coordinator guidance.
+Your intelligent lab kit management system is **sophisticated and well-architected**, representing a clinical-grade inventory solution with predictive capabilities. The new consolidated dashboard now front-loads study health, pending orders, and shipments, while the tabbed management workspace remains available for deep edits. Remaining opportunities centre on deeper forecasting math, multi-kit ordering ergonomics, smarter alert lifecycle handling, and first-time coordinator guidance.
 
 ---
 
@@ -21,10 +21,12 @@ Your intelligent lab kit management system is **sophisticated and well-architect
 - **Strong data architecture** with proper relationships and audit trails
 - **Integrated workflows** connecting inventory → shipments → visits → subjects
 - **Flexible order management** with deficit tracking and pending order coverage
+- **Forecast → order handoff** that pre-populates kit type and quantity from risk calculations, plus “mark as received” flows that auto-fill inventory intake
 
 ### Areas for Improvement ⚠️
 - **Forecast depth** – incorporate vendor lead times and expiring stock into buffer math
 - **Bulk performance** – virtualise long tables and batch API operations
+- **Bulk ordering** – support multi-kit batch orders directly from forecast suggestions
 - **Alert lifecycle** – auto-restore dismissed alerts when conditions worsen
 - **Onboarding** – richer empty states and quick-start guardrails for new sites
 
@@ -130,26 +132,20 @@ POST /api/lab-kits/batch-update
 
 ### Information Architecture ⭐⭐⭐⭐ (4/5)
 
-**Recent redesign simplifies navigation and highlights forecasting**
+**Structure now splits between a dashboard shell and the detailed workspace**
 
-**Current Tab Structure:**
-- Inventory (default)
-- Forecast
-- Orders & Shipments
-- Archive
-- Alerts
-- Settings
+- **Lab Kit Dashboard (default)** – single-page overview with snapshot metrics, critical forecast rows, pending orders, shipments in motion, and hot links into deeper workflows.
+- **Lab Kit Management Workspace** – the familiar tabbed UI (`Inventory`, `Forecast`, `Orders & Shipments`, `Archive`, `Alerts`, `Settings`) reachable via “Open tabbed workspace” whenever detailed edits or bulk updates are required.
 
 **Strengths:**
-- Tabs map cleanly to the coordinator workflow: track → predict → order/ship → archive.
-- Forecast lives in its own destination, preventing the inventory table from feeling overloaded.
-- Orders & Shipments share a workspace, so pending coverage and in-transit tracking stay aligned.
-- Settings isolates kit configuration and buffers while remaining one click away.
+- Coordinators triage from one place and jump straight into prefilled order or intake flows.
+- The workspace tabs remain focused on their original missions without duplicating dashboard chrome.
+- Quick actions (“Plan order”, “Mark as received”, “Open tabbed workspace”) now appear everywhere making the dual-surface model cohesive.
 
 **Opportunities:**
-1. **Alerts duplication** – the Alerts tab and the Forecast severity buckets surface overlapping deficit data. Consider demoting the tab to a slide-over summary or linking back into Forecast with anchors.
-2. **Settings discoverability in all-studies mode** – when “All Studies” is selected the tab renders a blocking empty state. A CTA that jumps users to a specific study (e.g., “Choose a study to edit settings”) would keep the workflow snappy.
-3. **Global quick actions** – the Add Inventory and Plan Order buttons live in the Inventory header only. Mirroring those as global quick actions across tabs would reinforce the core affordances.
+1. **Alerts duplication** – the Alerts tab and the dashboard critical/monitor lists surface overlapping deficit data. Consider demoting the tab to a slide-over history or bringing the dashboard list in as a shared component.
+2. **Settings discoverability in “All Studies”** – when no study is selected, provide inline guidance or a CTA that jumps users to the first accessible study to edit buffers.
+3. **Multi-kit forecast actions** – expose a “Plan orders (batch)” action that pipes multiple suggestions into a single workflow so coordinators can accept or edit them together.
 
 ---
 

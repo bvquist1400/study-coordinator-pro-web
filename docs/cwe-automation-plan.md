@@ -10,6 +10,7 @@
 - **Visit scheduling updates** (date/status changes that impact `cwe_forecast_4w`).
 - **Coordinator metrics submissions** (`coordinator_metrics` upserts via `src/app/api/cwe/metrics/route.ts:113`).
 - **Study coordinator assignment changes** (`study_coordinators` CRUD in `src/app/api/study-coordinators/**`, now driven by the `/members` coordinator assignment UI).
+- **Visit-level coordinator assignments** (`subject_visit_coordinators` inserts via `/api/subject-visits/coordinators`) so scheduled visits carry responsible staff into automation events.
 
 ## 3. Proposed Automation Hooks
 1. **Postgres trigger → NOTIFY channel**
@@ -58,6 +59,7 @@
 - Escalate with Supabase or wait for UI/CLI support to attach the `cwe_events` broadcast channel to `cwe-refresh` (listener pending; manual invoke + cron cover interim). **Update — Jan2026:** The Edge function now resolves impacted studies for coordinator events via REST, so once the broadcast binding unblocks, no additional code changes should be needed.
 - Continue monitoring nightly `/api/cron/cwe-backfill` runs and alert on failures; extend reporting if error rate >0.
 - Plan to disable `/api/cron/cwe-refresh` once the Supabase broadcast binding is reliable for all three trigger sources (visits, metrics, assignments). Keep the cron configured as a fallback until we have two weeks of clean realtime runs.
+- Wire visit-level coordinator assignments into the refresh flow (events now include `table: subject_visit_coordinators`) to ensure workload recalculations and notifications reflect the latest assignees.
 - Link visit intensity weights directly to SOE visit templates so forecast math reflects the configured weight per visit type.
 - Prototype visit-level coordinator assignments in the SOE builder so each planned visit can map to a responsible coordinator when workflows require it.
 

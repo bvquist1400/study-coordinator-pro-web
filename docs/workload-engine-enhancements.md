@@ -15,6 +15,14 @@
 - ✅ `/api/cwe/metrics` now reads and writes the detailed breakdown, and the Workload Engine inline log prefills exact values from the latest submission instead of evenly distributing totals.
 - ⚠️ Follow-up: expose historical trend views that surface the breakdown data (e.g., per-study coordinator load charts) once consumption patterns are defined.
 
+## Visit-Level Coordinator Assignments (January 31, 2026)
+
+- ✅ Added migrations `20260130_add_visit_schedule_coordinators.sql` and `20260131_add_subject_visit_coordinators.sql` to store coordinator assignments on both visit templates and scheduled subject visits (with RLS + `updated_at` trigger).
+- ✅ New service-role endpoint `/api/subject-visits/coordinators` supports GET (list assignments for a subject) and POST (bulk assign coordinators to selected visits). Timeline bulk actions and visit detail pickers now flow through this API.
+- ✅ `SubjectVisitTimelineTable` consumes the service data so coordinator chips persist across refreshes; schedule modal exposes the same multi-select for new visits to keep the data loop closed.
+- ✅ Added `/api/coordinators` + `/members` integration notes to ensure study assignments remain the single source of truth—the timeline only offers coordinators that are active on the study.
+- ⚠️ Follow-up: surface assignment history in SOE builder when visit weights ship, and extend visit notifications so assigned coordinators receive reminders.
+
 ## Breakdown Analytics Rollout
 
 - ✅ **Phase 1 — Data contract:** Added the weekly rollup view (`v_coordinator_metrics_breakdown_weekly`), extended `/api/analytics/workload?includeBreakdown=true`, and covered the grouping helper with unit tests.

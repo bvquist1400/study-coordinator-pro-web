@@ -16,6 +16,7 @@ To replace static feasibility scoring with a dynamic workload system that predic
 - Three key measures calculated: **Now (baseline)**, **Actuals (completed visits)**, and **Forecast (upcoming visits)**.
 - Implemented **protocol complexity rubric**, **meeting/admin load**, and guided workload configuration UI in the Study Coordinator Pro web app.
 - Introduced **study coordinator assignments + weekly metrics loop** so recorded hours and study counts dynamically adjust screening/query multipliers and meeting load.
+- Added **visit-level coordinator assignments** (SOE + scheduled visits) so workload forecasting and visit timelines know exactly who owns upcoming work; assignments flow through the new `/api/subject-visits/coordinators` service endpoint.
 - Expanded the **Members** dashboard to resolve coordinator identities (name/email) and manage per-study assignments inline, keeping directory views and workload snapshots aligned.
 - Normalized **study status, recruitment status, and lifecycle labels** across the application, with automatic recruitment alignment when studies are closed to enrollment.
 - Added **per-study coordinator workload breakdowns** so weekly log submissions capture hours and notes by assignment while preserving the aggregate loop.
